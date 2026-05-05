@@ -17,7 +17,7 @@
 // ========================== 配置参数 ==========================
 
 // 一阶卡尔曼滤波参数
-#define ENCODER_KALMAN_PROCESS_NOISE       (0.01f)
+#define ENCODER_KALMAN_PROCESS_NOISE       (0.25f)
 #define ENCODER_KALMAN_MEASURE_NOISE       (4.0f)
 #define ENCODER_KALMAN_ERROR_INIT          (1.0f)
 

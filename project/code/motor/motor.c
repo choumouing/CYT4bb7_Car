@@ -56,7 +56,7 @@ int16_t speed_limit(int16_t speed)
  */
 void motor_set_single(gpio_pin_enum dir_pin, pwm_channel_enum pwm_ch, int16_t speed, uint8_t invert)
 {
-    //speed = speed_limit(speed);
+    speed = speed_limit(speed);
 
     // 如果需要反转，取反速度
     if (invert)

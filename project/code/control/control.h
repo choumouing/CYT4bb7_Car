@@ -8,6 +8,12 @@
 #define __CONTROL_H__
 
 #include "zf_common_headfile.h"
+#include "pid.h"
+
+extern IncrementPID wheel_left_front_pid;
+extern IncrementPID wheel_right_front_pid;
+extern IncrementPID wheel_left_rear_pid;
+extern IncrementPID wheel_right_rear_pid;
 
 /**
  * @brief 初始化四电机速度环

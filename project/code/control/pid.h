@@ -24,6 +24,10 @@ typedef struct {
     float kp, ki, kd;
     float last_error;
     float prev_error;
+    float p_term;
+    float i_term;
+    float d_term;
+    float increment;
     float output;
     float output_limit;
 } IncrementPID;
