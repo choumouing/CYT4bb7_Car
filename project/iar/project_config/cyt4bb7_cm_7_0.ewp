@@ -1119,6 +1119,33 @@
             <name>$PROJ_DIR$\..\..\code\本文件夹作用.txt</name>
         </file>
         <group>
+            <name>Attitude</name>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Attitude\Accel_Calibration.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Attitude\Accel_Calibration.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Attitude\IMU_Filtter.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Attitude\IMU_Filtter.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Attitude\IMU_TOP.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Attitude\IMU_TOP.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Attitude\MahonyAhrs.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Attitude\MahonyAhrs.h</name>
+            </file>
+        </group>
+        <group>
             <name>control</name>
             <file>
                 <name>$PROJ_DIR$\..\..\code\control\control.c</name>
@@ -1140,6 +1167,15 @@
             </file>
             <file>
                 <name>$PROJ_DIR$\..\..\code\encoder\encoder_control.h</name>
+            </file>
+        </group>
+        <group>
+            <name>imu</name>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\imu\ICM42688.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\imu\ICM42688.h</name>
             </file>
         </group>
         <group>

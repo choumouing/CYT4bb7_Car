@@ -39,7 +39,10 @@
 #include "zf_common_headfile.h"
 
 extern volatile uint8_t timer_10ms_flag;
+extern volatile uint8_t timer_20ms_flag;
+extern volatile uint16 g_tick_1000HZ;
 static uint8_t pit_ch0_1ms_count = 0;
+static uint8_t pit_ch0_10ms_count = 0;
 
 
 // **************************** PIT中断函数 ****************************
@@ -47,11 +50,23 @@ void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数
 {
     pit_isr_flag_clear(PIT_CH0);
 
+    if(g_tick_1000HZ < 60000U)
+    {
+        g_tick_1000HZ++;
+    }
+
     pit_ch0_1ms_count++;
     if(pit_ch0_1ms_count >= 10)
     {
         pit_ch0_1ms_count = 0;
         timer_10ms_flag = 1;
+
+        pit_ch0_10ms_count++;
+        if(pit_ch0_10ms_count >= 2)
+        {
+            pit_ch0_10ms_count = 0;
+            timer_20ms_flag = 1;
+        }
     }
 }
 
