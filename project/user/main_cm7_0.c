@@ -34,6 +34,8 @@
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
+#include "Attitude/Accel_Calibration.h"
+#include "Attitude/IMU_TOP.h"
 #include "control/control.h"
 #include "encoder/encoder_control.h"
 #include "menu/menu_config.h"
@@ -51,6 +53,8 @@
 // **************************** 代码区域 ****************************
 
 volatile uint8_t timer_10ms_flag = 0;
+volatile uint8_t timer_20ms_flag = 0;
+volatile uint16 g_tick_1000HZ = 0U;
 static uint32_t speed_profile_10ms_count = 0U;
 
 
@@ -63,34 +67,52 @@ int main(void)
     menu_config_init();
     mecanum_motor_init();
     encoder_control_init();
-    control_speed_loop_init();
+    IMU_Init_All();
+    AccelCalibration_Init();
+    IMUCalib_Init();
+    control_cascade_init();
     wifi_core_Init();
     pit_init(PIT_CH0, 1000);
 
     // 此处编写用户代码 例如外设初始化代码等
     while(true)
     {
+        uint16 imu_tick_guard = 0U;
+
+        while((g_tick_1000HZ > 0U) && (imu_tick_guard < 100U))
+        {
+            g_tick_1000HZ--;
+            IMU_Update_1000HZ();
+            imu_tick_guard++;
+        }
         // 此处编写需要循环执行的代码
         if(timer_10ms_flag)
         {
+            uint8_t yaw_rate_update_flag;
+            uint32 irq_state = interrupt_global_disable();
+
+            yaw_rate_update_flag = timer_20ms_flag;
             timer_10ms_flag = 0;
+            timer_20ms_flag = 0;
+            interrupt_global_enable(irq_state);
+
             float target_speed = 0.0f;
 
             if(speed_profile_10ms_count < 500U)
             {
                 target_speed = 0.0f;
             }
+            else if(speed_profile_10ms_count < 1000U)
+            {
+                target_speed = 1.0f;
+            }
             else if(speed_profile_10ms_count < 1500U)
             {
-                target_speed = 300.0f;
+                target_speed = 2.0f;
             }
-            else if(speed_profile_10ms_count < 2500U)
+            else if(speed_profile_10ms_count < 2000U)
             {
-                target_speed = 600.0f;
-            }
-            else if(speed_profile_10ms_count < 3500U)
-            {
-                target_speed = 300.0f;
+                target_speed = -1.0f;
             }
             else
             {
@@ -98,16 +120,21 @@ int main(void)
             }
             speed_profile_10ms_count++;
 
+            if(yaw_rate_update_flag)
+            {
+                control_yaw_rate_loop_update(target_speed);
+            }
+
             encoder_update();
-            control_speed_loop_update(target_speed, target_speed, target_speed, target_speed);
-            wifi_justfloat(wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
-                           encoder_get_left_front_count(), encoder_get_left_front_filtered_count(),
-                           wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,
-                           encoder_get_right_front_count(), encoder_get_right_front_filtered_count(),
-                           wheel_left_rear_pid.p_term, wheel_left_rear_pid.i_term,
-                           encoder_get_left_rear_count(), encoder_get_left_rear_filtered_count(),
-                           wheel_right_rear_pid.p_term, wheel_right_rear_pid.i_term,
-                           encoder_get_right_rear_count(), encoder_get_right_rear_filtered_count());
+            control_cascade_speed_loop_update(0.0f, 0.0f);
+            wifi_justfloat(control_yaw_rate_raw, control_yaw_rate_current,
+                           yaw_rate_pid.p_term, yaw_rate_pid.i_term,
+                           yaw_rate_pid.d_term, 0.0f,
+                           0.0f, 0.0f,
+                           0.0f, 0.0f,
+                           0.0f, 0.0f,
+                           0.0f, 0.0f,
+                           0.0f, 0.0f);
         }
         wifi_core_Poll();
 

@@ -16,6 +16,10 @@ typedef struct
     float kp_2, kp_1, ki, kd;
     float integral;
     float prev_err;
+    float p_term;
+    float i_term;
+    float d_term;
+    float output;
     float i_limit;
     float output_limit;
 } PositionalPID;

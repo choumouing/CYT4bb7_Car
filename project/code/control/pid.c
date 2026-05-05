@@ -10,6 +10,10 @@ void PositionalPID_Init(PositionalPID* pid,float kp_2,float kp_1,float ki,float 
     pid->kd = kd;
     pid->integral = 0.0f;
     pid->prev_err = 0.0f;
+    pid->p_term = 0.0f;
+    pid->i_term = 0.0f;
+    pid->d_term = 0.0f;
+    pid->output = 0.0f;
     pid->i_limit = i_limit;
     pid->output_limit = output_limit;
 }
@@ -26,26 +30,28 @@ float PositionalPID_Update(PositionalPID* pid, float target, float current)
 	float derivative = err - pid->prev_err;
 			
 	float output = 0;
-
+    float p = 0.0f;
+    float i = pid->ki * pid->integral;
     float d = pid->kd * derivative;
 		
 	if(err >= 0)
 	{
-			 output = pid->kp_2 * err * err + pid->kp_1 * err
-					+ pid->ki * pid->integral 
-					+ d;
+			 p = pid->kp_2 * err * err + pid->kp_1 * err;
 	}
 	else
 	{
-			output = - pid->kp_2 * err * err + pid->kp_1 * err
-        			+ pid->ki * pid->integral 
-					+ d;		
+			p = - pid->kp_2 * err * err + pid->kp_1 * err;
     }
 
+    output = p + i + d;
+    pid->p_term = p;
+    pid->i_term = i;
+    pid->d_term = d;
     pid->prev_err = err;
 							
 	if(output > pid->output_limit)output = pid->output_limit;
 	if(output < -pid->output_limit)output = -pid->output_limit;			
+    pid->output = output;
 	return output;
 }
 

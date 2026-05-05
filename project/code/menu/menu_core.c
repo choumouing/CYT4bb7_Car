@@ -729,8 +729,20 @@ void menu_flash_load_params(uint8_t slot)
     {
         if(param_configs[i].variable != NULL)
         {
-            // 直接从缓冲区获取float值
-            *(param_configs[i].variable) = flash_union_buffer[i].float_type;
+            // 直接从缓冲区获取float值，并防止旧存档/空白Flash写入异常参数
+            float value = flash_union_buffer[i].float_type;
+            if((value == value) && (value > -1000000.0f) && (value < 1000000.0f))
+            {
+                if(value < param_configs[i].min_val)
+                {
+                    value = param_configs[i].min_val;
+                }
+                if(value > param_configs[i].max_val)
+                {
+                    value = param_configs[i].max_val;
+                }
+                *(param_configs[i].variable) = value;
+            }
         }
     }
 
