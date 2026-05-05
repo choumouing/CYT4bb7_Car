@@ -34,6 +34,10 @@
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
+#include "control/control.h"
+#include "encoder/encoder_control.h"
+#include "menu/menu_config.h"
+#include "motor/motor.h"
 // 打开新的工程或者工程移动了位置务必执行以下操作
 // 第一步 关闭上面所有打开的文件
 // 第二步 project->clean  等待下方进度条走完
@@ -44,24 +48,31 @@
 
 // **************************** 代码区域 ****************************
 
+volatile uint8_t timer_10ms_flag = 0;
+
 
 int main(void)
 {
     clock_init(SYSTEM_CLOCK_250M); 	// 时钟配置及系统初始化<务必保留>
     debug_init();                       // 调试串口信息初始化
     // 此处编写用户代码 例如外设初始化代码等
-    
+    menu_config_init();
+    mecanum_motor_init();
+    encoder_control_init();
+    control_speed_loop_init();
+    pit_init(PIT_CH0, 1000);
 
-    
-    
     // 此处编写用户代码 例如外设初始化代码等
     while(true)
     {
         // 此处编写需要循环执行的代码
+        if(timer_10ms_flag)
+        {
+            timer_10ms_flag = 0;
+            encoder_update();
+            control_speed_loop_update(0.0f, 0.0f, 0.0f, 0.0f);
+        }
 
-
-      
-      
         // 此处编写需要循环执行的代码
     }
 }
