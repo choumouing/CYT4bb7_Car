@@ -16,6 +16,11 @@
 
 // ========================== 配置参数 ==========================
 
+// 一阶卡尔曼滤波参数
+#define ENCODER_KALMAN_PROCESS_NOISE       (0.01f)
+#define ENCODER_KALMAN_MEASURE_NOISE       (4.0f)
+#define ENCODER_KALMAN_ERROR_INIT          (1.0f)
+
 
 
 // 引脚定义
@@ -48,7 +53,9 @@ typedef struct
     encoder_channel2_enum ch2_pin;              // 通道 2 引脚
 
     int16_t count_raw;                          // 当前周期原始计数（速度）
+    float count_filtered;                       // 当前周期滤波计数（速度）
     int32_t count_total;                        // 累计计数（里程）
+    float kalman_p;                             // 卡尔曼估计误差协方差
 
     int8_t invert;
 } encoder_data_t;
@@ -103,6 +110,30 @@ int16_t encoder_get_left_rear_count(void);
  * @return 右后编码器周期计数
  */
 int16_t encoder_get_right_rear_count(void);
+
+/**
+ * @brief  获取左前编码器滤波后周期计数（速度）
+ * @return 左前编码器滤波后周期计数
+ */
+float encoder_get_left_front_filtered_count(void);
+
+/**
+ * @brief  获取右前编码器滤波后周期计数（速度）
+ * @return 右前编码器滤波后周期计数
+ */
+float encoder_get_right_front_filtered_count(void);
+
+/**
+ * @brief  获取左后编码器滤波后周期计数（速度）
+ * @return 左后编码器滤波后周期计数
+ */
+float encoder_get_left_rear_filtered_count(void);
+
+/**
+ * @brief  获取右后编码器滤波后周期计数（速度）
+ * @return 右后编码器滤波后周期计数
+ */
+float encoder_get_right_rear_filtered_count(void);
 
 /**
  * @brief  获取左前编码器累计计数

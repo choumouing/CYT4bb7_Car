@@ -17,7 +17,9 @@ encoder_data_t encoder_left_front = {
     .ch1_pin = ENCODER_M3_A,
     .ch2_pin = ENCODER_M3_B,
     .count_raw = 0,
+    .count_filtered = 0.0f,
     .count_total = 0,
+    .kalman_p = ENCODER_KALMAN_ERROR_INIT,
     .invert = 1                     //是否反转编码器正负
 };
 
@@ -28,7 +30,9 @@ encoder_data_t encoder_right_front = {
     .ch1_pin = ENCODER_M4_A,
     .ch2_pin = ENCODER_M4_B,
     .count_raw = 0,
+    .count_filtered = 0.0f,
     .count_total = 0,
+    .kalman_p = ENCODER_KALMAN_ERROR_INIT,
     .invert = 0
 };
 
@@ -37,7 +41,9 @@ encoder_data_t encoder_left_rear = {
     .ch1_pin = ENCODER_M2_A,
     .ch2_pin = ENCODER_M2_B,
     .count_raw = 0,
+    .count_filtered = 0.0f,
     .count_total = 0,
+    .kalman_p = ENCODER_KALMAN_ERROR_INIT,
     .invert = 1
 };
 
@@ -46,10 +52,29 @@ encoder_data_t encoder_right_rear = {
     .ch1_pin = ENCODER_M1_A,
     .ch2_pin = ENCODER_M1_B,
     .count_raw = 0,
+    .count_filtered = 0.0f,
     .count_total = 0,
+    .kalman_p = ENCODER_KALMAN_ERROR_INIT,
     .invert = 0
 };
 
+
+/**
+ * @brief  一阶卡尔曼滤波
+ * @param  encoder: 编码器数据结构指针
+ * @param  measurement: 当前测量值
+ * @return 滤波后的估计值
+ */
+static float encoder_kalman_filter(encoder_data_t *encoder, float measurement)
+{
+    float p_predict = encoder->kalman_p + ENCODER_KALMAN_PROCESS_NOISE;
+    float kalman_gain = p_predict / (p_predict + ENCODER_KALMAN_MEASURE_NOISE);
+
+    encoder->count_filtered += kalman_gain * (measurement - encoder->count_filtered);
+    encoder->kalman_p = (1.0f - kalman_gain) * p_predict;
+
+    return encoder->count_filtered;
+}
 
 
 /**
@@ -65,6 +90,7 @@ static void encoder_update_single(encoder_data_t *encoder)
     // 处理反向
     if (encoder->invert)count = -count;
     encoder->count_raw = count;
+    encoder_kalman_filter(encoder, (float)encoder->count_raw);
     // 更新累计计数
     encoder->count_total += encoder->count_raw;
 }
@@ -117,6 +143,34 @@ int16_t encoder_get_left_rear_count(void)
 int16_t encoder_get_right_rear_count(void)
 {
     return encoder_right_rear.count_raw;
+}
+/**
+ * @brief  获取左前编码器滤波后周期计数（速度）
+ */
+float encoder_get_left_front_filtered_count(void)
+{
+    return encoder_left_front.count_filtered;
+}
+/**
+ * @brief  获取右前编码器滤波后周期计数（速度）
+ */
+float encoder_get_right_front_filtered_count(void)
+{
+    return encoder_right_front.count_filtered;
+}
+/**
+ * @brief  获取左后编码器滤波后周期计数（速度）
+ */
+float encoder_get_left_rear_filtered_count(void)
+{
+    return encoder_left_rear.count_filtered;
+}
+/**
+ * @brief  获取右后编码器滤波后周期计数（速度）
+ */
+float encoder_get_right_rear_filtered_count(void)
+{
+    return encoder_right_rear.count_filtered;
 }
 /**
  * @brief  获取左前编码器累计计数
