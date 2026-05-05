@@ -4,10 +4,10 @@
 #include "../menu/menu_config.h"
 #include "../motor/motor.h"
 
-static IncrementPID wheel_left_front_pid;
-static IncrementPID wheel_right_front_pid;
-static IncrementPID wheel_left_rear_pid;
-static IncrementPID wheel_right_rear_pid;
+IncrementPID wheel_left_front_pid;
+IncrementPID wheel_right_front_pid;
+IncrementPID wheel_left_rear_pid;
+IncrementPID wheel_right_rear_pid;
 
 static void control_speed_pid_init(IncrementPID *pid)
 {

@@ -11,9 +11,6 @@
 #include <string.h>
 
 #include "zf_device_wifi_spi.h"
-#include "buzzer/buzzer.h"
-#include "menu/menu_config.h"
-#include "../wifi_cal_imu/wifi_cal_imu.h"
 #include "../wifi_justfloat/wifi_justfloat.h"
 
 #define WIFI_CMD_TEXT_SEND_POLL_LIMIT   (20000U)
@@ -151,12 +148,6 @@ static void wifi_cmd_dispatch_line(char *line)
 
     wifi_cmd_ascii_strtolower(token_cmd);
 
-    if (0 == strcmp(token_cmd, "imu"))
-    {
-        wifi_cal_imu_ProcessLine(trimmed_line);
-        return;
-    }
-
     if (0 == strcmp(token_cmd, "ping"))
     {
         (void)wifi_cmd_SendLine("OK ping");
@@ -165,7 +156,7 @@ static void wifi_cmd_dispatch_line(char *line)
 
     if (0 == strcmp(token_cmd, "help"))
     {
-        (void)wifi_cmd_SendLine("OK help commands=ping,help,start,stop,imu");
+        (void)wifi_cmd_SendLine("OK help commands=ping,help,start,stop");
         return;
     }
 
@@ -286,10 +277,6 @@ void wifi_cmd_Init(void)
         s_wifi_cmd_use_udp_flush = 1U;
         s_wifi_cmd_ready = 1U;
     }
-    else
-    {
-        buzzer_one_long();
-    }
 }
 
 // 04110316 zyz实际测试花费88us
@@ -310,11 +297,6 @@ void wifi_cmd_Poll(void)
         }
     }
 
-    /* 仅在非飞行状态下轮询 */
-    if (is_car_running >= 0.5f)
-    {
-        return;
-    }
     read_len = wifi_spi_read_buffer(rx_buffer, (uint32)sizeof(rx_buffer));
     for (i = 0U; i < read_len; i++)
     {

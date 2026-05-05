@@ -56,6 +56,10 @@ void IncrementPID_Init (IncrementPID* pid,float kp,float ki,float kd,float outpu
     pid->kd = kd;
     pid->last_error = 0.0f;
     pid->prev_error = 0.0f;
+    pid->p_term = 0.0f;
+    pid->i_term = 0.0f;
+    pid->d_term = 0.0f;
+    pid->increment = 0.0f;
     pid->output = 0.0f;
     pid->output_limit = output_limit;
 }
@@ -69,6 +73,10 @@ float IncreamPID_Update(IncrementPID *pid, float target, float current)
     float d_term = pid->kd * (error - 2*pid->last_error + pid->prev_error);
     float increment = p_term + i_term + d_term;
     pid->output += increment;
+    pid->p_term = p_term;
+    pid->i_term = i_term;
+    pid->d_term = d_term;
+    pid->increment = increment;
 
     pid->prev_error = pid->last_error;
     pid->last_error = error;

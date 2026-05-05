@@ -10,7 +10,6 @@
 #include <string.h>
 
 #include "Attitude/Accel_Calibration.h"
-#include "menu/menu_config.h"
 #include "wifi/wifi_cmd/wifi_cmd.h"
 
 /*
@@ -22,7 +21,7 @@
  */
 static uint8_t wifi_cal_imu_is_edit_allowed(void)
 {
-    return (is_car_running < 0.5f) ? 1U : 0U;
+    return 1U;
 }
 
 /*
