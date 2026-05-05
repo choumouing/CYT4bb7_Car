@@ -51,6 +51,7 @@
 // **************************** ´úÂëÇøÓò ****************************
 
 volatile uint8_t timer_10ms_flag = 0;
+static uint32_t speed_profile_10ms_count = 0U;
 
 
 int main(void)
@@ -73,8 +74,32 @@ int main(void)
         if(timer_10ms_flag)
         {
             timer_10ms_flag = 0;
+            float target_speed = 0.0f;
+
+            if(speed_profile_10ms_count < 500U)
+            {
+                target_speed = 0.0f;
+            }
+            else if(speed_profile_10ms_count < 1500U)
+            {
+                target_speed = 300.0f;
+            }
+            else if(speed_profile_10ms_count < 2500U)
+            {
+                target_speed = 600.0f;
+            }
+            else if(speed_profile_10ms_count < 3500U)
+            {
+                target_speed = 300.0f;
+            }
+            else
+            {
+                target_speed = 0.0f;
+            }
+            speed_profile_10ms_count++;
+
             encoder_update();
-            control_speed_loop_update(0.0f, 0.0f, 0.0f, 0.0f);
+            control_speed_loop_update(target_speed, target_speed, target_speed, target_speed);
             wifi_justfloat(wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
                            encoder_get_left_front_count(), encoder_get_left_front_filtered_count(),
                            wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,
