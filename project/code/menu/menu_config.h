@@ -19,6 +19,12 @@ extern float wheel_output_limit;       // 轮速环输出限幅 (PWM)
 //====================================================用户配置接口====================================================
 void menu_config_init(void);           // 初始化菜单配置（注册参数和设置根菜单）
 
+extern float yaw_angle_kp;
+extern float yaw_angle_ki;
+extern float yaw_angle_kd;
+extern float yaw_angle_i_limit;
+extern float yaw_angle_output_limit;
+
 extern float yaw_rate_kp;
 extern float yaw_rate_ki;
 extern float yaw_rate_kd;

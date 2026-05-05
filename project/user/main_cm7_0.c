@@ -54,8 +54,9 @@
 
 volatile uint8_t timer_10ms_flag = 0;
 volatile uint8_t timer_20ms_flag = 0;
+volatile uint8_t timer_40ms_flag = 0;
 volatile uint16 g_tick_1000HZ = 0U;
-static uint32_t speed_profile_10ms_count = 0U;
+static float yaw_angle_target = 0.0f;
 
 
 int main(void)
@@ -86,55 +87,35 @@ int main(void)
             imu_tick_guard++;
         }
         // 此处编写需要循环执行的代码
+        if(timer_40ms_flag)
+        {
+            timer_40ms_flag = 0;
+            yaw_angle_target = 0.0f;
+            control_yaw_angle_loop_update(yaw_angle_target);
+        }
+
+        if(timer_20ms_flag)
+        {
+            timer_20ms_flag = 0;
+
+            control_yaw_rate_loop_update(control_yaw_rate_target);
+        }
+
         if(timer_10ms_flag)
         {
-            uint8_t yaw_rate_update_flag;
-            uint32 irq_state = interrupt_global_disable();
-
-            yaw_rate_update_flag = timer_20ms_flag;
             timer_10ms_flag = 0;
-            timer_20ms_flag = 0;
-            interrupt_global_enable(irq_state);
-
-            float target_speed = 0.0f;
-
-            if(speed_profile_10ms_count < 500U)
-            {
-                target_speed = 0.0f;
-            }
-            else if(speed_profile_10ms_count < 1000U)
-            {
-                target_speed = 1.0f;
-            }
-            else if(speed_profile_10ms_count < 1500U)
-            {
-                target_speed = 2.0f;
-            }
-            else if(speed_profile_10ms_count < 2000U)
-            {
-                target_speed = -1.0f;
-            }
-            else
-            {
-                target_speed = 0.0f;
-            }
-            speed_profile_10ms_count++;
-
-            if(yaw_rate_update_flag)
-            {
-                control_yaw_rate_loop_update(target_speed);
-            }
 
             encoder_update();
             control_cascade_speed_loop_update(0.0f, 0.0f);
-            wifi_justfloat(control_yaw_rate_raw, control_yaw_rate_current,
+            wifi_justfloat(control_yaw_angle_current,
+                           yaw_angle_pid.p_term, yaw_angle_pid.i_term,
+                           yaw_angle_pid.d_term, yaw_angle_pid.output,
                            yaw_rate_pid.p_term, yaw_rate_pid.i_term,
-                           yaw_rate_pid.d_term, 0.0f,
+                           yaw_rate_pid.d_term, yaw_rate_pid.output,
                            0.0f, 0.0f,
                            0.0f, 0.0f,
                            0.0f, 0.0f,
-                           0.0f, 0.0f,
-                           0.0f, 0.0f);
+                           0.0f);
         }
         wifi_core_Poll();
 

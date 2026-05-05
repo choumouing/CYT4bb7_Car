@@ -15,10 +15,16 @@ float wheel_kd = 0.0f;                  // 微分系数
 float wheel_output_limit = 5000.0f;     // 输出限幅 (PWM)
 
 //====================================================用户函数声明====================================================
-float yaw_rate_kp = 70.0f;
-float yaw_rate_ki = 1.3f;
+float yaw_angle_kp = 1.90f;
+float yaw_angle_ki = 0.0f;
+float yaw_angle_kd = 0.80f;
+float yaw_angle_i_limit = 1.0f;
+float yaw_angle_output_limit = 1.95f;
+
+float yaw_rate_kp = 90.0f;
+float yaw_rate_ki = 1.8f;
 float yaw_rate_kd = 0.0f;
-float yaw_rate_i_limit = 60.0f;
+float yaw_rate_i_limit = 80.0f;
 float yaw_rate_output_limit = 1000.0f;
 
 static void load_slot_0_function(void);
@@ -60,9 +66,19 @@ static menu_item_t save_slot_menu[] = {
 };
 
 // 主菜单
+static menu_item_t yaw_angle_pid_menu[] = {
+    {"Kp", MENU_TYPE_PARAMETER, .param_index = 9},
+    {"Ki", MENU_TYPE_PARAMETER, .param_index = 10},
+    {"Kd", MENU_TYPE_PARAMETER, .param_index = 11},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 12},
+    {"OutLimit", MENU_TYPE_PARAMETER, .param_index = 13},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
 static menu_item_t main_menu[] = {
     {"Wheel PID", MENU_TYPE_SUBMENU, .submenu = wheel_pid_menu},
     {"YawRate PID", MENU_TYPE_SUBMENU, .submenu = yaw_rate_pid_menu},
+    {"YawAng PID", MENU_TYPE_SUBMENU, .submenu = yaw_angle_pid_menu},
     {"Load Slot", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
     {"Save Slot", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
@@ -82,6 +98,12 @@ void menu_config_init(void)
     menu_register_param(&yaw_rate_kd, 0.1f, 0.0f, 500.0f);
     menu_register_param(&yaw_rate_i_limit, 0.1f, 0.0f, 1000.0f);
     menu_register_param(&yaw_rate_output_limit, 1.0f, 0.0f, 5000.0f);
+
+    menu_register_param(&yaw_angle_kp, 0.1f, 0.0f, 50.0f);
+    menu_register_param(&yaw_angle_ki, 0.01f, 0.0f, 50.0f);
+    menu_register_param(&yaw_angle_kd, 0.01f, 0.0f, 50.0f);
+    menu_register_param(&yaw_angle_i_limit, 0.1f, 0.0f, 100.0f);
+    menu_register_param(&yaw_angle_output_limit, 0.1f, 0.0f, 10.0f);
 
     menu_set_root(main_menu);
 }
