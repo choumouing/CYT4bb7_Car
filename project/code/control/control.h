@@ -14,8 +14,12 @@ extern IncrementPID wheel_left_front_pid;
 extern IncrementPID wheel_right_front_pid;
 extern IncrementPID wheel_left_rear_pid;
 extern IncrementPID wheel_right_rear_pid;
+extern PositionalPID yaw_angle_pid;
 extern PositionalPID yaw_rate_pid;
 
+extern float control_yaw_angle_current;
+extern float control_yaw_angle_output;
+extern float control_yaw_rate_target;
 extern float control_yaw_rate_current;
 extern float control_yaw_rate_raw;
 extern float control_yaw_rate_output;
@@ -29,6 +33,13 @@ void control_speed_loop_init(void);
  * @brief 初始化Yaw角速度环和四轮速度环
  */
 void control_cascade_init(void);
+
+/**
+ * @brief 更新Yaw角度环
+ * @param yaw_angle_target 目标Yaw角度，单位 rad
+ * @return 目标Yaw角速度，单位 rad/s
+ */
+float control_yaw_angle_loop_update(float yaw_angle_target);
 
 /**
  * @brief 更新Yaw角速度环

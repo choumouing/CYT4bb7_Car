@@ -1,5 +1,6 @@
 #include "control.h"
 #include "../Attitude/IMU_Filtter.h"
+#include "../Attitude/IMU_TOP.h"
 #include "../imu/ICM42688.h"
 #include "pid.h"
 #include "../encoder/encoder_control.h"
@@ -7,16 +8,37 @@
 #include "../motor/motor.h"
 
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)
+#define CONTROL_PI         (3.14159265358979323846f)
+#define CONTROL_TWO_PI     (6.28318530717958647692f)
 
 IncrementPID wheel_left_front_pid;
 IncrementPID wheel_right_front_pid;
 IncrementPID wheel_left_rear_pid;
 IncrementPID wheel_right_rear_pid;
+PositionalPID yaw_angle_pid;
 PositionalPID yaw_rate_pid;
 
+float control_yaw_angle_current = 0.0f;
+float control_yaw_angle_output = 0.0f;
+float control_yaw_rate_target = 0.0f;
 float control_yaw_rate_current = 0.0f;
 float control_yaw_rate_raw = 0.0f;
 float control_yaw_rate_output = 0.0f;
+
+static float control_normalize_angle_rad(float angle)
+{
+    while(angle > CONTROL_PI)
+    {
+        angle -= CONTROL_TWO_PI;
+    }
+
+    while(angle < -CONTROL_PI)
+    {
+        angle += CONTROL_TWO_PI;
+    }
+
+    return angle;
+}
 
 static void control_speed_pid_init(IncrementPID *pid)
 {
@@ -37,6 +59,12 @@ static void control_yaw_rate_pid_init(void)
                        yaw_rate_kd, yaw_rate_i_limit, yaw_rate_output_limit);
 }
 
+static void control_yaw_angle_pid_init(void)
+{
+    PositionalPID_Init(&yaw_angle_pid, 0.0f, yaw_angle_kp, yaw_angle_ki,
+                       yaw_angle_kd, yaw_angle_i_limit, yaw_angle_output_limit);
+}
+
 static void control_yaw_rate_pid_apply_params(void)
 {
     yaw_rate_pid.kp_2 = 0.0f;
@@ -47,6 +75,16 @@ static void control_yaw_rate_pid_apply_params(void)
     yaw_rate_pid.output_limit = yaw_rate_output_limit;
 }
 
+static void control_yaw_angle_pid_apply_params(void)
+{
+    yaw_angle_pid.kp_2 = 0.0f;
+    yaw_angle_pid.kp_1 = yaw_angle_kp;
+    yaw_angle_pid.ki = yaw_angle_ki;
+    yaw_angle_pid.kd = yaw_angle_kd;
+    yaw_angle_pid.i_limit = yaw_angle_i_limit;
+    yaw_angle_pid.output_limit = yaw_angle_output_limit;
+}
+
 void control_speed_loop_init(void)
 {
     control_speed_loop_reset();
@@ -54,6 +92,7 @@ void control_speed_loop_init(void)
 
 void control_cascade_init(void)
 {
+    control_yaw_angle_pid_init();
     control_yaw_rate_pid_init();
     control_speed_loop_init();
 }
@@ -68,17 +107,37 @@ void control_speed_loop_reset(void)
 
 void control_cascade_reset(void)
 {
+    control_yaw_angle_pid_init();
     control_yaw_rate_pid_init();
     control_speed_loop_reset();
+    control_yaw_angle_current = 0.0f;
+    control_yaw_angle_output = 0.0f;
+    control_yaw_rate_target = 0.0f;
     control_yaw_rate_current = 0.0f;
     control_yaw_rate_raw = 0.0f;
     control_yaw_rate_output = 0.0f;
+}
+
+float control_yaw_angle_loop_update(float yaw_angle_target)
+{
+    float yaw_error;
+
+    control_yaw_angle_pid_apply_params();
+
+    control_yaw_angle_current = control_normalize_angle_rad(-g_euler.yaw * CONTROL_DEG_TO_RAD);
+    yaw_angle_target = control_normalize_angle_rad(yaw_angle_target);
+    yaw_error = control_normalize_angle_rad(yaw_angle_target - control_yaw_angle_current);
+
+    control_yaw_angle_output = PositionalPID_Update(&yaw_angle_pid, yaw_error, 0.0f);
+    control_yaw_rate_target = control_yaw_angle_output;
+    return control_yaw_rate_target;
 }
 
 float control_yaw_rate_loop_update(float yaw_rate_target)
 {
     control_yaw_rate_pid_apply_params();
 
+    control_yaw_rate_target = yaw_rate_target;
     control_yaw_rate_raw = -ICM42688.gyro_z * CONTROL_DEG_TO_RAD;
     control_yaw_rate_current = -g_imufilter_1000hz.gyroz * CONTROL_DEG_TO_RAD;
     control_yaw_rate_output = PositionalPID_Update(&yaw_rate_pid,
