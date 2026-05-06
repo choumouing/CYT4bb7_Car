@@ -4,6 +4,9 @@
 #include "zf_common_headfile.h"
 
 #define MAX_CONTROL_SPEED                   (1000)
+#define MAX_ANGULAR_SPEED                   (1.95f)
+
+#define WIRELESS_CONTROL_PERIOD_MS          (40U)
 
 #define WIRELESS_CONTROL_CHANNEL_COUNT      (6U)
 #define WIRELESS_CONTROL_WHEEL_COUNT        (4U)
@@ -31,7 +34,8 @@
 
 #define WIRELESS_CENTER_DEADZONE            (50U)
 #define WIRELESS_SWITCH_TOLERANCE           (50U)
-#define WIRELESS_FRAME_TIMEOUT_CYCLES       (20U)
+#define WIRELESS_FRAME_TIMEOUT_MS           (100U)
+#define WIRELESS_FRAME_TIMEOUT_CYCLES       ((WIRELESS_FRAME_TIMEOUT_MS + WIRELESS_CONTROL_PERIOD_MS - 1U) / WIRELESS_CONTROL_PERIOD_MS)
 
 typedef struct
 {
@@ -39,7 +43,7 @@ typedef struct
     uint16_t clamped_channel[WIRELESS_CONTROL_CHANNEL_COUNT];
     int16_t forward_speed;
     int16_t strafe_speed;
-    int16_t rotate_speed;
+    float rotate_speed;
     int16_t wheel_target[WIRELESS_CONTROL_WHEEL_COUNT];
     int16_t wheel_pwm[WIRELESS_CONTROL_WHEEL_COUNT];
     uint8_t receiver_online;

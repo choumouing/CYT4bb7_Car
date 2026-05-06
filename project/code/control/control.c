@@ -40,6 +40,11 @@ static float control_normalize_angle_rad(float angle)
     return angle;
 }
 
+float control_get_current_yaw_angle(void)
+{
+    return control_normalize_angle_rad(-g_euler.yaw * CONTROL_DEG_TO_RAD);
+}
+
 static void control_speed_pid_init(IncrementPID *pid)
 {
     IncrementPID_Init(pid, wheel_kp, wheel_ki, wheel_kd, wheel_output_limit);
@@ -105,6 +110,13 @@ void control_speed_loop_reset(void)
     control_speed_pid_init(&wheel_right_rear_pid);
 }
 
+void control_yaw_angle_loop_reset(void)
+{
+    control_yaw_angle_pid_init();
+    control_yaw_angle_output = 0.0f;
+    control_yaw_rate_target = 0.0f;
+}
+
 void control_cascade_reset(void)
 {
     control_yaw_angle_pid_init();
@@ -124,7 +136,7 @@ float control_yaw_angle_loop_update(float yaw_angle_target)
 
     control_yaw_angle_pid_apply_params();
 
-    control_yaw_angle_current = control_normalize_angle_rad(-g_euler.yaw * CONTROL_DEG_TO_RAD);
+    control_yaw_angle_current = control_get_current_yaw_angle();
     yaw_angle_target = control_normalize_angle_rad(yaw_angle_target);
     yaw_error = control_normalize_angle_rad(yaw_angle_target - control_yaw_angle_current);
 
@@ -148,8 +160,11 @@ float control_yaw_rate_loop_update(float yaw_rate_target)
 
 void control_cascade_speed_loop_update(float forward_target, float strafe_target)
 {
-    float rotate_target = control_yaw_rate_output;
+    control_cascade_speed_loop_update_with_rotate(forward_target, strafe_target, control_yaw_rate_output);
+}
 
+void control_cascade_speed_loop_update_with_rotate(float forward_target, float strafe_target, float rotate_target)
+{
     float left_front_target = forward_target - strafe_target - rotate_target;
     float right_front_target = forward_target + strafe_target + rotate_target;
     float left_rear_target = forward_target + strafe_target - rotate_target;

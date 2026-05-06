@@ -40,6 +40,7 @@
 #include "encoder/encoder_control.h"
 #include "menu/menu_config.h"
 #include "motor/motor.h"
+#include "wireless_control/wireless_control.h"
 #include "wifi/wifi_core.h"
 #include "wifi/wifi_justfloat/wifi_justfloat.h"
 // 打开新的工程或者工程移动了位置务必执行以下操作
@@ -57,6 +58,11 @@ volatile uint8_t timer_20ms_flag = 0;
 volatile uint8_t timer_40ms_flag = 0;
 volatile uint16 g_tick_1000HZ = 0U;
 static float yaw_angle_target = 0.0f;
+static float remote_forward_target = 0.0f;
+static float remote_strafe_target = 0.0f;
+static float remote_rotate_target = 0.0f;
+static uint8_t remote_last_rotate_active = 0U;
+static uint8_t yaw_angle_hold_active = 0U;
 
 
 int main(void)
@@ -72,6 +78,8 @@ int main(void)
     AccelCalibration_Init();
     IMUCalib_Init();
     control_cascade_init();
+    uart_receiver_init();
+    wireless_control_init();
     wifi_core_Init();
     pit_init(PIT_CH0, 1000);
 
@@ -90,15 +98,54 @@ int main(void)
         if(timer_40ms_flag)
         {
             timer_40ms_flag = 0;
-            yaw_angle_target = 0.0f;
-            control_yaw_angle_loop_update(yaw_angle_target);
+
+            wireless_control_task();
+            if(0U != g_wireless_control_state.control_enabled)
+            {
+                remote_forward_target = (float)g_wireless_control_state.forward_speed;
+                remote_strafe_target = (float)g_wireless_control_state.strafe_speed;
+                remote_rotate_target = (float)g_wireless_control_state.rotate_speed;
+
+                if(0.0f != g_wireless_control_state.rotate_speed)
+                {
+                    yaw_angle_target = control_get_current_yaw_angle();
+                    yaw_angle_hold_active = 0U;
+                }
+                else
+                {
+                    if((0U == yaw_angle_hold_active) || (0U != remote_last_rotate_active))
+                    {
+                        yaw_angle_target = control_get_current_yaw_angle();
+                        control_yaw_angle_loop_reset();
+                        yaw_angle_hold_active = 1U;
+                    }
+                    control_yaw_angle_loop_update(yaw_angle_target);
+                }
+                remote_last_rotate_active = (0.0f != g_wireless_control_state.rotate_speed) ? 1U : 0U;
+            }
+            else
+            {
+                remote_forward_target = 0.0f;
+                remote_strafe_target = 0.0f;
+                remote_rotate_target = 0.0f;
+                remote_last_rotate_active = 0U;
+                yaw_angle_target = control_get_current_yaw_angle();
+                yaw_angle_hold_active = 0U;
+            }
         }
 
         if(timer_20ms_flag)
         {
             timer_20ms_flag = 0;
 
-            control_yaw_rate_loop_update(control_yaw_rate_target);
+            if((0U != g_wireless_control_state.control_enabled) && (0.0f != g_wireless_control_state.rotate_speed))
+            {
+                control_yaw_rate_loop_update(remote_rotate_target);
+            }
+            else
+            {
+                control_yaw_rate_loop_update(control_yaw_rate_target);
+            }
         }
 
         if(timer_10ms_flag)
@@ -106,16 +153,24 @@ int main(void)
             timer_10ms_flag = 0;
 
             encoder_update();
-            control_cascade_speed_loop_update(0.0f, 0.0f);
+            if(0U != g_wireless_control_state.control_enabled)
+            {
+                control_cascade_speed_loop_update(remote_forward_target, remote_strafe_target);
+            }
+            else
+            {
+                control_cascade_stop();
+            }
             wifi_justfloat(control_yaw_angle_current,
                            yaw_angle_pid.p_term, yaw_angle_pid.i_term,
                            yaw_angle_pid.d_term, yaw_angle_pid.output,
                            yaw_rate_pid.p_term, yaw_rate_pid.i_term,
                            yaw_rate_pid.d_term, yaw_rate_pid.output,
-                           0.0f, 0.0f,
-                           0.0f, 0.0f,
-                           0.0f, 0.0f,
-                           0.0f);
+                           remote_forward_target, remote_strafe_target,
+                           remote_rotate_target, control_yaw_rate_output,
+                           (float)g_wireless_control_state.receiver_online,
+                           (float)g_wireless_control_state.control_enabled,
+                           (float)g_wireless_control_state.emergency_stop_active);
         }
         wifi_core_Poll();
 
