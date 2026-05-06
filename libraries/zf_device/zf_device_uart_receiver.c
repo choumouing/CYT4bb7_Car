@@ -80,13 +80,17 @@ static uint32 uart_receiver_interval_time (void)
 static void uart_receiver_analysis (uart_receiver_struct *remote_data,uint8 * buffer)
 {
     uint8 num = 0;
-    remote_data->channel[num++] = (buffer[1] |buffer[ 2] << 8 ) & 0x07FF;
-    remote_data->channel[num++] = (buffer[2] >> 3 | buffer[3] << 5 ) & 0x07FF;
-    remote_data->channel[num++] = (buffer[3] >> 6 | buffer[4] << 2 | buffer[5] << 10 ) & 0x07FF;
-    remote_data->channel[num++] = (buffer[5] >> 1 | buffer[6] << 7 ) & 0x07FF;
-    remote_data->channel[num++] = (buffer[6] >> 4 | buffer[7] << 4 ) & 0x07FF;
-    remote_data->channel[num++] = (buffer[7] >> 7 | buffer[8] << 1 | buffer[9] << 9 ) & 0x07FF;
-    remote_data->state = (SBUS_ABNORMAL_STATE == (buffer[23] & SBUS_ABNORMAL_STATE)) ? 0 : 1;
+    remote_data->channel[num++] = (buffer[1] |buffer[ 2] << 8 ) & 0x07FF;                      // CH1
+    remote_data->channel[num++] = (buffer[2] >> 3 | buffer[3] << 5 ) & 0x07FF;                  // CH2
+    remote_data->channel[num++] = (buffer[3] >> 6 | buffer[4] << 2 | buffer[5] << 10 ) & 0x07FF;// CH3
+    remote_data->channel[num++] = (buffer[5] >> 1 | buffer[6] << 7 ) & 0x07FF;                  // CH4
+    remote_data->channel[num++] = (buffer[6] >> 4 | buffer[7] << 4 ) & 0x07FF;                  // CH5
+    remote_data->channel[num++] = (buffer[7] >> 7 | buffer[8] << 1 | buffer[9] << 9 ) & 0x07FF; // CH6
+    remote_data->channel[num++] = (buffer[9] >> 2 | buffer[10] << 6 ) & 0x07FF;                 // CH7
+    remote_data->channel[num++] = (buffer[10] >> 5 | buffer[11] << 3 ) & 0x07FF;                // CH8
+    remote_data->channel[num++] = (buffer[12] | buffer[13] << 8 ) & 0x07FF;                     // CH9
+    remote_data->channel[num++] = (buffer[13] >> 3 | buffer[14] << 5 ) & 0x07FF;                // CH10
+    remote_data->state = ((buffer[23] & 0x08) == 0) ? 1 : 0;                                    // Failsafe Î´¼¤»îÊ±Îª1
     uart_receiver.finsh_flag  = 1;
 }
 

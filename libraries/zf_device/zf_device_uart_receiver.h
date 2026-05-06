@@ -51,17 +51,17 @@
 #define UART_RECEVIER_RX_PIN                UART4_RX_P14_0      // 串口接收机的TX引脚 连接单片机的RX引脚
 #define UART_RECEVIER_COUNTER               (TC_TIME2_CH2)      // 定义遥控器接受间隔计数器通道
 #define SBUS_UART_BAUDRATE                  (100000)            // 指定 SBUS 串口所使用的的串口波特率 (用户不可修改)
-#define UART_RECEVIER_CHANNEL_NUM           ( 6 )               // 定义遥控器通道数量 (用户不可修改)
+#define UART_RECEVIER_CHANNEL_NUM           ( 10 )               // 定义遥控器通道数量 (用户不可修改)
 
 #define REV_DATA_LEN                        ( 25   )            // SBUS帧长
 #define FRAME_STAR                          ( 0X0F )            // 帧头信息
 #define FRAME_END                           ( 0X00 )            // 帧尾信息
-#define SBUS_NORMAL_STATE                   ( 0X00 )            // 正常状态
-#define SBUS_ABNORMAL_STATE                 ( 0X04 )            // 失控状态
+#define SBUS_NORMAL_STATE                   ( 0X03 )            // 正常状态
+#define SBUS_ABNORMAL_STATE                 ( 0X0F )            // 失控状态
 
 typedef struct
 {
-    uint16 channel[UART_RECEVIER_CHANNEL_NUM];                  // CH1-CH6通道数据
+    uint16 channel[UART_RECEVIER_CHANNEL_NUM];                  // CH1-CH10通道数据
     uint8  state;                                               // 遥控器状态(1表示正常，否则表示失控)
     uint8  finsh_flag;                                          // 1：表示成功接收到一帧遥控器数据
 }uart_receiver_struct;
