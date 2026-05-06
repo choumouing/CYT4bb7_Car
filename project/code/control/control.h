@@ -24,6 +24,8 @@ extern float control_yaw_rate_current;
 extern float control_yaw_rate_raw;
 extern float control_yaw_rate_output;
 
+float control_get_current_yaw_angle(void);
+
 /**
  * @brief 初始化四电机速度环
  */
@@ -54,6 +56,8 @@ float control_yaw_rate_loop_update(float yaw_rate_target);
  * @param strafe_target  左右方向目标速度，单位为编码器周期计数
  */
 void control_cascade_speed_loop_update(float forward_target, float strafe_target);
+
+void control_cascade_speed_loop_update_with_rotate(float forward_target, float strafe_target, float rotate_target);
 
 /**
  * @brief 麦克纳姆轮串级控制
@@ -87,6 +91,8 @@ void control_cascade_stop(void);
  * @brief 复位四电机速度环PID状态
  */
 void control_speed_loop_reset(void);
+
+void control_yaw_angle_loop_reset(void);
 
 /**
  * @brief 复位串级控制PID状态

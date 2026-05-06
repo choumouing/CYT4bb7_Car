@@ -583,10 +583,9 @@ void uart_sbus_init (uart_index_enum uart_n, uint32 baud, uart_tx_pin_enum tx_pi
     uart_config_struct          uart_pin_config                 = {0};
     cy_stc_gpio_pin_config_t    gpio_pin_config                 = {0};
     cy_stc_scb_uart_config_t    g_stc_uart_config               = {0};
-    uint16                      oversample_num                  = 8;
-    uint32                      targetFreq                      = oversample_num * baud;
-    uint32                      divSetting_int                  = UART_FREQ / targetFreq;
-    uint32                      divSetting_float                = (uint32)((double)(UART_FREQ - divSetting_int * targetFreq) / (double)targetFreq * 32.0f);
+    uint64_t                    targetFreq                      = 8 * baud;
+    uint64_t                    sourceFreq_fp5                  = ((uint64_t)UART_FREQ << 5ull);
+    uint32_t                    divSetting_fp5                  = (uint32_t)(sourceFreq_fp5 / targetFreq);
     
     get_uart_config(&uart_pin_config, tx_pin, rx_pin);
     
@@ -601,9 +600,10 @@ void uart_sbus_init (uart_index_enum uart_n, uint32 baud, uart_tx_pin_enum tx_pi
     
     g_stc_uart_config.uartMode          = CY_SCB_UART_STANDARD;
     g_stc_uart_config.oversample        = 8;
-    g_stc_uart_config.dataWidth         = 9;
-    g_stc_uart_config.stopBits          = CY_SCB_UART_STOP_BITS_1;
+    g_stc_uart_config.dataWidth         = 8;
+    g_stc_uart_config.stopBits          = CY_SCB_UART_STOP_BITS_2;
     g_stc_uart_config.parity            = CY_SCB_UART_PARITY_EVEN;
+    g_stc_uart_config.irdaInvertRx      = true;
     g_stc_uart_config.ctsPolarity       = CY_SCB_UART_ACTIVE_LOW;  
     g_stc_uart_config.rtsPolarity       = CY_SCB_UART_ACTIVE_LOW;
    
@@ -612,7 +612,7 @@ void uart_sbus_init (uart_index_enum uart_n, uint32 baud, uart_tx_pin_enum tx_pi
     Cy_SCB_UART_Enable(scb_module[uart_n]);  
     
     Cy_SysClk_PeriphAssignDivider(uart_pin_config.uart_pclk, CY_SYSCLK_DIV_24_5_BIT, (uint8)uart_n);
-    Cy_SysClk_PeriphSetFracDivider(Cy_SysClk_GetClockGroup(uart_pin_config.uart_pclk), CY_SYSCLK_DIV_24_5_BIT, (uint8)uart_n, (divSetting_int - 1), divSetting_float);
+    Cy_SysClk_PeriphSetFracDivider(Cy_SysClk_GetClockGroup(uart_pin_config.uart_pclk), CY_SYSCLK_DIV_24_5_BIT, (uint8)uart_n, (divSetting_fp5 >> 5U) - 1U, divSetting_fp5 & 0x1FU);
     Cy_SysClk_PeriphEnableDivider(Cy_SysClk_GetClockGroup(uart_pin_config.uart_pclk), CY_SYSCLK_DIV_24_5_BIT, (uint8)uart_n);
     
     cy_stc_sysint_irq_t                 stc_sysint_irq_cfg_uart;

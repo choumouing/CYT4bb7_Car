@@ -1203,6 +1203,15 @@
             </file>
         </group>
         <group>
+            <name>wireless_control</name>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\wireless_control\wireless_control.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\wireless_control\wireless_control.h</name>
+            </file>
+        </group>
+        <group>
             <name>wifi</name>
             <file>
                 <name>$PROJ_DIR$\..\..\code\wifi\wifi_core.c</name>
