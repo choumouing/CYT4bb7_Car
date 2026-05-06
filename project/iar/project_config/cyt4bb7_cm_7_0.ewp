@@ -1203,6 +1203,15 @@
             </file>
         </group>
         <group>
+            <name>odometer</name>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\odometer\odometer.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\odometer\odometer.h</name>
+            </file>
+        </group>
+        <group>
             <name>wireless_control</name>
             <file>
                 <name>$PROJ_DIR$\..\..\code\wireless_control\wireless_control.c</name>

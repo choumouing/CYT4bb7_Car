@@ -3,8 +3,8 @@
 
 #include "zf_common_headfile.h"
 
-#define MAX_CONTROL_SPEED                   (1000)
-#define MAX_ANGULAR_SPEED                   (1.95f)
+#define MAX_CONTROL_SPEED                   (600)
+#define MAX_ANGULAR_SPEED                   (2.0f)
 
 #define WIRELESS_CONTROL_PERIOD_MS          (40U)
 
