@@ -40,6 +40,7 @@
 #include "encoder/encoder_control.h"
 #include "menu/menu_config.h"
 #include "motor/motor.h"
+#include "odometer/odometer.h"
 #include "wireless_control/wireless_control.h"
 #include "wifi/wifi_core.h"
 #include "wifi/wifi_justfloat/wifi_justfloat.h"
@@ -63,6 +64,7 @@ static float remote_strafe_target = 0.0f;
 static float remote_rotate_target = 0.0f;
 static uint8_t remote_last_rotate_active = 0U;
 static uint8_t yaw_angle_hold_active = 0U;
+static uint32 telemetry_timestamp_count = 0U;
 
 
 int main(void)
@@ -74,6 +76,7 @@ int main(void)
     menu_config_init();
     mecanum_motor_init();
     encoder_control_init();
+    odometer_init();
     IMU_Init_All();
     AccelCalibration_Init();
     IMUCalib_Init();
@@ -150,9 +153,17 @@ int main(void)
 
         if(timer_10ms_flag)
         {
+            float linear_acc_x = 0.0f;
+            float linear_acc_y = 0.0f;
+            float linear_acc_z = 0.0f;
+
             timer_10ms_flag = 0;
 
             encoder_update();
+            odometer_update();
+            telemetry_timestamp_count++;
+            AccelCalibration_GetBodyAccelMps2(&linear_acc_x, &linear_acc_y, &linear_acc_z);
+
             if(0U != g_wireless_control_state.control_enabled)
             {
                 control_cascade_speed_loop_update(remote_forward_target, remote_strafe_target);
@@ -161,16 +172,16 @@ int main(void)
             {
                 control_cascade_stop();
             }
-            wifi_justfloat(control_yaw_angle_current,
-                           yaw_angle_pid.p_term, yaw_angle_pid.i_term,
-                           yaw_angle_pid.d_term, yaw_angle_pid.output,
-                           yaw_rate_pid.p_term, yaw_rate_pid.i_term,
-                           yaw_rate_pid.d_term, yaw_rate_pid.output,
-                           remote_forward_target, remote_strafe_target,
-                           remote_rotate_target, control_yaw_rate_output,
-                           (float)g_wireless_control_state.receiver_online,
-                           (float)g_wireless_control_state.control_enabled,
-                           (float)g_wireless_control_state.emergency_stop_active);
+            wifi_justfloat((float)telemetry_timestamp_count,
+                           odometer_get_forward_distance(), odometer_get_strafe_distance(),
+                           odometer_get_travel_distance(),
+                           linear_acc_x, linear_acc_y, linear_acc_z,
+                           g_euler.roll, g_euler.pitch, g_euler.yaw,
+                           encoder_get_left_front_filtered_count(),
+                           encoder_get_right_front_filtered_count(),
+                           encoder_get_left_rear_filtered_count(),
+                           encoder_get_right_rear_filtered_count(),
+                           0.0f, 0.0f);
         }
         wifi_core_Poll();
 
