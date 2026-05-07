@@ -37,6 +37,7 @@
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
+#include "uwb/ALX_AOA.h"
 
 extern volatile uint8_t timer_10ms_flag;
 extern volatile uint8_t timer_20ms_flag;
@@ -189,8 +190,12 @@ void uart1_isr (void)
 {
     if(uart_isr_mask(UART_1))            // 串口1接收中断
     {
-        
-        wireless_module_uart_handler();  // 无线模块统一回调函数
+        uint8 dat;
+
+        while(uart_query_byte(ALX_AOA_UART_INDEX, &dat))
+        {
+            ALX_AOA_InputByte(dat);
+        }
       
     }
     else                                // 串口1发送中断
