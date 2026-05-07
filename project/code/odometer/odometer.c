@@ -1,43 +1,40 @@
 #include "odometer.h"
-#include "../encoder/encoder_control.h"
+
 #include "../Attitude/Accel_Calibration.h"
+#include "../Attitude/IMU_TOP.h"
+#include "../encoder/encoder_control.h"
 #include <math.h>
 
-/*
- * 方案3实时因果里程计。
- * 参数来源：project/code/temp/causal_realtime_optimizer.py
- * 运行时不使用文件名先验、终点闭合或位置回拉。
- */
 #define ODOMETER_UPDATE_DT_S                (0.01f)
-#define ODOMETER_FORWARD_COUNT_PER_METER    (12224.0697365f)
-#define ODOMETER_STRAFE_COUNT_PER_METER     (-10763.8382733f)
+#define ODOMETER_FORWARD_COUNT_PER_METER    (11287.0f)
+#define ODOMETER_STRAFE_COUNT_PER_METER_ABS (12100.0f)
 
-#define ODOMETER_GAIN_FORWARD_0             (0.986f)
-#define ODOMETER_GAIN_STRAFE_0              (0.820f)
-#define ODOMETER_GAIN_FORWARD_V             (0.0f)
-#define ODOMETER_GAIN_STRAFE_V              (0.0f)
-#define ODOMETER_V_REF_MPS                  (1.20f)
-#define ODOMETER_DEAD_FORWARD_MPS           (0.0f)
-#define ODOMETER_DEAD_STRAFE_MPS            (0.0f)
-#define ODOMETER_ENCODER_TAU_S              (0.0f)
-#define ODOMETER_AXIS_RATIO                 (2.20f)
-#define ODOMETER_CROSS_DAMP                 (0.80f)
+#define ODOMETER_KX_SPEED                   (0.00529850743f)
+#define ODOMETER_KY_SPEED                   (0.0f)
+#define ODOMETER_KX_RESIDUAL                (0.488792866f)
+#define ODOMETER_KY_RESIDUAL                (0.00697509527f)
+#define ODOMETER_KX_REVERSE                 (1.00619317f)
+#define ODOMETER_KY_REVERSE                 (0.00000105576f)
+#define ODOMETER_KX_YAW                     (0.68f)
+#define ODOMETER_KY_YAW                     (0.80f)
+#define ODOMETER_K_DUAL_AXIS                (0.0653664524f)
+#define ODOMETER_V_REF_MPS                  (1.66942520f)
+#define ODOMETER_RESIDUAL_REF_MPS2          (8.33671585f)
+#define ODOMETER_RISK_GAMMA                 (7.68239773f)
+#define ODOMETER_YAW_GAIN                   (0.72f)
+#define ODOMETER_DEAD_FORWARD_MPS           (0.000000424f)
+#define ODOMETER_DEAD_STRAFE_MPS            (0.00496915618f)
+#define ODOMETER_SPEED_POWER_X              (2.51620747f)
+#define ODOMETER_SPEED_POWER_Y              (1.26317978f)
+#define ODOMETER_CROSS_AXIS                 (1.83240615f)
+#define ODOMETER_REVERSE_REF_MPS            (0.0759208411f)
+#define ODOMETER_YAW_RATE_REF_RPS           (0.936060514f)
 
-#define ODOMETER_ACC_BIAS_FORWARD           (0.0f)
-#define ODOMETER_ACC_BIAS_STRAFE            (0.0f)
-#define ODOMETER_ACC_SCALE_FORWARD          (1.0f)
-#define ODOMETER_ACC_SCALE_STRAFE           (1.0f)
-#define ODOMETER_ACC_TAU_S                  (0.04f)
-#define ODOMETER_JERK_CLIP_MPS3             (25.0f)
-#define ODOMETER_IMU_TO_ENCODER_BETA        (0.10f)
-
-#define ODOMETER_ALPHA_MIN                  (0.0f)
-#define ODOMETER_ALPHA_MAX                  (0.015f)
-#define ODOMETER_ACC_REF_MPS2               (6.0f)
-#define ODOMETER_JERK_REF_MPS3              (80.0f)
-#define ODOMETER_RESIDUAL_REF_MPS2          (40.0f)
-#define ODOMETER_RISK_GAMMA                 (1.8f)
-#define ODOMETER_ALPHA_TAU_S                (0.08f)
+#define ODOMETER_ALPHA_MAX                  (0.03f)
+#define ODOMETER_ALPHA_TAU_S                (0.06f)
+#define ODOMETER_DEG_TO_RAD                 (0.017453292519943295f)
+#define ODOMETER_PI                         (3.14159265358979323846f)
+#define ODOMETER_TWO_PI                     (6.28318530717958647692f)
 #define ODOMETER_EPSILON                    (1.0e-6f)
 
 typedef struct
@@ -49,19 +46,22 @@ typedef struct
 typedef struct
 {
     odometer_vec2_t velocity_mps;
-    odometer_vec2_t encoder_velocity_mps;
-    odometer_vec2_t encoder_velocity_lpf_mps;
-    odometer_vec2_t accel_lpf_mps2;
-    odometer_vec2_t accel_imu_mps2;
+    odometer_vec2_t prev_encoder_velocity_mps;
+    odometer_vec2_t accel_bias_mps2;
+    float yaw_zero_rad;
+    float prev_yaw_delta_rad;
     float alpha;
+    uint8_t yaw_ready;
 } odometer_filter_state_t;
 
 odometer_data_t g_odometer = {0.0f, 0.0f, 0.0f};
 
 static odometer_filter_state_t g_odometer_filter;
-static odometer_vec2_t g_odometer_raw_position_m;
 
-static void odometer_update_with_accel(float accel_forward_mps2, float accel_strafe_mps2);
+static float odometer_absf(float value)
+{
+    return (value >= 0.0f) ? value : -value;
+}
 
 static float odometer_clampf(float value, float low, float high)
 {
@@ -83,24 +83,14 @@ static float odometer_satf(float value)
     return odometer_clampf(value, 0.0f, 1.0f);
 }
 
-static float odometer_absf(float value)
+static float odometer_minf(float a, float b)
 {
-    return (value >= 0.0f) ? value : -value;
+    return (a < b) ? a : b;
 }
 
-static float odometer_signf(float value)
+static float odometer_maxf(float a, float b)
 {
-    if(value > 0.0f)
-    {
-        return 1.0f;
-    }
-
-    if(value < 0.0f)
-    {
-        return -1.0f;
-    }
-
-    return 0.0f;
+    return (a > b) ? a : b;
 }
 
 static float odometer_lpf_scalar(float previous, float raw, float dt, float tau)
@@ -116,16 +106,17 @@ static float odometer_lpf_scalar(float previous, float raw, float dt, float tau)
     return previous + (beta * (raw - previous));
 }
 
-static odometer_vec2_t odometer_vec_lpf(odometer_vec2_t previous,
-                                        odometer_vec2_t raw,
-                                        float dt,
-                                        float tau)
+static float odometer_soft_deadband(float value, float deadband)
 {
-    odometer_vec2_t out;
+    float magnitude;
 
-    out.forward = odometer_lpf_scalar(previous.forward, raw.forward, dt, tau);
-    out.strafe = odometer_lpf_scalar(previous.strafe, raw.strafe, dt, tau);
-    return out;
+    magnitude = odometer_absf(value) - deadband;
+    if(magnitude <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    return (value >= 0.0f) ? magnitude : -magnitude;
 }
 
 static float odometer_vec_norm(odometer_vec2_t value)
@@ -133,79 +124,67 @@ static float odometer_vec_norm(odometer_vec2_t value)
     return sqrtf((value.forward * value.forward) + (value.strafe * value.strafe));
 }
 
-static odometer_vec2_t odometer_axis_constrain(odometer_vec2_t velocity)
+static float odometer_normalize_angle(float angle)
 {
-    float forward_abs;
-    float strafe_abs;
-    float q;
-
-    forward_abs = odometer_absf(velocity.forward);
-    strafe_abs = odometer_absf(velocity.strafe);
-
-    if(forward_abs > (ODOMETER_AXIS_RATIO * strafe_abs))
+    while(angle > ODOMETER_PI)
     {
-        q = odometer_satf(((forward_abs / (strafe_abs + ODOMETER_EPSILON)) -
-                           ODOMETER_AXIS_RATIO) / ODOMETER_AXIS_RATIO);
-        velocity.strafe *= 1.0f - (ODOMETER_CROSS_DAMP * q);
+        angle -= ODOMETER_TWO_PI;
     }
 
-    if(strafe_abs > (ODOMETER_AXIS_RATIO * forward_abs))
+    while(angle < -ODOMETER_PI)
     {
-        q = odometer_satf(((strafe_abs / (forward_abs + ODOMETER_EPSILON)) -
-                           ODOMETER_AXIS_RATIO) / ODOMETER_AXIS_RATIO);
-        velocity.forward *= 1.0f - (ODOMETER_CROSS_DAMP * q);
+        angle += ODOMETER_TWO_PI;
     }
 
-    return velocity;
+    return angle;
 }
 
-static odometer_vec2_t odometer_correct_encoder_velocity(odometer_vec2_t raw_velocity)
+static odometer_vec2_t odometer_get_encoder_delta_count(void)
 {
-    odometer_vec2_t velocity;
-    float q_forward;
-    float q_strafe;
-    float gain_forward;
-    float gain_strafe;
-    float forward_abs;
-    float strafe_abs;
-
-    q_forward = odometer_satf(odometer_absf(raw_velocity.forward) / ODOMETER_V_REF_MPS);
-    q_strafe = odometer_satf(odometer_absf(raw_velocity.strafe) / ODOMETER_V_REF_MPS);
-    gain_forward = ODOMETER_GAIN_FORWARD_0 + (ODOMETER_GAIN_FORWARD_V * q_forward);
-    gain_strafe = ODOMETER_GAIN_STRAFE_0 + (ODOMETER_GAIN_STRAFE_V * q_strafe);
-
-    velocity.forward = gain_forward * raw_velocity.forward;
-    velocity.strafe = gain_strafe * raw_velocity.strafe;
-
-    forward_abs = odometer_absf(velocity.forward) - ODOMETER_DEAD_FORWARD_MPS;
-    strafe_abs = odometer_absf(velocity.strafe) - ODOMETER_DEAD_STRAFE_MPS;
-    velocity.forward = odometer_signf(velocity.forward) * ((forward_abs > 0.0f) ? forward_abs : 0.0f);
-    velocity.strafe = odometer_signf(velocity.strafe) * ((strafe_abs > 0.0f) ? strafe_abs : 0.0f);
-
-    return odometer_axis_constrain(velocity);
-}
-
-static odometer_vec2_t odometer_get_encoder_raw_velocity(void)
-{
-    odometer_vec2_t velocity;
+    odometer_vec2_t count;
     float left_front;
     float right_front;
     float left_rear;
     float right_rear;
-    float forward_count;
-    float strafe_count;
 
     left_front = encoder_get_left_front_filtered_count();
     right_front = encoder_get_right_front_filtered_count();
     left_rear = encoder_get_left_rear_filtered_count();
     right_rear = encoder_get_right_rear_filtered_count();
 
-    forward_count = (left_front + right_front + left_rear + right_rear) * 0.25f;
-    strafe_count = (-left_front + right_front + left_rear - right_rear) * 0.25f;
+    count.forward = (left_front + right_front + left_rear + right_rear) * 0.25f;
+    count.strafe = (-left_front + right_front + left_rear - right_rear) * 0.25f;
+    return count;
+}
 
-    velocity.forward = forward_count / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S;
-    velocity.strafe = strafe_count / ODOMETER_STRAFE_COUNT_PER_METER / ODOMETER_UPDATE_DT_S;
+static odometer_vec2_t odometer_get_encoder_velocity(odometer_vec2_t delta_count)
+{
+    odometer_vec2_t velocity;
+
+    velocity.forward = delta_count.forward / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S;
+    velocity.strafe = delta_count.strafe / (-ODOMETER_STRAFE_COUNT_PER_METER_ABS) / ODOMETER_UPDATE_DT_S;
     return velocity;
+}
+
+static void odometer_update_accel_bias(odometer_vec2_t encoder_velocity,
+                                       odometer_vec2_t accel_mps2)
+{
+    float speed;
+
+    speed = odometer_vec_norm(encoder_velocity);
+    if(speed < 0.08f)
+    {
+        g_odometer_filter.accel_bias_mps2.forward =
+            odometer_lpf_scalar(g_odometer_filter.accel_bias_mps2.forward,
+                                accel_mps2.forward,
+                                ODOMETER_UPDATE_DT_S,
+                                1.2f);
+        g_odometer_filter.accel_bias_mps2.strafe =
+            odometer_lpf_scalar(g_odometer_filter.accel_bias_mps2.strafe,
+                                accel_mps2.strafe,
+                                ODOMETER_UPDATE_DT_S,
+                                1.2f);
+    }
 }
 
 void odometer_init(void)
@@ -218,169 +197,166 @@ void odometer_reset(void)
     g_odometer.forward_distance = 0.0f;
     g_odometer.strafe_distance = 0.0f;
     g_odometer.travel_distance = 0.0f;
-    g_odometer_raw_position_m.forward = 0.0f;
-    g_odometer_raw_position_m.strafe = 0.0f;
 
     g_odometer_filter.velocity_mps.forward = 0.0f;
     g_odometer_filter.velocity_mps.strafe = 0.0f;
-    g_odometer_filter.encoder_velocity_mps.forward = 0.0f;
-    g_odometer_filter.encoder_velocity_mps.strafe = 0.0f;
-    g_odometer_filter.encoder_velocity_lpf_mps.forward = 0.0f;
-    g_odometer_filter.encoder_velocity_lpf_mps.strafe = 0.0f;
-    g_odometer_filter.accel_lpf_mps2.forward = 0.0f;
-    g_odometer_filter.accel_lpf_mps2.strafe = 0.0f;
-    g_odometer_filter.accel_imu_mps2.forward = 0.0f;
-    g_odometer_filter.accel_imu_mps2.strafe = 0.0f;
-    g_odometer_filter.alpha = ODOMETER_ALPHA_MIN;
+    g_odometer_filter.prev_encoder_velocity_mps.forward = 0.0f;
+    g_odometer_filter.prev_encoder_velocity_mps.strafe = 0.0f;
+    g_odometer_filter.accel_bias_mps2.forward = 0.0f;
+    g_odometer_filter.accel_bias_mps2.strafe = 0.0f;
+    g_odometer_filter.yaw_zero_rad = 0.0f;
+    g_odometer_filter.prev_yaw_delta_rad = 0.0f;
+    g_odometer_filter.alpha = 0.0f;
+    g_odometer_filter.yaw_ready = 0U;
 }
 
 void odometer_update(void)
 {
-    float accel_forward_mps2;
-    float accel_strafe_mps2;
-    float accel_z_mps2;
-
-    accel_forward_mps2 = 0.0f;
-    accel_strafe_mps2 = 0.0f;
-    accel_z_mps2 = 0.0f;
-    AccelCalibration_GetBodyAccelMps2(&accel_forward_mps2, &accel_strafe_mps2, &accel_z_mps2);
-    odometer_update_with_accel(accel_forward_mps2, accel_strafe_mps2);
-}
-
-static void odometer_update_with_accel(float accel_forward_mps2, float accel_strafe_mps2)
-{
-    odometer_vec2_t raw_encoder_velocity;
+    odometer_vec2_t delta_count;
     odometer_vec2_t encoder_velocity;
+    odometer_vec2_t raw_encoder_velocity;
     odometer_vec2_t encoder_accel;
-    odometer_vec2_t raw_accel;
-    odometer_vec2_t limited_accel;
-    odometer_vec2_t accel_delta;
-    odometer_vec2_t residual_vec;
-    odometer_vec2_t predicted_velocity;
-    odometer_vec2_t fused_velocity;
+    odometer_vec2_t accel_raw;
+    odometer_vec2_t accel_corrected;
     odometer_vec2_t distance_delta;
-    odometer_vec2_t corrected_accel;
-    float max_accel_delta;
-    float residual;
-    float jerk;
-    float risk0;
-    float blend;
+    float accel_z_mps2;
+    float qvx;
+    float qvy;
+    float qrx;
+    float qry;
+    float reverse_forward;
+    float reverse_strafe;
+    float yaw_now_rad;
+    float yaw_delta_rad;
+    float yaw_step_rad;
+    float yaw_rate_abs;
+    float yaw_risk;
+    float dual_axis;
+    float scale_forward;
+    float scale_strafe;
     float risk;
     float alpha_raw;
+    float predicted_forward;
+    float predicted_strafe;
+    float fused_forward;
+    float fused_strafe;
+    float yaw_for_projection;
+    float cos_yaw;
+    float sin_yaw;
 
-    raw_encoder_velocity = odometer_get_encoder_raw_velocity();
-    g_odometer_raw_position_m.forward += raw_encoder_velocity.forward * ODOMETER_UPDATE_DT_S;
-    g_odometer_raw_position_m.strafe += raw_encoder_velocity.strafe * ODOMETER_UPDATE_DT_S;
+    delta_count = odometer_get_encoder_delta_count();
+    encoder_velocity = odometer_get_encoder_velocity(delta_count);
+    raw_encoder_velocity = encoder_velocity;
 
-    encoder_velocity = odometer_correct_encoder_velocity(raw_encoder_velocity);
-    g_odometer_filter.encoder_velocity_lpf_mps = odometer_vec_lpf(g_odometer_filter.encoder_velocity_lpf_mps,
-                                                                  encoder_velocity,
-                                                                  ODOMETER_UPDATE_DT_S,
-                                                                  ODOMETER_ENCODER_TAU_S);
-    encoder_velocity = g_odometer_filter.encoder_velocity_lpf_mps;
+    accel_raw.forward = 0.0f;
+    accel_raw.strafe = 0.0f;
+    accel_z_mps2 = 0.0f;
+    AccelCalibration_GetBodyAccelMps2(&accel_raw.forward, &accel_raw.strafe, &accel_z_mps2);
+    odometer_update_accel_bias(encoder_velocity, accel_raw);
+    accel_corrected.forward = accel_raw.forward - g_odometer_filter.accel_bias_mps2.forward;
+    accel_corrected.strafe = accel_raw.strafe - g_odometer_filter.accel_bias_mps2.strafe;
 
     encoder_accel.forward = (encoder_velocity.forward -
-                             g_odometer_filter.encoder_velocity_mps.forward) / ODOMETER_UPDATE_DT_S;
+                             g_odometer_filter.prev_encoder_velocity_mps.forward) / ODOMETER_UPDATE_DT_S;
     encoder_accel.strafe = (encoder_velocity.strafe -
-                            g_odometer_filter.encoder_velocity_mps.strafe) / ODOMETER_UPDATE_DT_S;
+                            g_odometer_filter.prev_encoder_velocity_mps.strafe) / ODOMETER_UPDATE_DT_S;
 
-    raw_accel.forward = ODOMETER_ACC_SCALE_FORWARD *
-                        (accel_forward_mps2 - ODOMETER_ACC_BIAS_FORWARD);
-    raw_accel.strafe = ODOMETER_ACC_SCALE_STRAFE *
-                       (accel_strafe_mps2 - ODOMETER_ACC_BIAS_STRAFE);
-    g_odometer_filter.accel_lpf_mps2 = odometer_vec_lpf(g_odometer_filter.accel_lpf_mps2,
-                                                        raw_accel,
-                                                        ODOMETER_UPDATE_DT_S,
-                                                        ODOMETER_ACC_TAU_S);
+    yaw_now_rad = g_euler.yaw * ODOMETER_DEG_TO_RAD;
+    if(0U == g_odometer_filter.yaw_ready)
+    {
+        g_odometer_filter.yaw_zero_rad = yaw_now_rad;
+        g_odometer_filter.prev_yaw_delta_rad = 0.0f;
+        g_odometer_filter.yaw_ready = 1U;
+    }
+    yaw_delta_rad = odometer_normalize_angle(yaw_now_rad - g_odometer_filter.yaw_zero_rad);
+    yaw_step_rad = odometer_normalize_angle(yaw_delta_rad - g_odometer_filter.prev_yaw_delta_rad);
+    yaw_rate_abs = odometer_absf(yaw_step_rad) / ODOMETER_UPDATE_DT_S;
 
-    max_accel_delta = ODOMETER_JERK_CLIP_MPS3 * ODOMETER_UPDATE_DT_S;
-    accel_delta.forward = odometer_clampf(g_odometer_filter.accel_lpf_mps2.forward -
-                                          g_odometer_filter.accel_imu_mps2.forward,
-                                          -max_accel_delta,
-                                          max_accel_delta);
-    accel_delta.strafe = odometer_clampf(g_odometer_filter.accel_lpf_mps2.strafe -
-                                         g_odometer_filter.accel_imu_mps2.strafe,
-                                         -max_accel_delta,
-                                         max_accel_delta);
-    limited_accel.forward = g_odometer_filter.accel_imu_mps2.forward + accel_delta.forward;
-    limited_accel.strafe = g_odometer_filter.accel_imu_mps2.strafe + accel_delta.strafe;
+    qvx = odometer_clampf(odometer_absf(encoder_velocity.forward) / ODOMETER_V_REF_MPS, 0.0f, 2.0f);
+    qvy = odometer_clampf(odometer_absf(encoder_velocity.strafe) / ODOMETER_V_REF_MPS, 0.0f, 2.0f);
+    qrx = odometer_clampf(odometer_absf(encoder_accel.forward - accel_corrected.forward) /
+                          ODOMETER_RESIDUAL_REF_MPS2,
+                          0.0f,
+                          2.0f);
+    qry = odometer_clampf(odometer_absf(encoder_accel.strafe - accel_corrected.strafe) /
+                          ODOMETER_RESIDUAL_REF_MPS2,
+                          0.0f,
+                          2.0f);
+    reverse_forward = odometer_clampf(-(encoder_velocity.forward *
+                                        g_odometer_filter.prev_encoder_velocity_mps.forward) /
+                                      (ODOMETER_REVERSE_REF_MPS * ODOMETER_REVERSE_REF_MPS),
+                                      0.0f,
+                                      2.0f);
+    reverse_strafe = odometer_clampf(-(encoder_velocity.strafe *
+                                       g_odometer_filter.prev_encoder_velocity_mps.strafe) /
+                                     (ODOMETER_REVERSE_REF_MPS * ODOMETER_REVERSE_REF_MPS),
+                                     0.0f,
+                                     2.0f);
+    yaw_risk = odometer_clampf(yaw_rate_abs / ODOMETER_YAW_RATE_REF_RPS, 0.0f, 2.0f);
+    dual_axis = odometer_clampf(odometer_minf(odometer_absf(encoder_velocity.forward),
+                                             odometer_absf(encoder_velocity.strafe)) / ODOMETER_V_REF_MPS,
+                                0.0f,
+                                1.5f);
 
-    residual_vec.forward = encoder_accel.forward - limited_accel.forward;
-    residual_vec.strafe = encoder_accel.strafe - limited_accel.strafe;
-    residual = odometer_vec_norm(residual_vec);
-    jerk = odometer_vec_norm(accel_delta) / ODOMETER_UPDATE_DT_S;
+    scale_forward = 1.0f /
+                    (1.0f +
+                     (ODOMETER_KX_SPEED * powf(qvx, ODOMETER_SPEED_POWER_X)) +
+                     (ODOMETER_KX_RESIDUAL * powf(qrx, ODOMETER_RISK_GAMMA)) +
+                     (ODOMETER_KX_REVERSE * reverse_forward) +
+                     (ODOMETER_KX_YAW * yaw_risk) +
+                     (ODOMETER_K_DUAL_AXIS * dual_axis) +
+                     (ODOMETER_CROSS_AXIS * powf(qvy, ODOMETER_SPEED_POWER_Y) *
+                      odometer_satf(qrx)));
+    scale_strafe = 1.0f /
+                   (1.0f +
+                    (ODOMETER_KY_SPEED * powf(qvy, ODOMETER_SPEED_POWER_Y)) +
+                    (ODOMETER_KY_RESIDUAL * powf(qry, ODOMETER_RISK_GAMMA)) +
+                    (ODOMETER_KY_REVERSE * reverse_strafe) +
+                    (ODOMETER_KY_YAW * yaw_risk) +
+                    (ODOMETER_K_DUAL_AXIS * dual_axis) +
+                    (ODOMETER_CROSS_AXIS * powf(qvx, ODOMETER_SPEED_POWER_X) *
+                     odometer_satf(qry)));
 
-    risk0 = (0.20f * odometer_satf(odometer_vec_norm(encoder_velocity) / ODOMETER_V_REF_MPS)) +
-            (0.22f * odometer_satf(odometer_vec_norm(limited_accel) / ODOMETER_ACC_REF_MPS2)) +
-            (0.18f * odometer_satf(jerk / ODOMETER_JERK_REF_MPS3)) +
-            (0.40f * odometer_satf(residual / ODOMETER_RESIDUAL_REF_MPS2));
-    blend = ODOMETER_IMU_TO_ENCODER_BETA * (1.0f - risk0);
+    encoder_velocity.forward = odometer_soft_deadband(encoder_velocity.forward * scale_forward,
+                                                      ODOMETER_DEAD_FORWARD_MPS);
+    encoder_velocity.strafe = odometer_soft_deadband(encoder_velocity.strafe * scale_strafe,
+                                                     ODOMETER_DEAD_STRAFE_MPS);
 
-    corrected_accel.forward = ((1.0f - blend) * limited_accel.forward) +
-                              (blend * encoder_accel.forward);
-    corrected_accel.strafe = ((1.0f - blend) * limited_accel.strafe) +
-                             (blend * encoder_accel.strafe);
-
-    risk = powf(odometer_satf(risk0), ODOMETER_RISK_GAMMA);
-    alpha_raw = ODOMETER_ALPHA_MIN + ((ODOMETER_ALPHA_MAX - ODOMETER_ALPHA_MIN) * risk);
+    risk = odometer_clampf((0.30f * odometer_maxf(qvx, qvy)) +
+                           (0.45f * odometer_maxf(qrx, qry)) +
+                           (0.15f * odometer_maxf(reverse_forward, reverse_strafe)) +
+                           (0.10f * yaw_risk),
+                           0.0f,
+                           1.0f);
+    alpha_raw = ODOMETER_ALPHA_MAX * risk;
     g_odometer_filter.alpha = odometer_lpf_scalar(g_odometer_filter.alpha,
                                                   alpha_raw,
                                                   ODOMETER_UPDATE_DT_S,
                                                   ODOMETER_ALPHA_TAU_S);
 
-    predicted_velocity.forward = g_odometer_filter.velocity_mps.forward +
-                                 (corrected_accel.forward * ODOMETER_UPDATE_DT_S);
-    predicted_velocity.strafe = g_odometer_filter.velocity_mps.strafe +
-                                (corrected_accel.strafe * ODOMETER_UPDATE_DT_S);
+    predicted_forward = g_odometer_filter.velocity_mps.forward +
+                        (accel_corrected.forward * ODOMETER_UPDATE_DT_S);
+    predicted_strafe = g_odometer_filter.velocity_mps.strafe +
+                       (accel_corrected.strafe * ODOMETER_UPDATE_DT_S);
+    fused_forward = (g_odometer_filter.alpha * predicted_forward) +
+                    ((1.0f - g_odometer_filter.alpha) * encoder_velocity.forward);
+    fused_strafe = (g_odometer_filter.alpha * predicted_strafe) +
+                   ((1.0f - g_odometer_filter.alpha) * encoder_velocity.strafe);
 
-    fused_velocity.forward = (g_odometer_filter.alpha * predicted_velocity.forward) +
-                             ((1.0f - g_odometer_filter.alpha) * encoder_velocity.forward);
-    fused_velocity.strafe = (g_odometer_filter.alpha * predicted_velocity.strafe) +
-                            ((1.0f - g_odometer_filter.alpha) * encoder_velocity.strafe);
-
-    distance_delta.forward = fused_velocity.forward * ODOMETER_UPDATE_DT_S;
-    distance_delta.strafe = fused_velocity.strafe * ODOMETER_UPDATE_DT_S;
+    yaw_for_projection = yaw_delta_rad * ODOMETER_YAW_GAIN;
+    cos_yaw = cosf(yaw_for_projection);
+    sin_yaw = sinf(yaw_for_projection);
+    distance_delta.forward = ((cos_yaw * fused_forward) - (sin_yaw * fused_strafe)) *
+                             ODOMETER_UPDATE_DT_S;
+    distance_delta.strafe = ((sin_yaw * fused_forward) + (cos_yaw * fused_strafe)) *
+                            ODOMETER_UPDATE_DT_S;
 
     g_odometer.forward_distance += distance_delta.forward;
     g_odometer.strafe_distance += distance_delta.strafe;
     g_odometer.travel_distance += odometer_vec_norm(distance_delta);
 
-    g_odometer_filter.velocity_mps = fused_velocity;
-    g_odometer_filter.encoder_velocity_mps = encoder_velocity;
-    g_odometer_filter.accel_imu_mps2 = limited_accel;
-}
-
-float odometer_get_forward_distance(void)
-{
-    return g_odometer.forward_distance;
-}
-
-float odometer_get_strafe_distance(void)
-{
-    return g_odometer.strafe_distance;
-}
-
-float odometer_get_travel_distance(void)
-{
-    return g_odometer.travel_distance;
-}
-
-float odometer_get_raw_forward_distance(void)
-{
-    return g_odometer_raw_position_m.forward;
-}
-
-float odometer_get_raw_strafe_distance(void)
-{
-    return g_odometer_raw_position_m.strafe;
-}
-
-void odometer_get_data(odometer_data_t *data)
-{
-    if(NULL == data)
-    {
-        return;
-    }
-
-    *data = g_odometer;
+    g_odometer_filter.velocity_mps.forward = fused_forward;
+    g_odometer_filter.velocity_mps.strafe = fused_strafe;
+    g_odometer_filter.prev_encoder_velocity_mps = raw_encoder_velocity;
+    g_odometer_filter.prev_yaw_delta_rad = yaw_delta_rad;
 }

@@ -42,6 +42,7 @@
 #include "motor/motor.h"
 #include "odometer/odometer.h"
 #include "uwb/ALX_AOA.h"
+#include "uwb/uwb_follow.h"
 #include "wireless_control/wireless_control.h"
 #include "wifi/wifi_core.h"
 #include "wifi/wifi_justfloat/wifi_justfloat.h"
@@ -66,6 +67,8 @@ static float remote_rotate_target = 0.0f;
 static uint8_t remote_last_rotate_active = 0U;
 static uint8_t yaw_angle_hold_active = 0U;
 static uint32 telemetry_timestamp_count = 0U;
+static uint32 system_time_ms = 0U;
+static uint8_t last_control_mode = WIRELESS_CONTROL_MODE_REMOTE;
 
 
 int main(void)
@@ -86,6 +89,7 @@ int main(void)
     wireless_control_init();
     wifi_core_Init();
     ALX_AOA_Init();
+    uwb_follow_init();
     pit_init(PIT_CH0, 1000);
 
     // 此处编写用户代码 例如外设初始化代码等
@@ -103,15 +107,38 @@ int main(void)
         if(timer_40ms_flag)
         {
             timer_40ms_flag = 0;
+            (void)ALX_AOA_Update(system_time_ms);
 
             wireless_control_task();
+            if(last_control_mode != g_wireless_control_state.mode)
+            {
+                control_cascade_reset();
+                uwb_follow_reset();
+                remote_last_rotate_active = 0U;
+                yaw_angle_hold_active = 0U;
+                yaw_angle_target = control_get_current_yaw_angle();
+                last_control_mode = g_wireless_control_state.mode;
+            }
+
             if(0U != g_wireless_control_state.control_enabled)
             {
-                remote_forward_target = (float)g_wireless_control_state.forward_speed;
-                remote_strafe_target = (float)g_wireless_control_state.strafe_speed;
-                remote_rotate_target = (float)g_wireless_control_state.rotate_speed;
+                if(WIRELESS_CONTROL_MODE_UWB_FOLLOW == g_wireless_control_state.mode)
+                {
+                    uwb_follow_update(system_time_ms);
+                    remote_forward_target = (0U != g_uwb_follow_state.output_valid) ?
+                                            g_uwb_follow_state.forward_target : 0.0f;
+                    remote_strafe_target = (0U != g_uwb_follow_state.output_valid) ?
+                                           g_uwb_follow_state.strafe_target : 0.0f;
+                    remote_rotate_target = 0.0f;
+                }
+                else
+                {
+                    remote_forward_target = (float)g_wireless_control_state.forward_speed;
+                    remote_strafe_target = (float)g_wireless_control_state.strafe_speed;
+                    remote_rotate_target = (float)g_wireless_control_state.rotate_speed;
+                }
 
-                if(0.0f != g_wireless_control_state.rotate_speed)
+                if(0.0f != remote_rotate_target)
                 {
                     yaw_angle_target = control_get_current_yaw_angle();
                     yaw_angle_hold_active = 0U;
@@ -126,7 +153,7 @@ int main(void)
                     }
                     control_yaw_angle_loop_update(yaw_angle_target);
                 }
-                remote_last_rotate_active = (0.0f != g_wireless_control_state.rotate_speed) ? 1U : 0U;
+                remote_last_rotate_active = (0.0f != remote_rotate_target) ? 1U : 0U;
             }
             else
             {
@@ -136,6 +163,7 @@ int main(void)
                 remote_last_rotate_active = 0U;
                 yaw_angle_target = control_get_current_yaw_angle();
                 yaw_angle_hold_active = 0U;
+                uwb_follow_reset();
             }
         }
 
@@ -143,7 +171,7 @@ int main(void)
         {
             timer_20ms_flag = 0;
 
-            if((0U != g_wireless_control_state.control_enabled) && (0.0f != g_wireless_control_state.rotate_speed))
+            if((0U != g_wireless_control_state.control_enabled) && (0.0f != remote_rotate_target))
             {
                 control_yaw_rate_loop_update(remote_rotate_target);
             }
@@ -160,15 +188,13 @@ int main(void)
             float uwb_raw_y_cm = 0.0f;
             float uwb_filt_x_cm = 0.0f;
             float uwb_filt_y_cm = 0.0f;
-            uint32 uwb_now_ms;
 
             timer_10ms_flag = 0;
 
             encoder_update();
             odometer_update();
             telemetry_timestamp_count++;
-            uwb_now_ms = telemetry_timestamp_count * 10U;
-            (void)ALX_AOA_Update(uwb_now_ms);
+            system_time_ms = telemetry_timestamp_count * 10U;
             if(0U != ALX_AOA_GetLatest(&uwb_position))
             {
                 uwb_raw_x_cm = (float)uwb_position.x_cm;
@@ -189,11 +215,17 @@ int main(void)
                            uwb_raw_y_cm,
                            uwb_filt_x_cm,
                            uwb_filt_y_cm,
-                           0.0f, 0.0f, 0.0f,
-                           0.0f, 0.0f, 0.0f,
-                           0.0f, 0.0f, 0.0f,
-                           0.0f,
-                           0.0f);
+                           g_uwb_follow_state.x_pid_p_term,
+                           g_uwb_follow_state.x_pid_i_term,
+                           g_uwb_follow_state.x_pid_d_term,
+                           g_uwb_follow_state.y_pid_p_term,
+                           g_uwb_follow_state.y_pid_i_term,
+                           g_uwb_follow_state.y_pid_d_term,
+                           g_euler.yaw,
+                           control_yaw_angle_output,
+                           control_yaw_rate_output,
+                           g_odometer.strafe_distance,
+                           g_odometer.forward_distance);
         }
         wifi_core_Poll();
 

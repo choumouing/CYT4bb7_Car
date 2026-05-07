@@ -1228,6 +1228,12 @@
             <file>
                 <name>$PROJ_DIR$\..\..\code\uwb\ALX_AOA.h</name>
             </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\uwb\uwb_follow.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\uwb\uwb_follow.h</name>
+            </file>
         </group>
         <group>
             <name>wifi</name>

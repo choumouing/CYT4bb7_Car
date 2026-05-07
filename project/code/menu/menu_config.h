@@ -31,4 +31,15 @@ extern float yaw_rate_kd;
 extern float yaw_rate_i_limit;
 extern float yaw_rate_output_limit;
 
+extern float uwb_follow_deadband_x_cm;
+extern float uwb_follow_deadband_y_cm;
+extern float uwb_follow_output_limit;
+extern float uwb_follow_i_limit;
+extern float uwb_follow_x_kp;
+extern float uwb_follow_x_ki;
+extern float uwb_follow_x_kd;
+extern float uwb_follow_y_kp;
+extern float uwb_follow_y_ki;
+extern float uwb_follow_y_kd;
+
 #endif

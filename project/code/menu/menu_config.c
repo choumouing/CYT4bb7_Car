@@ -27,6 +27,17 @@ float yaw_rate_kd = 0.0f;
 float yaw_rate_i_limit = 60.0f;
 float yaw_rate_output_limit = 1000.0f;
 
+float uwb_follow_deadband_x_cm = 4.0f;
+float uwb_follow_deadband_y_cm = 5.0f;
+float uwb_follow_output_limit = 500.0f;
+float uwb_follow_i_limit = 0.0f;
+float uwb_follow_x_kp = 3.1f;
+float uwb_follow_x_ki = 0.0f;
+float uwb_follow_x_kd = 1.6f;
+float uwb_follow_y_kp = 2.7f;
+float uwb_follow_y_ki = 0.0f;
+float uwb_follow_y_kd = 1.4f;
+
 static void load_slot_0_function(void);
 static void load_slot_1_function(void);
 static void save_slot_0_function(void);
@@ -75,10 +86,25 @@ static menu_item_t yaw_angle_pid_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
+static menu_item_t uwb_follow_pid_menu[] = {
+    {"DeadX", MENU_TYPE_PARAMETER, .param_index = 14},
+    {"DeadY", MENU_TYPE_PARAMETER, .param_index = 15},
+    {"OutLimit", MENU_TYPE_PARAMETER, .param_index = 16},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 17},
+    {"XKp", MENU_TYPE_PARAMETER, .param_index = 18},
+    {"XKi", MENU_TYPE_PARAMETER, .param_index = 19},
+    {"XKd", MENU_TYPE_PARAMETER, .param_index = 20},
+    {"YKp", MENU_TYPE_PARAMETER, .param_index = 21},
+    {"YKi", MENU_TYPE_PARAMETER, .param_index = 22},
+    {"YKd", MENU_TYPE_PARAMETER, .param_index = 23},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
 static menu_item_t main_menu[] = {
     {"Wheel PID", MENU_TYPE_SUBMENU, .submenu = wheel_pid_menu},
     {"YawRate PID", MENU_TYPE_SUBMENU, .submenu = yaw_rate_pid_menu},
     {"YawAng PID", MENU_TYPE_SUBMENU, .submenu = yaw_angle_pid_menu},
+    {"UWB PID", MENU_TYPE_SUBMENU, .submenu = uwb_follow_pid_menu},
     {"Load Slot", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
     {"Save Slot", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
@@ -104,6 +130,17 @@ void menu_config_init(void)
     menu_register_param(&yaw_angle_kd, 0.01f, 0.0f, 50.0f);
     menu_register_param(&yaw_angle_i_limit, 0.1f, 0.0f, 100.0f);
     menu_register_param(&yaw_angle_output_limit, 0.1f, 0.0f, 10.0f);
+
+    menu_register_param(&uwb_follow_deadband_x_cm, 1.0f, 0.0f, 50.0f);
+    menu_register_param(&uwb_follow_deadband_y_cm, 1.0f, 0.0f, 50.0f);
+    menu_register_param(&uwb_follow_output_limit, 10.0f, 0.0f, 1000.0f);
+    menu_register_param(&uwb_follow_i_limit, 1.0f, 0.0f, 1000.0f);
+    menu_register_param(&uwb_follow_x_kp, 0.1f, 0.0f, 50.0f);
+    menu_register_param(&uwb_follow_x_ki, 0.01f, 0.0f, 50.0f);
+    menu_register_param(&uwb_follow_x_kd, 0.1f, 0.0f, 50.0f);
+    menu_register_param(&uwb_follow_y_kp, 0.1f, 0.0f, 50.0f);
+    menu_register_param(&uwb_follow_y_ki, 0.01f, 0.0f, 50.0f);
+    menu_register_param(&uwb_follow_y_kd, 0.1f, 0.0f, 50.0f);
 
     menu_set_root(main_menu);
 }
