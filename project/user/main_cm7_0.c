@@ -173,15 +173,17 @@ int main(void)
                 control_cascade_stop();
             }
             wifi_justfloat((float)telemetry_timestamp_count,
-                           odometer_get_forward_distance(), odometer_get_strafe_distance(),
-                           odometer_get_travel_distance(),
+                           odometer_get_raw_forward_distance(),
+                           odometer_get_raw_strafe_distance(),
+                           odometer_get_forward_distance(),
+                           odometer_get_strafe_distance(),
                            linear_acc_x, linear_acc_y, linear_acc_z,
                            g_euler.roll, g_euler.pitch, g_euler.yaw,
                            encoder_get_left_front_filtered_count(),
                            encoder_get_right_front_filtered_count(),
                            encoder_get_left_rear_filtered_count(),
                            encoder_get_right_rear_filtered_count(),
-                           0.0f, 0.0f);
+                           0.0f);
         }
         wifi_core_Poll();
 
