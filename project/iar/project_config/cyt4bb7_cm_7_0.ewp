@@ -1221,6 +1221,15 @@
             </file>
         </group>
         <group>
+            <name>uwb</name>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\uwb\ALX_AOA.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\uwb\ALX_AOA.h</name>
+            </file>
+        </group>
+        <group>
             <name>wifi</name>
             <file>
                 <name>$PROJ_DIR$\..\..\code\wifi\wifi_core.c</name>

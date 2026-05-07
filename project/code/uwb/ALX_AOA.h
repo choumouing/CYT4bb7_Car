@@ -21,12 +21,14 @@
 #define ALX_AOA_DIST_MIN_CM                (20)
 #define ALX_AOA_DIST_MAX_CM                (500)
 #define ALX_AOA_EL_MAX_DEG                 (65)
-#define ALX_AOA_XY_GATE_X_CM               (40.0f)
-#define ALX_AOA_XY_GATE_Y_CM               (45.0f)
-#define ALX_AOA_XY_GATE_2D_CM              (90.0f)
-#define ALX_AOA_AB_ALPHA                   (0.20f)
-#define ALX_AOA_AB_BETA                    (0.006f)
-#define ALX_AOA_VEL_DECAY                  (0.80f)
+#define ALX_AOA_XY_GATE_X_CM               (30.0f)
+#define ALX_AOA_XY_GATE_Y_CM               (30.0f)
+#define ALX_AOA_XY_GATE_2D_CM              (50.0f)
+#define ALX_AOA_AB_ALPHA                   (0.35f)
+#define ALX_AOA_AB_BETA                    (0.015f)
+#define ALX_AOA_VEL_DECAY                  (0.90f)
+#define ALX_AOA_MEDIAN_SIZE                (3U)
+#define ALX_AOA_REACQUIRE_COUNT            (3U)
 
 typedef struct
 {
@@ -78,6 +80,7 @@ void  ALX_AOA_InputByte         (uint8 dat);
 void  ALX_AOA_InputBytes        (const uint8 *dat, uint16 length);
 uint8 ALX_AOA_Update            (uint32 now_ms);
 uint8 ALX_AOA_GetLatest         (ALX_AOA_Position_t *data);
+uint8 ALX_AOA_GetFilteredXY     (float *x_cm, float *y_cm);
 uint8 ALX_AOA_GetHeartbeat      (ALX_AOA_Heartbeat_t *data);
 uint8 ALX_AOA_IsTagOnline       (uint32 now_ms, uint32 timeout_ms);
 void  ALX_AOA_GetStats          (ALX_AOA_Stats_t *stats);

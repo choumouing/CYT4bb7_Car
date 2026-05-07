@@ -41,6 +41,7 @@
 #include "menu/menu_config.h"
 #include "motor/motor.h"
 #include "odometer/odometer.h"
+#include "uwb/ALX_AOA.h"
 #include "wireless_control/wireless_control.h"
 #include "wifi/wifi_core.h"
 #include "wifi/wifi_justfloat/wifi_justfloat.h"
@@ -84,6 +85,7 @@ int main(void)
     uart_receiver_init();
     wireless_control_init();
     wifi_core_Init();
+    ALX_AOA_Init();
     pit_init(PIT_CH0, 1000);
 
     // 此处编写用户代码 例如外设初始化代码等
@@ -153,16 +155,26 @@ int main(void)
 
         if(timer_10ms_flag)
         {
-            float linear_acc_x = 0.0f;
-            float linear_acc_y = 0.0f;
-            float linear_acc_z = 0.0f;
+            ALX_AOA_Position_t uwb_position;
+            float uwb_raw_x_cm = 0.0f;
+            float uwb_raw_y_cm = 0.0f;
+            float uwb_filt_x_cm = 0.0f;
+            float uwb_filt_y_cm = 0.0f;
+            uint32 uwb_now_ms;
 
             timer_10ms_flag = 0;
 
             encoder_update();
             odometer_update();
             telemetry_timestamp_count++;
-            AccelCalibration_GetBodyAccelMps2(&linear_acc_x, &linear_acc_y, &linear_acc_z);
+            uwb_now_ms = telemetry_timestamp_count * 10U;
+            (void)ALX_AOA_Update(uwb_now_ms);
+            if(0U != ALX_AOA_GetLatest(&uwb_position))
+            {
+                uwb_raw_x_cm = (float)uwb_position.x_cm;
+                uwb_raw_y_cm = (float)uwb_position.y_cm;
+            }
+            (void)ALX_AOA_GetFilteredXY(&uwb_filt_x_cm, &uwb_filt_y_cm);
 
             if(0U != g_wireless_control_state.control_enabled)
             {
@@ -173,16 +185,14 @@ int main(void)
                 control_cascade_stop();
             }
             wifi_justfloat((float)telemetry_timestamp_count,
-                           odometer_get_raw_forward_distance(),
-                           odometer_get_raw_strafe_distance(),
-                           odometer_get_forward_distance(),
-                           odometer_get_strafe_distance(),
-                           linear_acc_x, linear_acc_y, linear_acc_z,
-                           g_euler.roll, g_euler.pitch, g_euler.yaw,
-                           encoder_get_left_front_filtered_count(),
-                           encoder_get_right_front_filtered_count(),
-                           encoder_get_left_rear_filtered_count(),
-                           encoder_get_right_rear_filtered_count(),
+                           uwb_raw_x_cm,
+                           uwb_raw_y_cm,
+                           uwb_filt_x_cm,
+                           uwb_filt_y_cm,
+                           0.0f, 0.0f, 0.0f,
+                           0.0f, 0.0f, 0.0f,
+                           0.0f, 0.0f, 0.0f,
+                           0.0f,
                            0.0f);
         }
         wifi_core_Poll();

@@ -41,9 +41,12 @@ static float  alx_aoa_filt_x_cm     = 0.0f;
 static float  alx_aoa_filt_y_cm     = 0.0f;
 static float  alx_aoa_filt_vx       = 0.0f;
 static float  alx_aoa_filt_vy       = 0.0f;
-static float  alx_aoa_last_raw_x_cm = 0.0f;
-static float  alx_aoa_last_raw_y_cm = 0.0f;
+static float  alx_aoa_raw_x_hist[ALX_AOA_MEDIAN_SIZE] = {0.0f};
+static float  alx_aoa_raw_y_hist[ALX_AOA_MEDIAN_SIZE] = {0.0f};
+static uint8  alx_aoa_raw_hist_count = 0;
+static uint8  alx_aoa_raw_hist_index = 0;
 static uint8  alx_aoa_filt_init     = 0;
+static uint8  alx_aoa_outlier_count = 0;
 static uint32 alx_aoa_last_filt_ms  = 0;
 
 static uint16 alx_aoa_next_index (uint16 index)
@@ -122,6 +125,28 @@ static float alx_aoa_angle_to_rad (int16 angle)
     return (((float)angle) / ALX_AOA_ANGLE_SCALE) * ALX_AOA_DEG_TO_RAD;
 }
 
+static float alx_aoa_median3 (float a, float b, float c)
+{
+    if(a > b)
+    {
+        float t = a;
+        a = b;
+        b = t;
+    }
+    if(b > c)
+    {
+        float t = b;
+        b = c;
+        c = t;
+    }
+    if(a > b)
+    {
+        b = a;
+    }
+
+    return b;
+}
+
 static void alx_aoa_calculate_xy (ALX_AOA_Position_t *position)
 {
     float azimuth_rad = alx_aoa_angle_to_rad(position->azimuth_deg);
@@ -158,13 +183,87 @@ static uint8 alx_aoa_raw_valid (const ALX_AOA_Position_t *p)
     return 1;
 }
 
+static void alx_aoa_raw_history_reset (float raw_x, float raw_y)
+{
+    uint8 i;
+
+    for(i = 0; i < ALX_AOA_MEDIAN_SIZE; i ++)
+    {
+        alx_aoa_raw_x_hist[i] = raw_x;
+        alx_aoa_raw_y_hist[i] = raw_y;
+    }
+
+    alx_aoa_raw_hist_count = ALX_AOA_MEDIAN_SIZE;
+    alx_aoa_raw_hist_index = 0;
+}
+
+static void alx_aoa_raw_history_push (float raw_x, float raw_y)
+{
+    alx_aoa_raw_x_hist[alx_aoa_raw_hist_index] = raw_x;
+    alx_aoa_raw_y_hist[alx_aoa_raw_hist_index] = raw_y;
+
+    alx_aoa_raw_hist_index ++;
+    if(alx_aoa_raw_hist_index >= ALX_AOA_MEDIAN_SIZE)
+    {
+        alx_aoa_raw_hist_index = 0;
+    }
+
+    if(alx_aoa_raw_hist_count < ALX_AOA_MEDIAN_SIZE)
+    {
+        alx_aoa_raw_hist_count ++;
+    }
+}
+
+static void alx_aoa_raw_history_get_median (float *x_cm, float *y_cm)
+{
+    if(alx_aoa_raw_hist_count >= ALX_AOA_MEDIAN_SIZE)
+    {
+        *x_cm = alx_aoa_median3(alx_aoa_raw_x_hist[0],
+                                alx_aoa_raw_x_hist[1],
+                                alx_aoa_raw_x_hist[2]);
+        *y_cm = alx_aoa_median3(alx_aoa_raw_y_hist[0],
+                                alx_aoa_raw_y_hist[1],
+                                alx_aoa_raw_y_hist[2]);
+    }
+    else
+    {
+        uint8 latest;
+
+        if(0 == alx_aoa_raw_hist_count)
+        {
+            *x_cm = 0.0f;
+            *y_cm = 0.0f;
+            return;
+        }
+
+        latest = (0 == alx_aoa_raw_hist_index) ?
+                 (uint8)(ALX_AOA_MEDIAN_SIZE - 1U) :
+                 (uint8)(alx_aoa_raw_hist_index - 1U);
+        *x_cm = alx_aoa_raw_x_hist[latest];
+        *y_cm = alx_aoa_raw_y_hist[latest];
+    }
+}
+
+static uint8 alx_aoa_observation_gate_ok (float rx, float ry)
+{
+    float jump_2d = sqrtf(rx * rx + ry * ry);
+
+    if((fabsf(rx) > ALX_AOA_XY_GATE_X_CM) ||
+       (fabsf(ry) > ALX_AOA_XY_GATE_Y_CM) ||
+       (jump_2d > ALX_AOA_XY_GATE_2D_CM))
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
 static void alx_aoa_filter_xy (const ALX_AOA_Position_t *p, uint32 now_ms)
 {
     float raw_x;
     float raw_y;
-    float dx;
-    float dy;
-    float jump_2d;
+    float obs_x;
+    float obs_y;
     float dt;
     float rx;
     float ry;
@@ -181,13 +280,13 @@ static void alx_aoa_filter_xy (const ALX_AOA_Position_t *p, uint32 now_ms)
     {
         if(obs_ok)
         {
+            alx_aoa_raw_history_reset(raw_x, raw_y);
             alx_aoa_filt_x_cm     = raw_x;
             alx_aoa_filt_y_cm     = raw_y;
             alx_aoa_filt_vx       = 0.0f;
             alx_aoa_filt_vy       = 0.0f;
-            alx_aoa_last_raw_x_cm = raw_x;
-            alx_aoa_last_raw_y_cm = raw_y;
             alx_aoa_filt_init     = 1;
+            alx_aoa_outlier_count = 0;
             alx_aoa_last_filt_ms  = now_ms;
         }
 
@@ -217,33 +316,32 @@ static void alx_aoa_filter_xy (const ALX_AOA_Position_t *p, uint32 now_ms)
 
     if(obs_ok)
     {
-        dx = raw_x - alx_aoa_last_raw_x_cm;
-        dy = raw_y - alx_aoa_last_raw_y_cm;
-        jump_2d = sqrtf(dx * dx + dy * dy);
-
-        if(fabsf(dx) > ALX_AOA_XY_GATE_X_CM ||
-           fabsf(dy) > ALX_AOA_XY_GATE_Y_CM ||
-           jump_2d > ALX_AOA_XY_GATE_2D_CM)
-        {
-            obs_ok = 0;
-        }
-
-        alx_aoa_last_raw_x_cm = raw_x;
-        alx_aoa_last_raw_y_cm = raw_y;
+        alx_aoa_raw_history_push(raw_x, raw_y);
     }
+
+    alx_aoa_raw_history_get_median(&obs_x, &obs_y);
 
     x_pred = alx_aoa_filt_x_cm + alx_aoa_filt_vx * dt;
     y_pred = alx_aoa_filt_y_cm + alx_aoa_filt_vy * dt;
+    rx = obs_x - x_pred;
+    ry = obs_y - y_pred;
 
-    if(obs_ok)
+    if((0U != obs_ok) && (0U != alx_aoa_observation_gate_ok(rx, ry)))
     {
-        rx = raw_x - x_pred;
-        ry = raw_y - y_pred;
+        alx_aoa_outlier_count = 0;
 
         alx_aoa_filt_x_cm = x_pred + ALX_AOA_AB_ALPHA * rx;
         alx_aoa_filt_y_cm = y_pred + ALX_AOA_AB_ALPHA * ry;
         alx_aoa_filt_vx  += (ALX_AOA_AB_BETA * rx) / dt;
         alx_aoa_filt_vy  += (ALX_AOA_AB_BETA * ry) / dt;
+    }
+    else if((0U != obs_ok) && (alx_aoa_outlier_count >= (ALX_AOA_REACQUIRE_COUNT - 1U)))
+    {
+        alx_aoa_filt_x_cm = obs_x;
+        alx_aoa_filt_y_cm = obs_y;
+        alx_aoa_filt_vx = 0.0f;
+        alx_aoa_filt_vy = 0.0f;
+        alx_aoa_outlier_count = 0;
     }
     else
     {
@@ -251,6 +349,11 @@ static void alx_aoa_filter_xy (const ALX_AOA_Position_t *p, uint32 now_ms)
         alx_aoa_filt_y_cm = y_pred;
         alx_aoa_filt_vx  *= ALX_AOA_VEL_DECAY;
         alx_aoa_filt_vy  *= ALX_AOA_VEL_DECAY;
+
+        if(0U != obs_ok)
+        {
+            alx_aoa_outlier_count ++;
+        }
     }
 
     alx_aoa_x_cm = alx_aoa_filt_x_cm;
@@ -426,9 +529,12 @@ void ALX_AOA_Reset (void)
     alx_aoa_filt_y_cm     = 0.0f;
     alx_aoa_filt_vx       = 0.0f;
     alx_aoa_filt_vy       = 0.0f;
-    alx_aoa_last_raw_x_cm = 0.0f;
-    alx_aoa_last_raw_y_cm = 0.0f;
+    memset(&alx_aoa_raw_x_hist[0], 0, sizeof(alx_aoa_raw_x_hist));
+    memset(&alx_aoa_raw_y_hist[0], 0, sizeof(alx_aoa_raw_y_hist));
+    alx_aoa_raw_hist_count = 0;
+    alx_aoa_raw_hist_index = 0;
     alx_aoa_filt_init     = 0;
+    alx_aoa_outlier_count = 0;
     alx_aoa_last_filt_ms  = 0;
 }
 
@@ -506,6 +612,19 @@ uint8 ALX_AOA_GetLatest (ALX_AOA_Position_t *data)
 
     *data = alx_aoa_latest_position;
     return 1;
+}
+
+uint8 ALX_AOA_GetFilteredXY (float *x_cm, float *y_cm)
+{
+    if((0 == x_cm) || (0 == y_cm))
+    {
+        return 0;
+    }
+
+    *x_cm = alx_aoa_x_cm;
+    *y_cm = alx_aoa_y_cm;
+
+    return alx_aoa_filt_init;
 }
 
 uint8 ALX_AOA_GetHeartbeat (ALX_AOA_Heartbeat_t *data)
