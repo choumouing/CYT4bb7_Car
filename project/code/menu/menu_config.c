@@ -31,12 +31,12 @@ float uwb_follow_deadband_x_cm = 4.0f;
 float uwb_follow_deadband_y_cm = 5.0f;
 float uwb_follow_output_limit = 500.0f;
 float uwb_follow_i_limit = 0.0f;
-float uwb_follow_x_kp = 3.1f;
+float uwb_follow_x_kp = 2.6f;
 float uwb_follow_x_ki = 0.0f;
-float uwb_follow_x_kd = 1.6f;
-float uwb_follow_y_kp = 2.7f;
+float uwb_follow_x_kd = 1.2f;
+float uwb_follow_y_kp = 2.3f;
 float uwb_follow_y_ki = 0.0f;
-float uwb_follow_y_kd = 1.4f;
+float uwb_follow_y_kd = 1.1f;
 
 static void load_slot_0_function(void);
 static void load_slot_1_function(void);
