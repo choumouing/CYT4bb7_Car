@@ -1212,6 +1212,21 @@
             </file>
         </group>
         <group>
+            <name>target_follow</name>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\target_follow\target_follow.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\target_follow\target_follow.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\target_follow\target_follow_config.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\target_follow\target_follow_config.h</name>
+            </file>
+        </group>
+        <group>
             <name>wireless_control</name>
             <file>
                 <name>$PROJ_DIR$\..\..\code\wireless_control\wireless_control.c</name>
