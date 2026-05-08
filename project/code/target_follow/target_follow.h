@@ -44,6 +44,8 @@ typedef struct
     float target_car_distance_m;
     float target_error_strafe_m;
     float target_error_forward_m;
+    float target_pid_strafe_output;
+    float target_pid_forward_output;
     float forward_target;
     float strafe_target;
     uint8 target_count;

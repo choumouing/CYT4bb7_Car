@@ -84,6 +84,8 @@ static void target_follow_clear_runtime(void)
     g_target_follow_state.target_car_distance_m = 0.0f;
     g_target_follow_state.target_error_strafe_m = 0.0f;
     g_target_follow_state.target_error_forward_m = 0.0f;
+    g_target_follow_state.target_pid_strafe_output = 0.0f;
+    g_target_follow_state.target_pid_forward_output = 0.0f;
     g_target_follow_state.forward_target = 0.0f;
     g_target_follow_state.strafe_target = 0.0f;
     g_target_follow_state.active_index = TARGET_FOLLOW_INVALID_INDEX;
@@ -120,6 +122,8 @@ static void target_follow_copy_tag_follow_output(void)
 {
     g_target_follow_state.mode = TARGET_FOLLOW_MODE_FOLLOW_TAG;
     g_target_follow_state.output_valid = g_uwb_follow_state.output_valid;
+    g_target_follow_state.target_pid_forward_output = 0.0f;
+    g_target_follow_state.target_pid_strafe_output = 0.0f;
     g_target_follow_state.forward_target = (0U != g_uwb_follow_state.output_valid) ?
                                            g_uwb_follow_state.forward_target : 0.0f;
     g_target_follow_state.strafe_target = (0U != g_uwb_follow_state.output_valid) ?
@@ -260,6 +264,8 @@ static void target_follow_drive_to_target(uint8 index)
         g_target_follow_state.mode = TARGET_FOLLOW_MODE_TARGET_REACHED;
         g_target_follow_state.forward_target = 0.0f;
         g_target_follow_state.strafe_target = 0.0f;
+        g_target_follow_state.target_pid_forward_output = 0.0f;
+        g_target_follow_state.target_pid_strafe_output = 0.0f;
         g_target_follow_state.output_valid = 1U;
         target_follow_pid_init();
         return;
@@ -279,7 +285,11 @@ static void target_follow_drive_to_target(uint8 index)
     g_target_follow_state.strafe_target =
         target_follow_limit(PositionalPID_Update(&s_target_strafe_pid, error_strafe_body, 0.0f),
                             TARGET_FOLLOW_OUTPUT_LIMIT);
+    g_target_follow_state.target_pid_forward_output = g_target_follow_state.forward_target;
+    g_target_follow_state.target_pid_strafe_output = g_target_follow_state.strafe_target;
     target_follow_apply_vector_limit();
+    g_target_follow_state.target_pid_forward_output = g_target_follow_state.forward_target;
+    g_target_follow_state.target_pid_strafe_output = g_target_follow_state.strafe_target;
     g_target_follow_state.mode = TARGET_FOLLOW_MODE_GOTO_TARGET;
     g_target_follow_state.output_valid = 1U;
 }
@@ -367,6 +377,8 @@ void target_follow_update(uint32 now_ms)
     rel_y_cm = 0.0f;
     g_target_follow_state.forward_target = 0.0f;
     g_target_follow_state.strafe_target = 0.0f;
+    g_target_follow_state.target_pid_forward_output = 0.0f;
+    g_target_follow_state.target_pid_strafe_output = 0.0f;
     g_target_follow_state.output_valid = 0U;
     g_target_follow_state.target_in_tag_range = 0U;
     g_target_follow_state.candidate_index = TARGET_FOLLOW_INVALID_INDEX;
