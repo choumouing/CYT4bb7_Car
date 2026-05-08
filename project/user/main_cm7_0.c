@@ -189,11 +189,10 @@ int main(void)
 
         if(timer_10ms_flag)
         {
-            ALX_AOA_Position_t uwb_position;
-            float uwb_raw_x_cm = 0.0f;
-            float uwb_raw_y_cm = 0.0f;
             float uwb_filt_x_cm = 0.0f;
             float uwb_filt_y_cm = 0.0f;
+            float follow_target_x_m = 0.0f;
+            float follow_target_y_m = 0.0f;
 
             timer_10ms_flag = 0;
 
@@ -201,12 +200,21 @@ int main(void)
             odometer_update();
             telemetry_timestamp_count++;
             system_time_ms = telemetry_timestamp_count * 10U;
-            if(0U != ALX_AOA_GetLatest(&uwb_position))
-            {
-                uwb_raw_x_cm = (float)uwb_position.x_cm;
-                uwb_raw_y_cm = (float)uwb_position.y_cm;
-            }
             (void)ALX_AOA_GetFilteredXY(&uwb_filt_x_cm, &uwb_filt_y_cm);
+
+            if(TARGET_FOLLOW_MODE_GOTO_TARGET == g_target_follow_state.mode)
+            {
+                if(g_target_follow_state.active_index < TARGET_FOLLOW_MAX_TARGETS)
+                {
+                    follow_target_x_m = g_target_follow_state.targets[g_target_follow_state.active_index].strafe_m;
+                    follow_target_y_m = g_target_follow_state.targets[g_target_follow_state.active_index].forward_m;
+                }
+            }
+            else
+            {
+                follow_target_x_m = g_target_follow_state.tag_strafe_m;
+                follow_target_y_m = g_target_follow_state.tag_forward_m;
+            }
 
             if(0U != g_wireless_control_state.control_enabled)
             {
@@ -217,8 +225,6 @@ int main(void)
                 control_cascade_stop();
             }
             wifi_justfloat((float)telemetry_timestamp_count,
-                           uwb_raw_x_cm,
-                           uwb_raw_y_cm,
                            uwb_filt_x_cm,
                            uwb_filt_y_cm,
                            g_uwb_follow_state.x_pid_p_term,
@@ -227,9 +233,11 @@ int main(void)
                            g_uwb_follow_state.y_pid_p_term,
                            g_uwb_follow_state.y_pid_i_term,
                            g_uwb_follow_state.y_pid_d_term,
+                           g_target_follow_state.target_pid_strafe_output,
+                           g_target_follow_state.target_pid_forward_output,
                            g_euler.yaw,
-                           control_yaw_angle_output,
-                           control_yaw_rate_output,
+                           follow_target_x_m,
+                           follow_target_y_m,
                            g_odometer.strafe_distance,
                            g_odometer.forward_distance);
         }
