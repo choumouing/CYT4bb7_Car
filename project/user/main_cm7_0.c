@@ -41,6 +41,8 @@
 #include "menu/menu_config.h"
 #include "motor/motor.h"
 #include "odometer/odometer.h"
+#include "target_follow/target_follow.h"
+#include "target_follow/target_follow_config.h"
 #include "uwb/ALX_AOA.h"
 #include "uwb/uwb_follow.h"
 #include "wireless_control/wireless_control.h"
@@ -90,6 +92,8 @@ int main(void)
     wifi_core_Init();
     ALX_AOA_Init();
     uwb_follow_init();
+    target_follow_init();
+    target_follow_load_default_targets();
     pit_init(PIT_CH0, 1000);
 
     // 此处编写用户代码 例如外设初始化代码等
@@ -114,6 +118,7 @@ int main(void)
             {
                 control_cascade_reset();
                 uwb_follow_reset();
+                target_follow_reset();
                 remote_last_rotate_active = 0U;
                 yaw_angle_hold_active = 0U;
                 yaw_angle_target = control_get_current_yaw_angle();
@@ -124,11 +129,11 @@ int main(void)
             {
                 if(WIRELESS_CONTROL_MODE_UWB_FOLLOW == g_wireless_control_state.mode)
                 {
-                    uwb_follow_update(system_time_ms);
-                    remote_forward_target = (0U != g_uwb_follow_state.output_valid) ?
-                                            g_uwb_follow_state.forward_target : 0.0f;
-                    remote_strafe_target = (0U != g_uwb_follow_state.output_valid) ?
-                                           g_uwb_follow_state.strafe_target : 0.0f;
+                    target_follow_update(system_time_ms);
+                    remote_forward_target = (0U != g_target_follow_state.output_valid) ?
+                                            g_target_follow_state.forward_target : 0.0f;
+                    remote_strafe_target = (0U != g_target_follow_state.output_valid) ?
+                                           g_target_follow_state.strafe_target : 0.0f;
                     remote_rotate_target = 0.0f;
                 }
                 else
@@ -164,6 +169,7 @@ int main(void)
                 yaw_angle_target = control_get_current_yaw_angle();
                 yaw_angle_hold_active = 0U;
                 uwb_follow_reset();
+                target_follow_reset();
             }
         }
 
