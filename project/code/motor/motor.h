@@ -9,7 +9,7 @@
 // 电机2 - 右前 (Right Front)
 #define MOTOR_M1_DIR        (P09_1)
 #define MOTOR_M1_PWM        (TCPWM_CH24_P09_0)
-#define MOTOR_M1_INVERT     0       // 0=不反转, 1=反转
+#define MOTOR_M1_INVERT     1       // 0=不反转, 1=反转
 
 // 电机3 - 左后 (Left Rear)
 #define MOTOR_M4_DIR        (P05_3)
