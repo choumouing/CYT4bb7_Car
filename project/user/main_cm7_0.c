@@ -212,8 +212,8 @@ int main(void)
             }
             else
             {
-                follow_target_x_m = g_target_follow_state.tag_strafe_m;
-                follow_target_y_m = g_target_follow_state.tag_forward_m;
+                follow_target_x_m = g_target_follow_state.tag_relative_strafe_m;
+                follow_target_y_m = g_target_follow_state.tag_relative_forward_m;
             }
 
             if(0U != g_wireless_control_state.control_enabled)

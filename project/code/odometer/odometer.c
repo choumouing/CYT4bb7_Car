@@ -6,6 +6,7 @@
 #include <math.h>
 
 #define ODOMETER_UPDATE_DT_S                (0.01f)
+#define ODOMETER_STARTUP_HOLD_TICKS         (50U)
 #define ODOMETER_FORWARD_COUNT_PER_METER    (11287.0f)
 #define ODOMETER_STRAFE_COUNT_PER_METER_ABS (12100.0f)
 
@@ -51,6 +52,7 @@ typedef struct
     float yaw_zero_rad;
     float prev_yaw_delta_rad;
     float alpha;
+    uint16_t startup_hold_ticks;
     uint8_t yaw_ready;
 } odometer_filter_state_t;
 
@@ -162,7 +164,7 @@ static odometer_vec2_t odometer_get_encoder_velocity(odometer_vec2_t delta_count
     odometer_vec2_t velocity;
 
     velocity.forward = delta_count.forward / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S;
-    velocity.strafe = delta_count.strafe / (-ODOMETER_STRAFE_COUNT_PER_METER_ABS) / ODOMETER_UPDATE_DT_S;
+    velocity.strafe = delta_count.strafe / ODOMETER_STRAFE_COUNT_PER_METER_ABS / ODOMETER_UPDATE_DT_S;
     return velocity;
 }
 
@@ -207,6 +209,7 @@ void odometer_reset(void)
     g_odometer_filter.yaw_zero_rad = 0.0f;
     g_odometer_filter.prev_yaw_delta_rad = 0.0f;
     g_odometer_filter.alpha = 0.0f;
+    g_odometer_filter.startup_hold_ticks = ODOMETER_STARTUP_HOLD_TICKS;
     g_odometer_filter.yaw_ready = 0U;
 }
 
@@ -247,6 +250,23 @@ void odometer_update(void)
     delta_count = odometer_get_encoder_delta_count();
     encoder_velocity = odometer_get_encoder_velocity(delta_count);
     raw_encoder_velocity = encoder_velocity;
+
+    if(g_odometer_filter.startup_hold_ticks > 0U)
+    {
+        yaw_now_rad = g_euler.yaw * ODOMETER_DEG_TO_RAD;
+        g_odometer.forward_distance = 0.0f;
+        g_odometer.strafe_distance = 0.0f;
+        g_odometer.travel_distance = 0.0f;
+        g_odometer_filter.velocity_mps.forward = 0.0f;
+        g_odometer_filter.velocity_mps.strafe = 0.0f;
+        g_odometer_filter.prev_encoder_velocity_mps = raw_encoder_velocity;
+        g_odometer_filter.yaw_zero_rad = yaw_now_rad;
+        g_odometer_filter.prev_yaw_delta_rad = 0.0f;
+        g_odometer_filter.alpha = 0.0f;
+        g_odometer_filter.yaw_ready = 1U;
+        g_odometer_filter.startup_hold_ticks--;
+        return;
+    }
 
     accel_raw.forward = 0.0f;
     accel_raw.strafe = 0.0f;

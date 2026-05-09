@@ -12,13 +12,13 @@
 #define TARGET_FOLLOW_MODE_TARGET_REACHED      (3U)
 
 #define TARGET_FOLLOW_TAG_GUARD_RADIUS_M       (1.00f)
-#define TARGET_FOLLOW_TARGET_MATCH_RADIUS_M    (0.50f)
+#define TARGET_FOLLOW_TARGET_MATCH_RADIUS_M    (1.00f)
 #define TARGET_FOLLOW_REACHED_RADIUS_M         (0.08f)
 #define TARGET_FOLLOW_POSITION_DEADBAND_M      (0.02f)
 #define TARGET_FOLLOW_OUTPUT_LIMIT             (400.0f)
-#define TARGET_FOLLOW_POS_KP                   (2.1f)
+#define TARGET_FOLLOW_POS_KP                   (120.0f)
 #define TARGET_FOLLOW_POS_KI                   (0.0f)
-#define TARGET_FOLLOW_POS_KD                   (0.9f)
+#define TARGET_FOLLOW_POS_KD                   (30.0f)
 #define TARGET_FOLLOW_POS_I_LIMIT              (0.0f)
 #define TARGET_FOLLOW_UWB_TIMEOUT_MS           (160U)
 
