@@ -189,10 +189,12 @@ int main(void)
 
         if(timer_10ms_flag)
         {
-            float uwb_filt_x_cm = 0.0f;
-            float uwb_filt_y_cm = 0.0f;
-            float follow_target_x_m = 0.0f;
-            float follow_target_y_m = 0.0f;
+            float imu_acc_x_g = 0.0f;
+            float imu_acc_y_g = 0.0f;
+            float imu_acc_z_g = 0.0f;
+            float imu_gyro_x_dps = 0.0f;
+            float imu_gyro_y_dps = 0.0f;
+            float imu_gyro_z_dps = 0.0f;
 
             timer_10ms_flag = 0;
 
@@ -200,21 +202,6 @@ int main(void)
             odometer_update();
             telemetry_timestamp_count++;
             system_time_ms = telemetry_timestamp_count * 10U;
-            (void)ALX_AOA_GetFilteredXY(&uwb_filt_x_cm, &uwb_filt_y_cm);
-
-            if(TARGET_FOLLOW_MODE_GOTO_TARGET == g_target_follow_state.mode)
-            {
-                if(g_target_follow_state.active_index < TARGET_FOLLOW_MAX_TARGETS)
-                {
-                    follow_target_x_m = g_target_follow_state.targets[g_target_follow_state.active_index].strafe_m;
-                    follow_target_y_m = g_target_follow_state.targets[g_target_follow_state.active_index].forward_m;
-                }
-            }
-            else
-            {
-                follow_target_x_m = g_target_follow_state.tag_relative_strafe_m;
-                follow_target_y_m = g_target_follow_state.tag_relative_forward_m;
-            }
 
             if(0U != g_wireless_control_state.control_enabled)
             {
@@ -224,22 +211,29 @@ int main(void)
             {
                 control_cascade_stop();
             }
-            wifi_justfloat((float)telemetry_timestamp_count,
-                           uwb_filt_x_cm,
-                           uwb_filt_y_cm,
-                           g_uwb_follow_state.x_pid_p_term,
-                           g_uwb_follow_state.x_pid_i_term,
-                           g_uwb_follow_state.x_pid_d_term,
-                           g_uwb_follow_state.y_pid_p_term,
-                           g_uwb_follow_state.y_pid_i_term,
-                           g_uwb_follow_state.y_pid_d_term,
-                           g_target_follow_state.target_pid_strafe_output,
-                           g_target_follow_state.target_pid_forward_output,
+
+            imu_acc_x_g = g_imufilter_1000hz.accx;
+            imu_acc_y_g = g_imufilter_1000hz.accy;
+            imu_acc_z_g = g_imufilter_1000hz.accz;
+            imu_gyro_x_dps = g_imufilter_1000hz.gyrox;
+            imu_gyro_y_dps = g_imufilter_1000hz.gyroy;
+            imu_gyro_z_dps = g_imufilter_1000hz.gyroz;
+            wifi_justfloat((float)system_time_ms,
+                           imu_acc_x_g,
+                           imu_acc_y_g,
+                           imu_acc_z_g,
+                           imu_gyro_x_dps,
+                           imu_gyro_y_dps,
+                           imu_gyro_z_dps,
+                           g_euler.roll,
+                           g_euler.pitch,
                            g_euler.yaw,
-                           follow_target_x_m,
-                           follow_target_y_m,
                            g_odometer.strafe_distance,
-                           g_odometer.forward_distance);
+                           g_odometer.forward_distance,
+                           encoder_get_left_front_filtered_count(),
+                           encoder_get_right_front_filtered_count(),
+                           encoder_get_left_rear_filtered_count(),
+                           encoder_get_right_rear_filtered_count());
         }
         wifi_core_Poll();
 
