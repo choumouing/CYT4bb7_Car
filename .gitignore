@@ -12,6 +12,12 @@
 *.dep
 *.ewd
 
+# Keep required IAR project/workspace/debug configuration files.
+!project/iar/cyt4bb7.eww
+!project/iar/project_config/*.eww
+!project/iar/project_config/*.ewd
+!project/iar/project_config/*.ewt
+
 # IAR 编译输出目录
 Debug/
 Debug_m7_0/
@@ -174,6 +180,7 @@ core
 # 如果有大型测试数据或二进制资源，可以在此添加
 # test_data/
 # resources/*.bin
+temp/gitee_seekfree_cyt4bb7_library/
 
 # ============================================
 # 保留空目录的占位文件（如果需要）

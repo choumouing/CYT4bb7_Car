@@ -37,7 +37,7 @@
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
-#include "uwb/ALX_AOA.h"
+#include "HW_Drivers/UWB/ALX_AOA.h"
 
 extern volatile uint8_t timer_10ms_flag;
 extern volatile uint8_t timer_20ms_flag;
