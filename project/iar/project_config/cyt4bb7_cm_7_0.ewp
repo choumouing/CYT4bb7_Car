@@ -1161,6 +1161,15 @@
             </file>
         </group>
         <group>
+            <name>Beacon_Detection</name>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Beacon_Detection\beacon_detection.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Beacon_Detection\beacon_detection.h</name>
+            </file>
+        </group>
+        <group>
             <name>encoder</name>
             <file>
                 <name>$PROJ_DIR$\..\..\code\encoder\encoder_control.c</name>

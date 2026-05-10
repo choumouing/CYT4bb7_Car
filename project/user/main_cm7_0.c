@@ -36,6 +36,7 @@
 #include "zf_common_headfile.h"
 #include "Attitude/Accel_Calibration.h"
 #include "Attitude/IMU_TOP.h"
+#include "Beacon_Detection/beacon_detection.h"
 #include "control/control.h"
 #include "encoder/encoder_control.h"
 #include "menu/menu_config.h"
@@ -83,6 +84,7 @@ int main(void)
     mecanum_motor_init();
     encoder_control_init();
     odometer_init();
+    beacon_detection_init();
     IMU_Init_All();
     AccelCalibration_Init();
     IMUCalib_Init();
@@ -200,6 +202,7 @@ int main(void)
 
             encoder_update();
             odometer_update();
+            beacon_detection_update();
             telemetry_timestamp_count++;
             system_time_ms = telemetry_timestamp_count * 10U;
 
