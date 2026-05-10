@@ -50,6 +50,19 @@
 #define ODOMETER_BUMP_NORM_MIN_G               (0.85f)
 #define ODOMETER_BUMP_NORM_MAX_G               (1.15f)
 
+#define ODOMETER_ROUGH_HISTORY_SIZE            (11U)
+#define ODOMETER_ROUGH_TILT_DEG                (3.8f)
+#define ODOMETER_ROUGH_GYRO_DPS                (80.0f)
+#define ODOMETER_ROUGH_WHEEL_COUNT             (20.0f)
+#define ODOMETER_ROUGH_DUAL_AXIS_MPS           (0.05f)
+#define ODOMETER_ROUGH_DUAL_RATIO              (0.10f)
+#define ODOMETER_WHEEL_HIGHPASS_TAU_S          (0.08f)
+#define ODOMETER_ROUGH_PRELOAD_TICKS           (20U)
+#define ODOMETER_ROUGH_RELAX_HOLD_TICKS        (70U)
+#define ODOMETER_ROUGH_RELAX_EDGE_TICKS        (21U)
+#define ODOMETER_ROUGH_RELAX_FORWARD_GAIN      (0.66f)
+#define ODOMETER_ROUGH_RELAX_STRAFE_GAIN       (0.59f)
+
 typedef struct
 {
     float forward;
@@ -63,11 +76,20 @@ typedef struct
     odometer_vec2_t accel_bias_mps2;
     float yaw_zero_rad;
     float prev_yaw_delta_rad;
+    float roll_zero_rad;
+    float pitch_zero_rad;
     float prev_roll_rad;
     float prev_pitch_rad;
     float alpha;
+    float rough_tilt_history_deg[ODOMETER_ROUGH_HISTORY_SIZE];
+    float rough_gyro_history_dps[ODOMETER_ROUGH_HISTORY_SIZE];
+    float rough_wheel_history_count[ODOMETER_ROUGH_HISTORY_SIZE];
+    float wheel_count_lpf[4];
     uint16_t bump_hold_ticks;
+    uint16_t rough_relax_ticks;
     uint16_t startup_hold_ticks;
+    uint8_t rough_history_index;
+    uint8_t rough_history_count;
     uint8_t tilt_ready;
     uint8_t yaw_ready;
 } odometer_filter_state_t;
@@ -180,6 +202,90 @@ static odometer_vec2_t odometer_get_encoder_delta_count(void)
     return count;
 }
 
+static float odometer_get_encoder_wheel_highpass_count(void)
+{
+    float left_front;
+    float right_front;
+    float left_rear;
+    float right_rear;
+    float highpass_abs_max;
+    float beta;
+
+    left_front = encoder_get_left_front_filtered_count();
+    right_front = encoder_get_right_front_filtered_count();
+    left_rear = encoder_get_left_rear_filtered_count();
+    right_rear = encoder_get_right_rear_filtered_count();
+    beta = ODOMETER_UPDATE_DT_S / (ODOMETER_WHEEL_HIGHPASS_TAU_S + ODOMETER_UPDATE_DT_S);
+
+    g_odometer_filter.wheel_count_lpf[0] += beta * (left_front - g_odometer_filter.wheel_count_lpf[0]);
+    g_odometer_filter.wheel_count_lpf[1] += beta * (right_front - g_odometer_filter.wheel_count_lpf[1]);
+    g_odometer_filter.wheel_count_lpf[2] += beta * (left_rear - g_odometer_filter.wheel_count_lpf[2]);
+    g_odometer_filter.wheel_count_lpf[3] += beta * (right_rear - g_odometer_filter.wheel_count_lpf[3]);
+
+    highpass_abs_max = odometer_absf(left_front - g_odometer_filter.wheel_count_lpf[0]);
+    highpass_abs_max = odometer_maxf(highpass_abs_max,
+                                     odometer_absf(right_front - g_odometer_filter.wheel_count_lpf[1]));
+    highpass_abs_max = odometer_maxf(highpass_abs_max,
+                                     odometer_absf(left_rear - g_odometer_filter.wheel_count_lpf[2]));
+    highpass_abs_max = odometer_maxf(highpass_abs_max,
+                                     odometer_absf(right_rear - g_odometer_filter.wheel_count_lpf[3]));
+    return highpass_abs_max;
+}
+
+static void odometer_rough_history_clear(void)
+{
+    uint8_t i;
+
+    for(i = 0U; i < ODOMETER_ROUGH_HISTORY_SIZE; i++)
+    {
+        g_odometer_filter.rough_tilt_history_deg[i] = 0.0f;
+        g_odometer_filter.rough_gyro_history_dps[i] = 0.0f;
+        g_odometer_filter.rough_wheel_history_count[i] = 0.0f;
+    }
+
+    for(i = 0U; i < 4U; i++)
+    {
+        g_odometer_filter.wheel_count_lpf[i] = 0.0f;
+    }
+
+    g_odometer_filter.rough_history_index = 0U;
+    g_odometer_filter.rough_history_count = 0U;
+}
+
+static void odometer_rough_history_push(float tilt_deg,
+                                        float gyro_dps,
+                                        float wheel_count)
+{
+    g_odometer_filter.rough_tilt_history_deg[g_odometer_filter.rough_history_index] = tilt_deg;
+    g_odometer_filter.rough_gyro_history_dps[g_odometer_filter.rough_history_index] = gyro_dps;
+    g_odometer_filter.rough_wheel_history_count[g_odometer_filter.rough_history_index] = wheel_count;
+
+    g_odometer_filter.rough_history_index++;
+    if(g_odometer_filter.rough_history_index >= ODOMETER_ROUGH_HISTORY_SIZE)
+    {
+        g_odometer_filter.rough_history_index = 0U;
+    }
+
+    if(g_odometer_filter.rough_history_count < ODOMETER_ROUGH_HISTORY_SIZE)
+    {
+        g_odometer_filter.rough_history_count++;
+    }
+}
+
+static float odometer_rough_history_max(const float *history)
+{
+    float value_max;
+    uint8_t i;
+
+    value_max = 0.0f;
+    for(i = 0U; i < g_odometer_filter.rough_history_count; i++)
+    {
+        value_max = odometer_maxf(value_max, history[i]);
+    }
+
+    return value_max;
+}
+
 static odometer_vec2_t odometer_get_encoder_velocity(odometer_vec2_t delta_count)
 {
     odometer_vec2_t velocity;
@@ -190,7 +296,9 @@ static odometer_vec2_t odometer_get_encoder_velocity(odometer_vec2_t delta_count
 }
 
 static void odometer_update_accel_bias(odometer_vec2_t encoder_velocity,
-                                       odometer_vec2_t accel_mps2)
+                                       odometer_vec2_t accel_mps2,
+                                       float *gyro_norm_dps_out,
+                                       float *tilt_rate_dps_out)
 {
     float accel_x_g;
     float accel_y_g;
@@ -224,11 +332,20 @@ static void odometer_update_accel_bias(odometer_vec2_t encoder_velocity,
     roll_rad = g_euler.roll * ODOMETER_DEG_TO_RAD;
     pitch_rad = g_euler.pitch * ODOMETER_DEG_TO_RAD;
 
+    if(gyro_norm_dps_out != 0)
+    {
+        *gyro_norm_dps_out = gyro_norm_dps;
+    }
+
     if(0U == g_odometer_filter.tilt_ready)
     {
         g_odometer_filter.prev_roll_rad = roll_rad;
         g_odometer_filter.prev_pitch_rad = pitch_rad;
         g_odometer_filter.tilt_ready = 1U;
+        if(tilt_rate_dps_out != 0)
+        {
+            *tilt_rate_dps_out = 0.0f;
+        }
         return;
     }
 
@@ -236,6 +353,10 @@ static void odometer_update_accel_bias(odometer_vec2_t encoder_velocity,
     pitch_step_rad = odometer_normalize_angle(pitch_rad - g_odometer_filter.prev_pitch_rad);
     tilt_rate_dps = odometer_vec3_norm(roll_step_rad, pitch_step_rad, 0.0f) *
                     ODOMETER_RAD_TO_DEG / ODOMETER_UPDATE_DT_S;
+    if(tilt_rate_dps_out != 0)
+    {
+        *tilt_rate_dps_out = tilt_rate_dps;
+    }
 
     bump_sample = ((gyro_norm_dps > ODOMETER_BUMP_GYRO_DPS) ||
                    (tilt_rate_dps > ODOMETER_BUMP_TILT_RATE_DPS) ||
@@ -273,6 +394,72 @@ static void odometer_update_accel_bias(odometer_vec2_t encoder_velocity,
     g_odometer_filter.prev_pitch_rad = pitch_rad;
 }
 
+static void odometer_update_rough_relax_state(odometer_vec2_t raw_encoder_velocity,
+                                              float gyro_norm_dps,
+                                              float tilt_rate_dps)
+{
+    float tilt_deg;
+    float roll_delta_rad;
+    float pitch_delta_rad;
+    float wheel_highpass_count;
+    float tilt_window_max;
+    float gyro_window_max;
+    float wheel_window_max;
+    float dual_axis_speed;
+    float speed_norm;
+    float dual_axis_ratio;
+
+    roll_delta_rad = odometer_normalize_angle((g_euler.roll * ODOMETER_DEG_TO_RAD) -
+                                              g_odometer_filter.roll_zero_rad);
+    pitch_delta_rad = odometer_normalize_angle((g_euler.pitch * ODOMETER_DEG_TO_RAD) -
+                                               g_odometer_filter.pitch_zero_rad);
+    tilt_deg = odometer_vec3_norm(roll_delta_rad, pitch_delta_rad, 0.0f) * ODOMETER_RAD_TO_DEG;
+    wheel_highpass_count = odometer_get_encoder_wheel_highpass_count();
+    odometer_rough_history_push(tilt_deg, gyro_norm_dps, wheel_highpass_count);
+
+    tilt_window_max = odometer_rough_history_max(g_odometer_filter.rough_tilt_history_deg);
+    gyro_window_max = odometer_rough_history_max(g_odometer_filter.rough_gyro_history_dps);
+    wheel_window_max = odometer_rough_history_max(g_odometer_filter.rough_wheel_history_count);
+    dual_axis_speed = odometer_minf(odometer_absf(raw_encoder_velocity.forward),
+                                   odometer_absf(raw_encoder_velocity.strafe));
+    speed_norm = odometer_vec_norm(raw_encoder_velocity);
+    dual_axis_ratio = dual_axis_speed / (speed_norm + ODOMETER_EPSILON);
+
+    if((dual_axis_speed > ODOMETER_ROUGH_DUAL_AXIS_MPS) &&
+       (dual_axis_ratio > ODOMETER_ROUGH_DUAL_RATIO) &&
+       (tilt_window_max > ODOMETER_ROUGH_TILT_DEG) &&
+       (gyro_window_max > ODOMETER_ROUGH_GYRO_DPS) &&
+       (wheel_window_max > ODOMETER_ROUGH_WHEEL_COUNT))
+    {
+        g_odometer_filter.rough_relax_ticks =
+            ODOMETER_ROUGH_PRELOAD_TICKS + ODOMETER_ROUGH_RELAX_HOLD_TICKS;
+    }
+    else if(g_odometer_filter.rough_relax_ticks > 0U)
+    {
+        g_odometer_filter.rough_relax_ticks--;
+    }
+
+    (void)tilt_rate_dps;
+}
+
+static float odometer_get_rough_relax_weight(void)
+{
+    float ticks;
+
+    if(0U == g_odometer_filter.rough_relax_ticks)
+    {
+        return 0.0f;
+    }
+
+    if(g_odometer_filter.rough_relax_ticks >= ODOMETER_ROUGH_RELAX_EDGE_TICKS)
+    {
+        return 1.0f;
+    }
+
+    ticks = (float)g_odometer_filter.rough_relax_ticks;
+    return odometer_clampf(ticks / (float)ODOMETER_ROUGH_RELAX_EDGE_TICKS, 0.0f, 1.0f);
+}
+
 void odometer_init(void)
 {
     odometer_reset();
@@ -292,11 +479,15 @@ void odometer_reset(void)
     g_odometer_filter.accel_bias_mps2.strafe = 0.0f;
     g_odometer_filter.yaw_zero_rad = 0.0f;
     g_odometer_filter.prev_yaw_delta_rad = 0.0f;
+    g_odometer_filter.roll_zero_rad = 0.0f;
+    g_odometer_filter.pitch_zero_rad = 0.0f;
     g_odometer_filter.prev_roll_rad = 0.0f;
     g_odometer_filter.prev_pitch_rad = 0.0f;
     g_odometer_filter.alpha = 0.0f;
     g_odometer_filter.bump_hold_ticks = 0U;
+    g_odometer_filter.rough_relax_ticks = 0U;
     g_odometer_filter.startup_hold_ticks = ODOMETER_STARTUP_HOLD_TICKS;
+    odometer_rough_history_clear();
     g_odometer_filter.tilt_ready = 0U;
     g_odometer_filter.yaw_ready = 0U;
 }
@@ -334,6 +525,9 @@ void odometer_update(void)
     float yaw_for_projection;
     float cos_yaw;
     float sin_yaw;
+    float gyro_norm_dps;
+    float tilt_rate_dps;
+    float rough_relax_weight;
 
     delta_count = odometer_get_encoder_delta_count();
     encoder_velocity = odometer_get_encoder_velocity(delta_count);
@@ -350,10 +544,14 @@ void odometer_update(void)
         g_odometer_filter.prev_encoder_velocity_mps = raw_encoder_velocity;
         g_odometer_filter.yaw_zero_rad = yaw_now_rad;
         g_odometer_filter.prev_yaw_delta_rad = 0.0f;
+        g_odometer_filter.roll_zero_rad = g_euler.roll * ODOMETER_DEG_TO_RAD;
+        g_odometer_filter.pitch_zero_rad = g_euler.pitch * ODOMETER_DEG_TO_RAD;
         g_odometer_filter.prev_roll_rad = g_euler.roll * ODOMETER_DEG_TO_RAD;
         g_odometer_filter.prev_pitch_rad = g_euler.pitch * ODOMETER_DEG_TO_RAD;
         g_odometer_filter.alpha = 0.0f;
         g_odometer_filter.bump_hold_ticks = 0U;
+        g_odometer_filter.rough_relax_ticks = 0U;
+        odometer_rough_history_clear();
         g_odometer_filter.tilt_ready = 1U;
         g_odometer_filter.yaw_ready = 1U;
         g_odometer_filter.startup_hold_ticks--;
@@ -364,7 +562,10 @@ void odometer_update(void)
     accel_raw.strafe = 0.0f;
     accel_z_mps2 = 0.0f;
     AccelCalibration_GetBodyAccelMps2(&accel_raw.forward, &accel_raw.strafe, &accel_z_mps2);
-    odometer_update_accel_bias(encoder_velocity, accel_raw);
+    gyro_norm_dps = 0.0f;
+    tilt_rate_dps = 0.0f;
+    odometer_update_accel_bias(encoder_velocity, accel_raw, &gyro_norm_dps, &tilt_rate_dps);
+    odometer_update_rough_relax_state(raw_encoder_velocity, gyro_norm_dps, tilt_rate_dps);
     accel_corrected.forward = accel_raw.forward - g_odometer_filter.accel_bias_mps2.forward;
     accel_corrected.strafe = accel_raw.strafe - g_odometer_filter.accel_bias_mps2.strafe;
 
@@ -433,6 +634,16 @@ void odometer_update(void)
                                                       ODOMETER_DEAD_FORWARD_MPS);
     encoder_velocity.strafe = odometer_soft_deadband(encoder_velocity.strafe * scale_strafe,
                                                      ODOMETER_DEAD_STRAFE_MPS);
+    rough_relax_weight = odometer_get_rough_relax_weight();
+    if(rough_relax_weight > 0.0f)
+    {
+        encoder_velocity.forward +=
+            (raw_encoder_velocity.forward - encoder_velocity.forward) *
+            ODOMETER_ROUGH_RELAX_FORWARD_GAIN * rough_relax_weight;
+        encoder_velocity.strafe +=
+            (raw_encoder_velocity.strafe - encoder_velocity.strafe) *
+            ODOMETER_ROUGH_RELAX_STRAFE_GAIN * rough_relax_weight;
+    }
 
     risk = odometer_clampf((0.30f * odometer_maxf(qvx, qvy)) +
                            (0.45f * odometer_maxf(qrx, qry)) +
