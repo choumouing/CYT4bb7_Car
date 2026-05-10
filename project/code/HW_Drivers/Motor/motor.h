@@ -1,5 +1,7 @@
+#include "zf_common_headfile.h"
 #ifndef __MOTOR_H
 #define __MOTOR_H
+
 
 // 电机1 - 左前 (Left Front)
 #define MOTOR_M2_DIR        (P10_3)
@@ -75,5 +77,6 @@ void mecanum_motor_set_all(int16_t m1, int16_t m2, int16_t m3, int16_t m4);
  * @brief  停止所有电机
  */
 void mecanum_motor_stop(void);
+
 #endif
 

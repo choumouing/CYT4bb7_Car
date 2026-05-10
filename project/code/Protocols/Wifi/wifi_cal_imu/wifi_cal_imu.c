@@ -6,11 +6,7 @@
 
 #include "wifi_cal_imu.h"
 
-#include <stdio.h>
-#include <string.h>
 
-#include "Estimation/Attitude/Accel_Calibration.h"
-#include "Protocols/Wifi/wifi_cmd/wifi_cmd.h"
 
 /*
  * 函数功能: 判断当前是否允许执行 IMU 校准写操作

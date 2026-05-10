@@ -1,7 +1,8 @@
+#include "zf_common_headfile.h"
 #ifndef _ODOMETER_H_
 #define _ODOMETER_H_
 
-#include "zf_common_headfile.h"
+
 
 typedef struct
 {

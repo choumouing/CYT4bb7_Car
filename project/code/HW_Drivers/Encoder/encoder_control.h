@@ -8,11 +8,11 @@
 *   3. 速度使用周期原始计数，里程使用累计计数
 ********************************************************************************************************************/
 
+#include "zf_common_headfile.h"
 #ifndef _ENCODER_CONTROL_H_
 #define _ENCODER_CONTROL_H_
 
-#include "zf_common_headfile.h"
-#include "zf_driver_encoder.h"
+
 
 // ========================== 配置参数 ==========================
 
@@ -182,6 +182,5 @@ void encoder_clear_left_rear_total(void);
  * @return 无
  */
 void encoder_clear_right_rear_total(void);
-
 
 #endif // _ENCODER_CONTROL_H_

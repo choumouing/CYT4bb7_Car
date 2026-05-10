@@ -1,6 +1,5 @@
 #include "IMU_Filtter.h"
 
-#include <math.h>
 
 #define IMU_FILTER_PI  (3.14159265359f)
 

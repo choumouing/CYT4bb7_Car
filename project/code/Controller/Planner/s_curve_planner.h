@@ -28,10 +28,11 @@
 * @date    2025-12-10
 ********************************************************************************************************************/
 
+#include "zf_common_headfile.h"
 #ifndef _S_CURVE_PLANNER_H_
 #define _S_CURVE_PLANNER_H_
 
-#include "zf_common_headfile.h"
+
 
 /**
  * @brief 7段S曲线速度规划器数据结构

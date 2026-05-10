@@ -1246,6 +1246,15 @@
                     <name>$PROJ_DIR$\..\..\code\Controller\Modes\uwb_follow.h</name>
                 </file>
             </group>
+            <group>
+                <name>Scheduler</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Controller\Scheduler\car_loop.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Controller\Scheduler\car_loop.h</name>
+                </file>
+            </group>
         </group>
         <group>
             <name>Menu</name>

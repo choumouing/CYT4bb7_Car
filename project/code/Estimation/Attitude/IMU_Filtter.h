@@ -1,7 +1,8 @@
+#include "zf_common_headfile.h"
 #ifndef IMU_FILTTER_H_
 #define IMU_FILTTER_H_
 
-#include <stdint.h>
+
 
 #ifdef __cplusplus
 extern "C" {

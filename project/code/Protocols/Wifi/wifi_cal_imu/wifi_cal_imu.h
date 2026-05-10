@@ -4,10 +4,11 @@
  * 职责: 解析 imu 文本命令，并转接到 Accel_Calibration 校准接口
  *****************************************************************************/
 
+#include "zf_common_headfile.h"
 #ifndef WIFI_CAL_IMU_H
 #define WIFI_CAL_IMU_H
 
-#include "zf_common_headfile.h"
+
 
 /*
  * 函数功能: 初始化 WiFi IMU 校准命令模块，并注册校准文本回传回调

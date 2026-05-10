@@ -1,7 +1,8 @@
+#include "zf_common_headfile.h"
 #ifndef _BEACON_DETECTION_H_
 #define _BEACON_DETECTION_H_
 
-#include "zf_common_headfile.h"
+
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,7 +1,8 @@
+#include "zf_common_headfile.h"
 #ifndef _WIRELESS_CONTROL_H_
 #define _WIRELESS_CONTROL_H_
 
-#include "zf_common_headfile.h"
+
 
 #define MAX_CONTROL_SPEED                   (600)
 #define MAX_ANGULAR_SPEED                   (2.0f)

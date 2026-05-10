@@ -4,10 +4,11 @@
  * 职责: 负责 wifi_spi 初始化、UDP socket 建立、文本命令收发与基础文本解析工具
  *****************************************************************************/
 
+#include "zf_common_headfile.h"
 #ifndef WIFI_CMD_H
 #define WIFI_CMD_H
 
-#include "zf_common_headfile.h"
+
 
 #ifndef WIFI_SSID_TEST
 #define WIFI_SSID_TEST      "HDUASC_saidao"      /* WiFi 路由器 SSID */

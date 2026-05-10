@@ -28,13 +28,11 @@
  * SOFTWARE.
  */
 
+#include "zf_common_headfile.h"
 #ifndef CODE_ICM42688_H_
 #define CODE_ICM42688_H_
 
-#include "zf_common_typedef.h"
-#include "zf_driver_delay.h"
-#include "zf_driver_gpio.h"
-#include "zf_driver_spi.h"
+
 
 /* 飞控默认配置：1kHz 输出速率（Betaflight 风格） */
 #define ICM42688_SAMPLE_RATE_HZ          1000   /* IMU 默认输出速率，单位 Hz */

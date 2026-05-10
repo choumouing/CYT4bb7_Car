@@ -1,6 +1,5 @@
 #include "MahonyAhrs.h"
 
-#include <math.h>
 
 /* 本地差异层: Mahony 解算前对 Z 轴陀螺输入施加对称死区，单位 dps */
 #define MAHONY_GYRO_Z_DEADBAND_DPS  0.2f

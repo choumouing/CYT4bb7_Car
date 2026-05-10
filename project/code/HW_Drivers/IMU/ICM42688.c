@@ -28,7 +28,6 @@
  */
 
 #include "ICM42688.h"
-#include <stdio.h>
 
 /*
  * ICM42688 默认配置（1kHz）

@@ -4,10 +4,11 @@
  * 职责: 通过 wifi_cmd 提供的发送接口输出 VOFA JustFloat 二进制遥测
  *****************************************************************************/
 
+#include "zf_common_headfile.h"
 #ifndef WIFI_JUSTFLOAT_H
 #define WIFI_JUSTFLOAT_H
 
-#include "zf_common_headfile.h"
+
 
 #define WIFI_JUSTFLOAT_MAX_FLOAT_NUM       (16U)  /* JustFloat 最大通道数 */
 

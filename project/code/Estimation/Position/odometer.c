@@ -1,9 +1,5 @@
 #include "odometer.h"
 
-#include "Estimation/Attitude/Accel_Calibration.h"
-#include "Estimation/Attitude/IMU_TOP.h"
-#include "HW_Drivers/Encoder/encoder_control.h"
-#include <math.h>
 
 #define ODOMETER_UPDATE_DT_S                (0.01f)
 #define ODOMETER_STARTUP_HOLD_TICKS         (50U)

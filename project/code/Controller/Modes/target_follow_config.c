@@ -1,6 +1,5 @@
 #include "target_follow_config.h"
 
-#include "Controller/Modes/target_follow.h"
 
 void target_follow_load_default_targets(void)
 {

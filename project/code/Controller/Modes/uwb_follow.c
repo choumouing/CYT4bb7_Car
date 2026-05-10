@@ -1,8 +1,5 @@
 #include "uwb_follow.h"
 
-#include "Controller/PID/pid.h"
-#include "Menu/menu_config.h"
-#include "HW_Drivers/UWB/ALX_AOA.h"
 
 uwb_follow_state_t g_uwb_follow_state = {0};
 

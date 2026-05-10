@@ -4,10 +4,11 @@
  * 职责: 统一初始化与轮询 WiFi SPI 文本命令、IMU 校准命令和 JustFloat 遥测链路
  *****************************************************************************/
 
+#include "zf_common_headfile.h"
 #ifndef WIFI_CORE_H
 #define WIFI_CORE_H
 
-#include "zf_common_headfile.h"
+
 
 /*
  * 函数功能: 初始化 WiFi SPI 功能栈。

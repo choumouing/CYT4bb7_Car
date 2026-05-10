@@ -1,7 +1,8 @@
+#include "zf_common_headfile.h"
 #ifndef _TARGET_FOLLOW_H_
 #define _TARGET_FOLLOW_H_
 
-#include "zf_common_headfile.h"
+
 
 #define TARGET_FOLLOW_MAX_TARGETS              (8U)
 #define TARGET_FOLLOW_INVALID_INDEX            (0xFFU)

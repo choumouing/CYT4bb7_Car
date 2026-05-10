@@ -1,5 +1,4 @@
-#include "zf_common_headfile.h"
-#include "Controller/PID/pid.h"
+#include "pid.h"
 
 
 void PositionalPID_Init(PositionalPID* pid,float kp_2,float kp_1,float ki,float kd,float i_limit,float output_limit) 

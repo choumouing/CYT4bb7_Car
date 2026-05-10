@@ -1,6 +1,4 @@
 #include "ALX_AOA.h"
-#include "math.h"
-#include "string.h"
 
 /*
 Position frame layout from vendor STM32F1 demo, big-endian wire fields:
