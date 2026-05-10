@@ -4,11 +4,11 @@
 * 功能：使用四个增量式PID实例实现四个电机速度闭环控制，PID参数由菜单统一配置
 ********************************************************************************************************************/
 
+#include "zf_common_headfile.h"
 #ifndef __CONTROL_H__
 #define __CONTROL_H__
 
-#include "zf_common_headfile.h"
-#include "Controller/PID/pid.h"
+
 
 extern IncrementPID wheel_left_front_pid;
 extern IncrementPID wheel_right_front_pid;

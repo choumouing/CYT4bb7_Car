@@ -7,10 +7,12 @@
  *   2) 输出姿态四元数与欧拉角
  *   3) 内部计算默认对齐 INAV 纯 6 轴姿态算法
  ********************************************************************/
+#include "zf_common_headfile.h"
+
 #ifndef MAHONY_AHRS_H
 #define MAHONY_AHRS_H
 
-#include <stdint.h>
+
 
 /* ======================== 采样率与物理常数 ======================== */
 #define MAHONY_SAMPLE_RATE                    1000.0f   /* 姿态解算默认采样率，单位 Hz */

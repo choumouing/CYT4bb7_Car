@@ -1,6 +1,5 @@
 #include "wireless_control.h"
 
-#include "zf_device_uart_receiver.h"
 
 typedef enum
 {

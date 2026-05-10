@@ -6,8 +6,6 @@
 
 #include "wifi_core.h"
 
-#include "Protocols/Wifi/wifi_cmd/wifi_cmd.h"
-#include "Protocols/Wifi/wifi_justfloat/wifi_justfloat.h"
 
 static uint8_t s_wifi_core_inited = 0U;
 

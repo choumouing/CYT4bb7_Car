@@ -1,8 +1,4 @@
 #include "IMU_TOP.h"
-#include "Accel_Calibration.h"
-#include "zf_common_headfile.h"
-#include <stdio.h>
-#include <math.h>
 
 #define IMU_DEG_TO_RAD (0.017453292519943295f)
 

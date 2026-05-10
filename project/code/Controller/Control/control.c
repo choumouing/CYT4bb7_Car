@@ -1,11 +1,4 @@
 #include "control.h"
-#include "Estimation/Attitude/IMU_Filtter.h"
-#include "Estimation/Attitude/IMU_TOP.h"
-#include "HW_Drivers/IMU/ICM42688.h"
-#include "Controller/PID/pid.h"
-#include "HW_Drivers/Encoder/encoder_control.h"
-#include "Menu/menu_config.h"
-#include "HW_Drivers/Motor/motor.h"
 
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)
 #define CONTROL_PI         (3.14159265358979323846f)

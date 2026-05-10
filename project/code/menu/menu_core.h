@@ -8,14 +8,11 @@
 * 日期：2025年
 ********************************************************************************************************************/
 
+#include "zf_common_headfile.h"
 #ifndef _MENU_CORE_H_
 #define _MENU_CORE_H_
 
-#include "zf_common_typedef.h"
-#include "zf_common_font.h"
-#include "zf_device_ips114.h"
-#include "zf_driver_flash.h"
-#include "zf_device_key.h"
+
 
 // 外部变量声明
 extern volatile uint8_t timer_10ms_flag;     // 10ms定时器标志

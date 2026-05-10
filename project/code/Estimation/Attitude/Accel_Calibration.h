@@ -6,11 +6,11 @@
  *           2. 加速度椭球校准
  ********************************************************************/
 
+#include "zf_common_headfile.h"
 #ifndef ACCEL_CALIBRATION_H_
 #define ACCEL_CALIBRATION_H_
 
-#include <stdbool.h>
-#include <stdint.h>
+
 
 #ifdef __cplusplus
 extern "C" {

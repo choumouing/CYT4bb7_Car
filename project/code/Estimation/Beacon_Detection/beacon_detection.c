@@ -1,9 +1,5 @@
 #include "beacon_detection.h"
 
-#include "Estimation/Attitude/Accel_Calibration.h"
-#include "Estimation/Attitude/IMU_TOP.h"
-#include "HW_Drivers/Encoder/encoder_control.h"
-#include <math.h>
 
 #define BEACON_DETECTION_DT_S                  (0.01f)
 #define BEACON_DETECTION_FORWARD_COUNT_PER_M   (11287.0f)

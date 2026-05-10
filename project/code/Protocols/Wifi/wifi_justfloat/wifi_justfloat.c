@@ -6,10 +6,7 @@
 
 #include "wifi_justfloat.h"
 
-#include <stdarg.h>
-#include <string.h>
 
-#include "Protocols/Wifi/wifi_cmd/wifi_cmd.h"
 
 #define WIFI_JUSTFLOAT_TAIL_0      (0x00U)       /* JustFloat 尾部字节 0 */
 #define WIFI_JUSTFLOAT_TAIL_1      (0x00U)       /* JustFloat 尾部字节 1 */

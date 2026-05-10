@@ -8,14 +8,7 @@
  ********************************************************************/
 
 #include "Accel_Calibration.h"
-#include "IMU_TOP.h"
-#include "zf_common_headfile.h"
 
-#include <float.h>
-#include <ctype.h>
-#include <math.h>
-#include <stdarg.h>
-#include <string.h>
 
 #define DEG_TO_RAD                               (0.017453292519943295f)
 

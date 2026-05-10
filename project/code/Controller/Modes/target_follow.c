@@ -1,11 +1,5 @@
 #include "target_follow.h"
 
-#include "Controller/Control/control.h"
-#include "Controller/PID/pid.h"
-#include "Estimation/Position/odometer.h"
-#include "HW_Drivers/UWB/ALX_AOA.h"
-#include "Controller/Modes/uwb_follow.h"
-#include <math.h>
 
 target_follow_state_t g_target_follow_state = {0};
 

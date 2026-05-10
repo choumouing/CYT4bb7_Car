@@ -1,8 +1,8 @@
+#include "zf_common_headfile.h"
 #ifndef _ALX_AOA_H_
 #define _ALX_AOA_H_
 
-#include "zf_common_typedef.h"
-#include "zf_driver_uart.h"
+
 
 #define ALX_AOA_UART_INDEX                 (UART_1)
 #define ALX_AOA_UART_TX_PIN                (UART1_TX_P04_1)

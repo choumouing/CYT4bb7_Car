@@ -6,12 +6,7 @@
 
 #include "wifi_cmd.h"
 
-#include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
 
-#include "zf_device_wifi_spi.h"
-#include "Protocols/Wifi/wifi_justfloat/wifi_justfloat.h"
 
 #define WIFI_CMD_TEXT_SEND_POLL_LIMIT   (20000U)
 

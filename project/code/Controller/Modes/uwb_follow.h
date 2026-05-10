@@ -1,7 +1,8 @@
+#include "zf_common_headfile.h"
 #ifndef UWB_FOLLOW_H
 #define UWB_FOLLOW_H
 
-#include "zf_common_headfile.h"
+
 
 #define UWB_FOLLOW_PERIOD_MS              (40U)
 #define UWB_FOLLOW_TIMEOUT_MS             (160U)
