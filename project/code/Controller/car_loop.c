@@ -57,6 +57,7 @@ void car_loop_init(void)
 static void car_loop_1000HZ(void)
 {
     IMU_Update_1000HZ();
+    control_yaw_rate_average_update_1000HZ();
 }
 
 static void car_loop_100HZ(void)

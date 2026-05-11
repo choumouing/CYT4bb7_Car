@@ -26,6 +26,7 @@ extern float control_yaw_rate_output;
 
 float control_get_current_yaw_angle(void);
 void control_yaw_hold_reset(void);
+void control_yaw_rate_average_update_1000HZ(void);
 
 /**
  * @brief 初始化四电机速度环

@@ -3,6 +3,7 @@
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)
 #define CONTROL_PI         (3.14159265358979323846f)
 #define CONTROL_TWO_PI     (6.28318530717958647692f)
+#define CONTROL_YAW_RATE_AVG_SAMPLE_COUNT (20U)
 
 IncrementPID wheel_left_front_pid;
 IncrementPID wheel_right_front_pid;
@@ -21,6 +22,12 @@ float control_yaw_rate_output = 0.0f;
 static float s_yaw_hold_target = 0.0f;
 static uint8 s_last_rotate_active = 0U;
 static uint8 s_yaw_hold_active = 0U;
+static float s_yaw_rate_sum_1000hz_dps = 0.0f;
+static float s_yaw_rate_raw_sum_1000hz_dps = 0.0f;
+static float s_yaw_rate_avg_20ms_dps = 0.0f;
+static float s_yaw_rate_raw_avg_20ms_dps = 0.0f;
+static uint8 s_yaw_rate_avg_count = 0U;
+static uint8 s_yaw_rate_avg_ready = 0U;
 
 static float control_normalize_angle_rad(float angle)
 {
@@ -47,6 +54,36 @@ void control_yaw_hold_reset(void)
     s_last_rotate_active = 0U;
     s_yaw_hold_active = 0U;
     s_yaw_hold_target = control_get_current_yaw_angle();
+}
+
+static void control_yaw_rate_average_reset(void)
+{
+    s_yaw_rate_sum_1000hz_dps = 0.0f;
+    s_yaw_rate_raw_sum_1000hz_dps = 0.0f;
+    s_yaw_rate_avg_20ms_dps = 0.0f;
+    s_yaw_rate_raw_avg_20ms_dps = 0.0f;
+    s_yaw_rate_avg_count = 0U;
+    s_yaw_rate_avg_ready = 0U;
+}
+
+void control_yaw_rate_average_update_1000HZ(void)
+{
+    s_yaw_rate_sum_1000hz_dps += g_imufilter_1000hz.gyroz;
+    s_yaw_rate_raw_sum_1000hz_dps += ICM42688.gyro_z;
+    s_yaw_rate_avg_count++;
+
+    if(s_yaw_rate_avg_count >= CONTROL_YAW_RATE_AVG_SAMPLE_COUNT)
+    {
+        s_yaw_rate_avg_20ms_dps =
+            s_yaw_rate_sum_1000hz_dps / (float)CONTROL_YAW_RATE_AVG_SAMPLE_COUNT;
+        s_yaw_rate_raw_avg_20ms_dps =
+            s_yaw_rate_raw_sum_1000hz_dps / (float)CONTROL_YAW_RATE_AVG_SAMPLE_COUNT;
+
+        s_yaw_rate_sum_1000hz_dps = 0.0f;
+        s_yaw_rate_raw_sum_1000hz_dps = 0.0f;
+        s_yaw_rate_avg_count = 0U;
+        s_yaw_rate_avg_ready = 1U;
+    }
 }
 
 static void control_speed_pid_init(IncrementPID *pid)
@@ -101,6 +138,7 @@ void control_speed_loop_init(void)
 
 void control_cascade_init(void)
 {
+    control_yaw_rate_average_reset();
     control_yaw_angle_pid_init();
     control_yaw_rate_pid_init();
     control_speed_loop_init();
@@ -123,6 +161,7 @@ void control_yaw_angle_loop_reset(void)
 
 void control_cascade_reset(void)
 {
+    control_yaw_rate_average_reset();
     control_yaw_angle_pid_init();
     control_yaw_rate_pid_init();
     control_speed_loop_reset();
@@ -152,11 +191,26 @@ float control_yaw_angle_loop_update_25HZ(float yaw_angle_target)
 
 float control_yaw_rate_loop_update_50HZ(float yaw_rate_target)
 {
+    float yaw_rate_gyro_z_dps;
+    float yaw_rate_raw_gyro_z_dps;
+
     control_yaw_rate_pid_apply_params();
 
     control_yaw_rate_target = yaw_rate_target;
-    control_yaw_rate_raw = -ICM42688.gyro_z * CONTROL_DEG_TO_RAD;
-    control_yaw_rate_current = -g_imufilter_1000hz.gyroz * CONTROL_DEG_TO_RAD;
+
+    if(0U != s_yaw_rate_avg_ready)
+    {
+        yaw_rate_gyro_z_dps = s_yaw_rate_avg_20ms_dps;
+        yaw_rate_raw_gyro_z_dps = s_yaw_rate_raw_avg_20ms_dps;
+    }
+    else
+    {
+        yaw_rate_gyro_z_dps = g_imufilter_1000hz.gyroz;
+        yaw_rate_raw_gyro_z_dps = ICM42688.gyro_z;
+    }
+
+    control_yaw_rate_raw = -yaw_rate_raw_gyro_z_dps * CONTROL_DEG_TO_RAD;
+    control_yaw_rate_current = -yaw_rate_gyro_z_dps * CONTROL_DEG_TO_RAD;
     control_yaw_rate_output = PositionalPID_Update(&yaw_rate_pid,
                                                    yaw_rate_target,
                                                    control_yaw_rate_current);
