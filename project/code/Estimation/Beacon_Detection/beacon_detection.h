@@ -57,12 +57,27 @@ typedef struct
     float wheel_highpass_count;
 } beacon_detection_state_t;
 
+typedef struct
+{
+    uint8 valid;
+    uint8 camera_id;
+    uint16 frame_id;
+    uint16 spot_count;
+    uint16 spot_index;
+    uint16 x;
+    uint16 y;
+    uint16 area;
+    uint32 age_ms;
+    uint32 last_update_ms;
+} beacon_camera_target_t;
+
 extern beacon_detection_state_t g_beacon_detection;
 
 void beacon_detection_init(void);
 void beacon_detection_reset(void);
 void beacon_detection_update_100HZ(void);
 const beacon_detection_state_t *beacon_detection_get_state(void);
+uint8 beacon_detection_get_camera_target(beacon_camera_target_t *target);
 
 #ifdef __cplusplus
 }

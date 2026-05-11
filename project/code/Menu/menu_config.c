@@ -45,6 +45,11 @@ static void load_slot_0_function(void);
 static void load_slot_1_function(void);
 static void save_slot_0_function(void);
 static void save_slot_1_function(void);
+static void load_air_slot_0_function(void);
+static void load_air_slot_1_function(void);
+static void save_air_slot_0_function(void);
+static void save_air_slot_1_function(void);
+static void sync_air_function(void);
 
 //====================================================菜单树定义====================================================
 // 轮速PID子菜单（增量式）
@@ -103,11 +108,40 @@ static menu_item_t uwb_follow_pid_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
+static menu_item_t air_param_menu[] = {
+    {"MinArea", MENU_TYPE_AIR_PARAMETER, .param_index = 0},
+    {"HoldMs", MENU_TYPE_AIR_PARAMETER, .param_index = 1},
+    {"XBias", MENU_TYPE_AIR_PARAMETER, .param_index = 2},
+    {"YBias", MENU_TYPE_AIR_PARAMETER, .param_index = 3},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+static menu_item_t load_air_slot_menu[] = {
+    {"Load Air0", MENU_TYPE_FUNCTION, .function = load_air_slot_0_function},
+    {"Load Air1", MENU_TYPE_FUNCTION, .function = load_air_slot_1_function},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+static menu_item_t save_air_slot_menu[] = {
+    {"Save Air0", MENU_TYPE_FUNCTION, .function = save_air_slot_0_function},
+    {"Save Air1", MENU_TYPE_FUNCTION, .function = save_air_slot_1_function},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+static menu_item_t air_menu[] = {
+    {"Air Param", MENU_TYPE_SUBMENU, .submenu = air_param_menu},
+    {"Sync Air", MENU_TYPE_FUNCTION, .function = sync_air_function},
+    {"Load Air", MENU_TYPE_SUBMENU, .submenu = load_air_slot_menu},
+    {"Save Air", MENU_TYPE_SUBMENU, .submenu = save_air_slot_menu},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
 static menu_item_t main_menu[] = {
     {"Wheel PID", MENU_TYPE_SUBMENU, .submenu = wheel_pid_menu},
     {"YawRate PID", MENU_TYPE_SUBMENU, .submenu = yaw_rate_pid_menu},
     {"YawAng PID", MENU_TYPE_SUBMENU, .submenu = yaw_angle_pid_menu},
     {"UWB PID", MENU_TYPE_SUBMENU, .submenu = uwb_follow_pid_menu},
+    {"Air", MENU_TYPE_SUBMENU, .submenu = air_menu},
     {"Load Slot", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
     {"Save Slot", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
@@ -145,6 +179,7 @@ void menu_config_init(void)
     menu_register_param(&uwb_follow_y_ki, 0.01f, 0.0f, 50.0f);
     menu_register_param(&uwb_follow_y_kd, 0.1f, 0.0f, 50.0f);
 
+    menu_air_support_init();
     menu_set_root(main_menu);
 }
 
@@ -167,4 +202,44 @@ static void save_slot_0_function(void)
 static void save_slot_1_function(void)
 {
     menu_save_slot(1);
+}
+
+static void load_air_slot_0_function(void)
+{
+    if(menu_load_air_slot(0U) == 0U)
+    {
+        menu_show_success("Air Load OK");
+    }
+}
+
+static void load_air_slot_1_function(void)
+{
+    if(menu_load_air_slot(1U) == 0U)
+    {
+        menu_show_success("Air Load OK");
+    }
+}
+
+static void save_air_slot_0_function(void)
+{
+    if(menu_save_air_slot(0U) == 0U)
+    {
+        menu_show_success("Air Save OK");
+    }
+}
+
+static void save_air_slot_1_function(void)
+{
+    if(menu_save_air_slot(1U) == 0U)
+    {
+        menu_show_success("Air Save OK");
+    }
+}
+
+static void sync_air_function(void)
+{
+    if(menu_sync_all_air_params() == 0U)
+    {
+        menu_show_success("Air Sync OK");
+    }
 }

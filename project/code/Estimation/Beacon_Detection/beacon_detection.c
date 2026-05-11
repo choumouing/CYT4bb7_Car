@@ -46,6 +46,7 @@ typedef struct
 beacon_detection_state_t g_beacon_detection;
 
 static beacon_detection_filter_t g_beacon_detection_filter;
+static beacon_camera_target_t g_beacon_camera_target;
 
 static uint8_t beacon_minu8(uint8_t a, uint8_t b)
 {
@@ -538,6 +539,28 @@ static void beacon_detection_latch_event(float score,
     g_beacon_detection_filter.cooldown_ticks = BEACON_DETECTION_EVENT_COOLDOWN_TICKS;
 }
 
+static void beacon_detection_update_camera_target(void)
+{
+    camera_spi_target_t spi_target;
+
+    memset(&g_beacon_camera_target, 0, sizeof(g_beacon_camera_target));
+    if(camera_spi_get_target(&spi_target) == 0U)
+    {
+        return;
+    }
+
+    g_beacon_camera_target.valid = spi_target.valid;
+    g_beacon_camera_target.camera_id = spi_target.camera_id;
+    g_beacon_camera_target.frame_id = spi_target.frame_id;
+    g_beacon_camera_target.spot_count = spi_target.spot_count;
+    g_beacon_camera_target.spot_index = spi_target.spot_index;
+    g_beacon_camera_target.x = spi_target.x;
+    g_beacon_camera_target.y = spi_target.y;
+    g_beacon_camera_target.area = spi_target.area;
+    g_beacon_camera_target.age_ms = spi_target.age_ms;
+    g_beacon_camera_target.last_update_ms = spi_target.last_update_ms;
+}
+
 void beacon_detection_init(void)
 {
     beacon_detection_reset();
@@ -563,6 +586,7 @@ void beacon_detection_reset(void)
     g_beacon_detection.tilt_deg = 0.0f;
     g_beacon_detection.accel_norm_error_g = 0.0f;
     g_beacon_detection.wheel_highpass_count = 0.0f;
+    memset(&g_beacon_camera_target, 0, sizeof(g_beacon_camera_target));
 
     g_beacon_detection_filter.roll_zero_deg = 0.0f;
     g_beacon_detection_filter.pitch_zero_deg = 0.0f;
@@ -595,6 +619,7 @@ void beacon_detection_update_100HZ(void)
     uint8_t strong_partial_bump;
     uint8_t hand_push_bump;
 
+    beacon_detection_update_camera_target();
     sample = beacon_detection_get_sample();
     beacon_detection_push_sample(&sample);
 
@@ -698,4 +723,15 @@ void beacon_detection_update_100HZ(void)
 const beacon_detection_state_t *beacon_detection_get_state(void)
 {
     return &g_beacon_detection;
+}
+
+uint8 beacon_detection_get_camera_target(beacon_camera_target_t *target)
+{
+    if(target == NULL)
+    {
+        return 0U;
+    }
+
+    *target = g_beacon_camera_target;
+    return g_beacon_camera_target.valid;
 }

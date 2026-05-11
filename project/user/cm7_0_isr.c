@@ -47,6 +47,7 @@ static uint8_t pit_ch0_25HZ_count = 0;
 void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数
 {
     pit_isr_flag_clear(PIT_CH0);
+    air_comm_car_tick_1MS();
 
     if(g_tick_1000HZ < 60000U)
     {
@@ -58,6 +59,7 @@ void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务�
     {
         pit_ch0_100HZ_count = 0;
         timer_100HZ_flag = 1;
+        menu_timer_handler();
     }
 
     pit_ch0_50HZ_count++;
@@ -219,10 +221,14 @@ void uart2_isr (void)
 
 void uart3_isr (void)
 {
+    uint8 dat;
+
     if(uart_isr_mask(UART_3))            // 串口3接收中断
     {
-
-
+        while(uart_query_byte(UART_3, &dat))
+        {
+            air_comm_car_rx_byte(dat);
+        }
 
     }
     else                                // 串口3发送中断
@@ -301,7 +307,7 @@ void gpio_1_exti_isr()                  // 外部 GPIO_1 中断服务函数
     }
     if(exti_flag_get(P01_1))
     {
-
+        camera_spi_notify_ready(CAMERA_SPI_SLAVE_2);
 
 
     }
@@ -316,7 +322,7 @@ void gpio_2_exti_isr()                  // 外部 GPIO_2 中断服务函数
     }
     if(exti_flag_get(P02_4))
     {
-
+        camera_spi_notify_ready(CAMERA_SPI_SLAVE_1);
 
     }
 
@@ -437,6 +443,10 @@ void gpio_18_exti_isr()                  // 外部 GPIO_18 中断服务函数
 
 void gpio_19_exti_isr()                  // 外部 GPIO_19 中断服务函数
 {
+    if(exti_flag_get(P19_1))
+    {
+        camera_spi_notify_ready(CAMERA_SPI_SLAVE_3);
+    }
 
 
 

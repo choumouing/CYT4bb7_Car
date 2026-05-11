@@ -1171,6 +1171,15 @@
                     <name>$PROJ_DIR$\..\..\code\HW_Drivers\UWB\ALX_AOA.h</name>
                 </file>
             </group>
+            <group>
+                <name>CameraSpi</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\HW_Drivers\CameraSpi\camera_spi_hw.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\HW_Drivers\CameraSpi\camera_spi_hw.h</name>
+                </file>
+            </group>
         </group>
         <group>
             <name>Estimation</name>
@@ -1291,6 +1300,12 @@
             <file>
                 <name>$PROJ_DIR$\..\..\code\Menu\menu_core.h</name>
             </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Menu\menu_air_support.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Menu\menu_air_support.h</name>
+            </file>
         </group>
         <group>
             <name>Protocols</name>
@@ -1346,6 +1361,24 @@
                 </file>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Protocols\SBUS\sbus.h</name>
+                </file>
+            </group>
+            <group>
+                <name>CameraSpi</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Protocols\CameraSpi\camera_spi.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Protocols\CameraSpi\camera_spi.h</name>
+                </file>
+            </group>
+            <group>
+                <name>AirComm</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Protocols\AirComm\air_comm_car.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Protocols\AirComm\air_comm_car.h</name>
                 </file>
             </group>
         </group>

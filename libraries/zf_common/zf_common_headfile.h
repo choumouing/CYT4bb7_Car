@@ -123,12 +123,17 @@
 #include "HW_Drivers/Motor/motor.h"
 #include "HW_Drivers/Encoder/encoder_control.h"
 #include "HW_Drivers/UWB/ALX_AOA.h"
+#include "HW_Drivers/CameraSpi/camera_spi_hw.h"
+
+#include "Protocols/CameraSpi/camera_spi.h"
+#include "Protocols/AirComm/air_comm_car.h"
 
 #include "Estimation/Attitude/IMU_TOP.h"
 #include "Estimation/Attitude/Accel_Calibration.h"
 #include "Estimation/Position/odometer.h"
 #include "Estimation/Beacon_Detection/beacon_detection.h"
 
+#include "Menu/menu_air_support.h"
 #include "Menu/menu_core.h"
 #include "Menu/menu_config.h"
 
