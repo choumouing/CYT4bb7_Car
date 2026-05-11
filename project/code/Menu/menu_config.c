@@ -37,6 +37,10 @@ float uwb_follow_y_kp = 1.9f;
 float uwb_follow_y_ki = 0.0f;
 float uwb_follow_y_kd = 0.8f;
 
+float s_curve_max_iter = 50.0f;
+float s_curve_conv_tol = 0.001f;
+float s_curve_min_dist = 5.0f;
+
 static void load_slot_0_function(void);
 static void load_slot_1_function(void);
 static void save_slot_0_function(void);

@@ -78,7 +78,7 @@ void  ALX_AOA_Init              (void);
 void  ALX_AOA_Reset             (void);
 void  ALX_AOA_InputByte         (uint8 dat);
 void  ALX_AOA_InputBytes        (const uint8 *dat, uint16 length);
-uint8 ALX_AOA_Update            (uint32 now_ms);
+uint8 ALX_AOA_Update_25HZ       (uint32 now_ms);
 uint8 ALX_AOA_GetLatest         (ALX_AOA_Position_t *data);
 uint8 ALX_AOA_GetFilteredXY     (float *x_cm, float *y_cm);
 uint8 ALX_AOA_GetHeartbeat      (ALX_AOA_Heartbeat_t *data);

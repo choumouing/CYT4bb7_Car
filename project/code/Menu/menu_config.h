@@ -42,4 +42,8 @@ extern float uwb_follow_y_kp;
 extern float uwb_follow_y_ki;
 extern float uwb_follow_y_kd;
 
+extern float s_curve_max_iter;
+extern float s_curve_conv_tol;
+extern float s_curve_min_dist;
+
 #endif

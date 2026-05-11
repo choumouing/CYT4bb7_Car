@@ -108,7 +108,7 @@ void encoder_control_init(void)
 /**
  * @brief  读取编码器计数并更新数据
  */
-void encoder_update(void)
+void encoder_update_100HZ(void)
 {
     encoder_update_single(&encoder_left_front); 
     encoder_update_single(&encoder_right_front);

@@ -57,7 +57,7 @@ void wireless_control_init(void)
     wireless_force_estop();
 }
 
-void wireless_control_task(void)
+void wireless_control_update_25HZ(void)
 {
     uint8_t ch5_enabled;
     uint8_t ch6_remote_mode;
@@ -92,11 +92,11 @@ void wireless_control_task(void)
 
     g_wireless_control_state.control_enabled = 1U;
     g_wireless_control_state.emergency_stop_active = 0U;
-    g_wireless_control_state.mode = ch6_uwb_mode ?
-                                    WIRELESS_CONTROL_MODE_UWB_FOLLOW :
-                                    WIRELESS_CONTROL_MODE_REMOTE;
+    g_wireless_control_state.remote_mode_requested = ch6_remote_mode;
+    g_wireless_control_state.uwb_follow_requested = ch6_uwb_mode;
+    g_wireless_control_state.mode_request_valid = 1U;
 
-    if(WIRELESS_CONTROL_MODE_UWB_FOLLOW == g_wireless_control_state.mode)
+    if(0U != ch6_uwb_mode)
     {
         wireless_clear_targets();
         return;
@@ -265,7 +265,9 @@ static void wireless_force_estop(void)
 {
     g_wireless_control_state.control_enabled = 0U;
     g_wireless_control_state.emergency_stop_active = 1U;
-    g_wireless_control_state.mode = WIRELESS_CONTROL_MODE_REMOTE;
+    g_wireless_control_state.remote_mode_requested = 0U;
+    g_wireless_control_state.uwb_follow_requested = 0U;
+    g_wireless_control_state.mode_request_valid = 0U;
 
     wireless_clear_targets();
 }

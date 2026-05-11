@@ -118,7 +118,7 @@ void uwb_follow_reset(void)
     g_uwb_follow_state.output_valid = 0U;
 }
 
-void uwb_follow_update(uint32 now_ms)
+void uwb_follow_update_25HZ(uint32 now_ms)
 {
     ALX_AOA_Position_t position;
 

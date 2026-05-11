@@ -41,23 +41,23 @@ void control_cascade_init(void);
  * @param yaw_angle_target 目标Yaw角度，单位 rad
  * @return 目标Yaw角速度，单位 rad/s
  */
-float control_yaw_angle_loop_update(float yaw_angle_target);
+float control_yaw_angle_loop_update_25HZ(float yaw_angle_target);
 
 /**
  * @brief 更新Yaw角速度环
  * @param yaw_rate_target 目标Yaw角速度，单位 rad/s
  * @return 旋转分量目标，单位为编码器周期计数
  */
-float control_yaw_rate_loop_update(float yaw_rate_target);
+float control_yaw_rate_loop_update_50HZ(float yaw_rate_target);
 
 /**
  * @brief 使用当前Yaw角速度环输出更新四轮速度环
  * @param forward_target 前后方向目标速度，单位为编码器周期计数
  * @param strafe_target  左右方向目标速度，单位为编码器周期计数
  */
-void control_cascade_speed_loop_update(float forward_target, float strafe_target);
+void control_cascade_speed_loop_update_100HZ(float forward_target, float strafe_target);
 
-void control_cascade_speed_loop_update_with_rotate(float forward_target, float strafe_target, float rotate_target);
+void control_cascade_speed_loop_update_with_rotate_100HZ(float forward_target, float strafe_target, float rotate_target);
 
 /**
  * @brief 麦克纳姆轮串级控制
@@ -65,7 +65,7 @@ void control_cascade_speed_loop_update_with_rotate(float forward_target, float s
  * @param strafe_target  左右方向目标速度，单位为编码器周期计数
  * @param yaw_rate_target 目标Yaw角速度，单位 rad/s
  */
-void control_cascade_update(float forward_target, float strafe_target, float yaw_rate_target);
+void control_cascade_update_50HZ(float forward_target, float strafe_target, float yaw_rate_target);
 
 /**
  * @brief 更新四电机速度环
@@ -74,8 +74,8 @@ void control_cascade_update(float forward_target, float strafe_target, float yaw
  * @param left_rear_target   左后轮目标速度，单位为编码器周期计数
  * @param right_rear_target  右后轮目标速度，单位为编码器周期计数
  */
-void control_speed_loop_update(float left_front_target, float right_front_target,
-                               float left_rear_target, float right_rear_target);
+void control_speed_loop_update_100HZ(float left_front_target, float right_front_target,
+                                     float left_rear_target, float right_rear_target);
 
 /**
  * @brief 停止四电机速度环并清零输出

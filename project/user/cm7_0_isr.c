@@ -38,9 +38,9 @@
 
 #include "zf_common_headfile.h"
 
-static uint8_t pit_ch0_10ms_count = 0;
-static uint8_t pit_ch0_20ms_count = 0;
-static uint8_t pit_ch0_40ms_count = 0;
+static uint8_t pit_ch0_100HZ_count = 0;
+static uint8_t pit_ch0_50HZ_count = 0;
+static uint8_t pit_ch0_25HZ_count = 0;
 
 
 // **************************** PIT中断函数 ****************************
@@ -53,25 +53,25 @@ void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务�
         g_tick_1000HZ++;
     }
 
-    pit_ch0_10ms_count++;
-    if(pit_ch0_10ms_count >= 10)
+    pit_ch0_100HZ_count++;
+    if(pit_ch0_100HZ_count >= 10)
     {
-        pit_ch0_10ms_count = 0;
-        timer_10ms_flag = 1;
+        pit_ch0_100HZ_count = 0;
+        timer_100HZ_flag = 1;
     }
 
-    pit_ch0_20ms_count++;
-    if(pit_ch0_20ms_count >= 20)
+    pit_ch0_50HZ_count++;
+    if(pit_ch0_50HZ_count >= 20)
     {
-        pit_ch0_20ms_count = 0;
-        timer_20ms_flag = 1;
+        pit_ch0_50HZ_count = 0;
+        timer_50HZ_flag = 1;
     }
 
-    pit_ch0_40ms_count++;
-    if(pit_ch0_40ms_count >= 40)
+    pit_ch0_25HZ_count++;
+    if(pit_ch0_25HZ_count >= 40)
     {
-        pit_ch0_40ms_count = 0;
-        timer_40ms_flag = 1;
+        pit_ch0_25HZ_count = 0;
+        timer_25HZ_flag = 1;
     }
 }
 

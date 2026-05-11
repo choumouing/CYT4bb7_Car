@@ -111,12 +111,12 @@ void menu_init(void)
 /**
  * @brief 菜单任务处理（主循环调用）
  */
-void menu_task(void)
+void menu_update_100HZ(void)
 {
     // 检查定时器标志
-    if(timer_10ms_flag)
+    if(timer_100HZ_flag)
     {
-        timer_10ms_flag = 0;
+        timer_100HZ_flag = 0;
         // 处理按键事件
         menu_process_keys();
     }

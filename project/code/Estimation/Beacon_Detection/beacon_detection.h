@@ -61,7 +61,7 @@ extern beacon_detection_state_t g_beacon_detection;
 
 void beacon_detection_init(void);
 void beacon_detection_reset(void);
-void beacon_detection_update(void);
+void beacon_detection_update_100HZ(void);
 const beacon_detection_state_t *beacon_detection_get_state(void);
 
 #ifdef __cplusplus

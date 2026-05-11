@@ -67,6 +67,6 @@ void target_follow_restart_targets(void);
 void target_follow_clear_targets(void);
 uint8 target_follow_add_target(float strafe_m, float forward_m);
 uint8 target_follow_set_target(uint8 index, float strafe_m, float forward_m);
-void target_follow_update(uint32 now_ms);
+void target_follow_update_25HZ(uint32 now_ms);
 
 #endif

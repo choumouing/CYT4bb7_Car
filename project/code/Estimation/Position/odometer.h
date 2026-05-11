@@ -15,6 +15,6 @@ extern odometer_data_t g_odometer;
 
 void odometer_init(void);
 void odometer_reset(void);
-void odometer_update(void);
+void odometer_update_100HZ(void);
 
 #endif

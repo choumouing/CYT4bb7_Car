@@ -38,9 +38,6 @@
 #define WIRELESS_FRAME_TIMEOUT_MS           (100U)
 #define WIRELESS_FRAME_TIMEOUT_CYCLES       ((WIRELESS_FRAME_TIMEOUT_MS + WIRELESS_CONTROL_PERIOD_MS - 1U) / WIRELESS_CONTROL_PERIOD_MS)
 
-#define WIRELESS_CONTROL_MODE_REMOTE        (0U)
-#define WIRELESS_CONTROL_MODE_UWB_FOLLOW    (1U)
-
 typedef struct
 {
     uint16_t raw_channel[WIRELESS_CONTROL_CHANNEL_COUNT];
@@ -53,13 +50,15 @@ typedef struct
     uint8_t receiver_online;
     uint8_t control_enabled;
     uint8_t emergency_stop_active;
-    uint8_t mode;
+    uint8_t remote_mode_requested;
+    uint8_t uwb_follow_requested;
+    uint8_t mode_request_valid;
 } wireless_control_state_t;
 
 extern wireless_control_state_t g_wireless_control_state;
 
 void wireless_control_init(void);
-void wireless_control_task(void);
+void wireless_control_update_25HZ(void);
 const wireless_control_state_t *wireless_control_get_state(void);
 
 #endif
