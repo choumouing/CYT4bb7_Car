@@ -488,7 +488,7 @@ void odometer_reset(void)
     g_odometer_filter.yaw_ready = 0U;
 }
 
-void odometer_update(void)
+void odometer_update_100HZ(void)
 {
     odometer_vec2_t delta_count;
     odometer_vec2_t encoder_velocity;

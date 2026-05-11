@@ -359,7 +359,7 @@ uint8 target_follow_set_target(uint8 index, float strafe_m, float forward_m)
     return 1U;
 }
 
-void target_follow_update(uint32 now_ms)
+void target_follow_update_25HZ(uint32 now_ms)
 {
     float tag_target_distance;
     float rel_x_cm;
@@ -377,7 +377,7 @@ void target_follow_update(uint32 now_ms)
     g_target_follow_state.target_in_tag_range = 0U;
     g_target_follow_state.candidate_index = TARGET_FOLLOW_INVALID_INDEX;
 
-    uwb_follow_update(now_ms);
+    uwb_follow_update_25HZ(now_ms);
     g_target_follow_state.tag_online = ALX_AOA_IsTagOnline(now_ms, TARGET_FOLLOW_UWB_TIMEOUT_MS);
     if((0U == g_target_follow_state.tag_online) ||
        (0U == ALX_AOA_GetFilteredXY(&rel_x_cm, &rel_y_cm)))

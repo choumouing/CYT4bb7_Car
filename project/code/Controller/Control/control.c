@@ -123,7 +123,7 @@ void control_cascade_reset(void)
     control_yaw_rate_output = 0.0f;
 }
 
-float control_yaw_angle_loop_update(float yaw_angle_target)
+float control_yaw_angle_loop_update_25HZ(float yaw_angle_target)
 {
     float yaw_error;
 
@@ -138,7 +138,7 @@ float control_yaw_angle_loop_update(float yaw_angle_target)
     return control_yaw_rate_target;
 }
 
-float control_yaw_rate_loop_update(float yaw_rate_target)
+float control_yaw_rate_loop_update_50HZ(float yaw_rate_target)
 {
     control_yaw_rate_pid_apply_params();
 
@@ -151,30 +151,30 @@ float control_yaw_rate_loop_update(float yaw_rate_target)
     return control_yaw_rate_output;
 }
 
-void control_cascade_speed_loop_update(float forward_target, float strafe_target)
+void control_cascade_speed_loop_update_100HZ(float forward_target, float strafe_target)
 {
-    control_cascade_speed_loop_update_with_rotate(forward_target, strafe_target, control_yaw_rate_output);
+    control_cascade_speed_loop_update_with_rotate_100HZ(forward_target, strafe_target, control_yaw_rate_output);
 }
 
-void control_cascade_speed_loop_update_with_rotate(float forward_target, float strafe_target, float rotate_target)
+void control_cascade_speed_loop_update_with_rotate_100HZ(float forward_target, float strafe_target, float rotate_target)
 {
     float left_front_target = forward_target - strafe_target - rotate_target;
     float right_front_target = forward_target + strafe_target + rotate_target;
     float left_rear_target = forward_target + strafe_target - rotate_target;
     float right_rear_target = forward_target - strafe_target + rotate_target;
 
-    control_speed_loop_update(left_front_target, right_front_target,
-                              left_rear_target, right_rear_target);
+    control_speed_loop_update_100HZ(left_front_target, right_front_target,
+                                    left_rear_target, right_rear_target);
 }
 
-void control_cascade_update(float forward_target, float strafe_target, float yaw_rate_target)
+void control_cascade_update_50HZ(float forward_target, float strafe_target, float yaw_rate_target)
 {
-    control_yaw_rate_loop_update(yaw_rate_target);
-    control_cascade_speed_loop_update(forward_target, strafe_target);
+    control_yaw_rate_loop_update_50HZ(yaw_rate_target);
+    control_cascade_speed_loop_update_100HZ(forward_target, strafe_target);
 }
 
-void control_speed_loop_update(float left_front_target, float right_front_target,
-                               float left_rear_target, float right_rear_target)
+void control_speed_loop_update_100HZ(float left_front_target, float right_front_target,
+                                     float left_rear_target, float right_rear_target)
 {
     control_speed_pid_apply_params(&wheel_left_front_pid);
     control_speed_pid_apply_params(&wheel_right_front_pid);

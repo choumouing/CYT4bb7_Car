@@ -15,7 +15,7 @@
 
 
 // 外部变量声明
-extern volatile uint8_t timer_10ms_flag;     // 10ms定时器标志
+extern volatile uint8_t timer_100HZ_flag;    // 100HZ定时器标志
 
 // 菜单系统配置
 #define MENU_MAX_ITEMS          32          // 每个菜单最大选项数
@@ -130,7 +130,7 @@ typedef enum {
 //====================================================菜单核心API====================================================
 // 系统初始化
 void menu_init(void);                                  // 菜单系统初始化
-void menu_task(void);                                  // 菜单任务处理（主循环调用，处理按键和刷新）
+void menu_update_100HZ(void);                          // 菜单任务处理（主循环调用，处理按键和刷新）
 void menu_show(void);                                  // 手动刷新菜单显示
 
 // 定时器处理

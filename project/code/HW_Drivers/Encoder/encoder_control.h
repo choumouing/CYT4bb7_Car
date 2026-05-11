@@ -85,7 +85,7 @@ void encoder_control_init(void);
  *   2. 更新累计计数
  *   3. 应在 5ms 定时中断中调用
  */
-void encoder_update(void);
+void encoder_update_100HZ(void);
 
 /**
  * @brief  获取左前编码器周期计数（速度）

@@ -31,6 +31,6 @@ extern uwb_follow_state_t g_uwb_follow_state;
 
 void uwb_follow_init(void);
 void uwb_follow_reset(void);
-void uwb_follow_update(uint32 now_ms);
+void uwb_follow_update_25HZ(uint32 now_ms);
 
 #endif

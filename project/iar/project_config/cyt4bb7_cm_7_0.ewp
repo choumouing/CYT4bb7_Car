@@ -1245,6 +1245,12 @@
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Controller\Modes\uwb_follow.h</name>
                 </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Controller\Modes\car_mode.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Controller\Modes\car_mode.h</name>
+                </file>
             </group>
             <group>
                 <name>Scheduler</name>
@@ -1253,6 +1259,15 @@
                 </file>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Controller\Scheduler\car_loop.h</name>
+                </file>
+            </group>
+            <group>
+                <name>Planner</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Controller\Planner\s_curve_planner.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Controller\Planner\s_curve_planner.h</name>
                 </file>
             </group>
         </group>
@@ -1297,6 +1312,15 @@
                     </file>
                     <file>
                         <name>$PROJ_DIR$\..\..\code\Protocols\Wifi\wifi_justfloat\wifi_justfloat.h</name>
+                    </file>
+                </group>
+                <group>
+                    <name>wifi_cal_imu</name>
+                    <file>
+                        <name>$PROJ_DIR$\..\..\code\Protocols\Wifi\wifi_cal_imu\wifi_cal_imu.c</name>
+                    </file>
+                    <file>
+                        <name>$PROJ_DIR$\..\..\code\Protocols\Wifi\wifi_cal_imu\wifi_cal_imu.h</name>
                     </file>
                 </group>
             </group>

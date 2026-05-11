@@ -4,9 +4,9 @@
 
 
 
-extern volatile uint8_t timer_10ms_flag;
-extern volatile uint8_t timer_20ms_flag;
-extern volatile uint8_t timer_40ms_flag;
+extern volatile uint8_t timer_100HZ_flag;
+extern volatile uint8_t timer_50HZ_flag;
+extern volatile uint8_t timer_25HZ_flag;
 extern volatile uint16 g_tick_1000HZ;
 
 void car_loop_init(void);

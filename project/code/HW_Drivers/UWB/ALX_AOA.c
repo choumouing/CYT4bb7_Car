@@ -575,7 +575,7 @@ void ALX_AOA_InputBytes (const uint8 *dat, uint16 length)
     }
 }
 
-uint8 ALX_AOA_Update (uint32 now_ms)
+uint8 ALX_AOA_Update_25HZ (uint32 now_ms)
 {
     uint16 pending = alx_aoa_rx_count();
     uint8 dat;

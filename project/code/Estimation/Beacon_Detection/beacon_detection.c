@@ -608,7 +608,7 @@ void beacon_detection_reset(void)
     beacon_detection_history_clear();
 }
 
-void beacon_detection_update(void)
+void beacon_detection_update_100HZ(void)
 {
     beacon_detection_sample_t sample;
     float gyro_xy_window;

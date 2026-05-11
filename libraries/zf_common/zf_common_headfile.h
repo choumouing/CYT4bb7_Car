@@ -134,6 +134,7 @@
 #include "Controller/Modes/uwb_follow.h"
 #include "Controller/Modes/target_follow.h"
 #include "Controller/Modes/target_follow_config.h"
+#include "Controller/Modes/car_mode.h"
 #include "Controller/Scheduler/car_loop.h"
 
 #include "Protocols/Wifi/wifi_cmd/wifi_cmd.h"
