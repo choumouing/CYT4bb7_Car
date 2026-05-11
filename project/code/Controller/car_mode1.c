@@ -16,21 +16,6 @@ static float car_mode1_deadband(float value, float deadband)
     return value;
 }
 
-static float car_mode1_limit(float value, float limit)
-{
-    if(value > limit)
-    {
-        return limit;
-    }
-
-    if(value < -limit)
-    {
-        return -limit;
-    }
-
-    return value;
-}
-
 static void car_mode1_apply_vector_limit(void)
 {
     float abs_forward;
@@ -38,12 +23,8 @@ static void car_mode1_apply_vector_limit(void)
     float max_value;
     float scale;
 
-    abs_forward = (g_car_mode1_state.forward_target >= 0.0f) ?
-                  g_car_mode1_state.forward_target :
-                  -g_car_mode1_state.forward_target;
-    abs_strafe = (g_car_mode1_state.strafe_target >= 0.0f) ?
-                 g_car_mode1_state.strafe_target :
-                 -g_car_mode1_state.strafe_target;
+    abs_forward = car_math_absf(g_car_mode1_state.forward_target);
+    abs_strafe = car_math_absf(g_car_mode1_state.strafe_target);
     max_value = (abs_forward > abs_strafe) ? abs_forward : abs_strafe;
 
     if(max_value <= uwb_follow_output_limit)
@@ -143,15 +124,15 @@ void car_mode1_update_25HZ(uint32 now_ms)
         car_mode1_deadband(g_car_mode1_state.filt_y_cm, uwb_follow_deadband_y_cm);
 
     g_car_mode1_state.strafe_target =
-        -car_mode1_limit(PositionalPID_Update(&s_car_mode1_x_pid,
-                                              g_car_mode1_state.error_x_cm,
-                                              0.0f),
-                         uwb_follow_output_limit);
+        -car_math_limit_absf(PositionalPID_Update(&s_car_mode1_x_pid,
+                                                  g_car_mode1_state.error_x_cm,
+                                                  0.0f),
+                             uwb_follow_output_limit);
     g_car_mode1_state.forward_target =
-        car_mode1_limit(PositionalPID_Update(&s_car_mode1_y_pid,
-                                             g_car_mode1_state.error_y_cm,
-                                             0.0f),
-                        uwb_follow_output_limit);
+        car_math_limit_absf(PositionalPID_Update(&s_car_mode1_y_pid,
+                                                 g_car_mode1_state.error_y_cm,
+                                                 0.0f),
+                            uwb_follow_output_limit);
     g_car_mode1_state.x_pid_p_term = s_car_mode1_x_pid.p_term;
     g_car_mode1_state.x_pid_i_term = s_car_mode1_x_pid.i_term;
     g_car_mode1_state.x_pid_d_term = s_car_mode1_x_pid.d_term;

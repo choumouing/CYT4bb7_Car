@@ -6,36 +6,6 @@ car_mode2_state_t g_car_mode2_state = {0};
 static PositionalPID s_target_forward_pid;
 static PositionalPID s_target_strafe_pid;
 
-static float car_mode2_absf(float value)
-{
-    return (value >= 0.0f) ? value : -value;
-}
-
-static float car_mode2_limit(float value, float limit)
-{
-    if(value > limit)
-    {
-        return limit;
-    }
-
-    if(value < -limit)
-    {
-        return -limit;
-    }
-
-    return value;
-}
-
-static float car_mode2_deadband(float value, float deadband)
-{
-    if(car_mode2_absf(value) <= deadband)
-    {
-        return 0.0f;
-    }
-
-    return value;
-}
-
 static float car_mode2_distance(float strafe_a, float forward_a,
                                     float strafe_b, float forward_b)
 {
@@ -98,8 +68,8 @@ static void car_mode2_apply_vector_limit(void)
     float max_value;
     float scale;
 
-    abs_forward = car_mode2_absf(g_car_mode2_state.forward_target);
-    abs_strafe = car_mode2_absf(g_car_mode2_state.strafe_target);
+    abs_forward = car_math_absf(g_car_mode2_state.forward_target);
+    abs_strafe = car_math_absf(g_car_mode2_state.strafe_target);
     max_value = (abs_forward > abs_strafe) ? abs_forward : abs_strafe;
 
     if(max_value <= TARGET_FOLLOW_OUTPUT_LIMIT)
@@ -270,14 +240,14 @@ static void car_mode2_drive_to_target(uint8 index)
     sin_yaw = sinf(yaw_rad);
     error_forward_body = (cos_yaw * error_forward_global) + (sin_yaw * error_strafe_global);
     error_strafe_body = (-sin_yaw * error_forward_global) + (cos_yaw * error_strafe_global);
-    error_forward_body = car_mode2_deadband(error_forward_body, TARGET_FOLLOW_POSITION_DEADBAND_M);
-    error_strafe_body = car_mode2_deadband(error_strafe_body, TARGET_FOLLOW_POSITION_DEADBAND_M);
+    error_forward_body = car_math_deadband(error_forward_body, TARGET_FOLLOW_POSITION_DEADBAND_M);
+    error_strafe_body = car_math_deadband(error_strafe_body, TARGET_FOLLOW_POSITION_DEADBAND_M);
 
     g_car_mode2_state.forward_target =
-        car_mode2_limit(PositionalPID_Update(&s_target_forward_pid, error_forward_body, 0.0f),
+        car_math_limit_absf(PositionalPID_Update(&s_target_forward_pid, error_forward_body, 0.0f),
                             TARGET_FOLLOW_OUTPUT_LIMIT);
     g_car_mode2_state.strafe_target =
-        car_mode2_limit(PositionalPID_Update(&s_target_strafe_pid, error_strafe_body, 0.0f),
+        car_math_limit_absf(PositionalPID_Update(&s_target_strafe_pid, error_strafe_body, 0.0f),
                             TARGET_FOLLOW_OUTPUT_LIMIT);
     g_car_mode2_state.target_pid_forward_output = g_car_mode2_state.forward_target;
     g_car_mode2_state.target_pid_strafe_output = g_car_mode2_state.strafe_target;

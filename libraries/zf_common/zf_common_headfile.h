@@ -113,6 +113,9 @@
 //=====================================================组件应用层=====================================================
 
 //=====================================================Project Code=====================================================
+#include "Common/car_math.h"
+#include "Common/car_filter.h"
+
 #include "Controller/pid.h"
 #include "Estimation/Attitude/IMU_Filtter.h"
 #include "Estimation/Attitude/MahonyAhrs.h"

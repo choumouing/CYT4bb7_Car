@@ -123,28 +123,6 @@ static float alx_aoa_angle_to_rad (int16 angle)
     return (((float)angle) / ALX_AOA_ANGLE_SCALE) * ALX_AOA_DEG_TO_RAD;
 }
 
-static float alx_aoa_median3 (float a, float b, float c)
-{
-    if(a > b)
-    {
-        float t = a;
-        a = b;
-        b = t;
-    }
-    if(b > c)
-    {
-        float t = b;
-        b = c;
-        c = t;
-    }
-    if(a > b)
-    {
-        b = a;
-    }
-
-    return b;
-}
-
 static void alx_aoa_calculate_xy (ALX_AOA_Position_t *position)
 {
     float azimuth_rad = alx_aoa_angle_to_rad(position->azimuth_deg);
@@ -216,12 +194,12 @@ static void alx_aoa_raw_history_get_median (float *x_cm, float *y_cm)
 {
     if(alx_aoa_raw_hist_count >= ALX_AOA_MEDIAN_SIZE)
     {
-        *x_cm = alx_aoa_median3(alx_aoa_raw_x_hist[0],
-                                alx_aoa_raw_x_hist[1],
-                                alx_aoa_raw_x_hist[2]);
-        *y_cm = alx_aoa_median3(alx_aoa_raw_y_hist[0],
-                                alx_aoa_raw_y_hist[1],
-                                alx_aoa_raw_y_hist[2]);
+        *x_cm = car_filter_median3f(alx_aoa_raw_x_hist[0],
+                                    alx_aoa_raw_x_hist[1],
+                                    alx_aoa_raw_x_hist[2]);
+        *y_cm = car_filter_median3f(alx_aoa_raw_y_hist[0],
+                                    alx_aoa_raw_y_hist[1],
+                                    alx_aoa_raw_y_hist[2]);
     }
     else
     {
