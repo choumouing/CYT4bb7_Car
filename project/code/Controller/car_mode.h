@@ -97,21 +97,6 @@ typedef struct
 extern car_mode1_state_t g_car_mode1_state;
 extern car_mode2_state_t g_car_mode2_state;
 
-static inline float car_mode_clampf(float value, float min_value, float max_value)
-{
-    if(value < min_value)
-    {
-        return min_value;
-    }
-
-    if(value > max_value)
-    {
-        return max_value;
-    }
-
-    return value;
-}
-
 void car_mode_init(void);
 void car_mode_reset(void);
 car_mode_e car_mode_get(void);

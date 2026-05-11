@@ -3,11 +3,6 @@
 
 wireless_control_state_t g_wireless_control_state = {0};
 
-static float wireless_absf(float value)
-{
-    return (value >= 0.0f) ? value : -value;
-}
-
 static float wireless_scale_axis_to_limit(int16 axis_value, float output_limit)
 {
     return ((float)axis_value * output_limit) / 1000.0f;
@@ -100,7 +95,7 @@ void wireless_control_update_25HZ(void)
     manual_rotate_speed =
         wireless_scale_axis_to_limit(sbus->std_channel[SBUS_CH4], MAX_ANGULAR_SPEED);
 
-    if(wireless_absf(manual_rotate_speed) < 0.001f)
+    if(car_math_absf(manual_rotate_speed) < 0.001f)
     {
         manual_rotate_speed = 0.0f;
     }

@@ -47,39 +47,9 @@ beacon_detection_state_t g_beacon_detection;
 
 static beacon_detection_filter_t g_beacon_detection_filter;
 
-static float beacon_absf(float value)
-{
-    return (value >= 0.0f) ? value : -value;
-}
-
-static float beacon_maxf(float a, float b)
-{
-    return (a > b) ? a : b;
-}
-
-static float beacon_minf(float a, float b)
-{
-    return (a < b) ? a : b;
-}
-
 static uint8_t beacon_minu8(uint8_t a, uint8_t b)
 {
     return (a < b) ? a : b;
-}
-
-static float beacon_clampf(float value, float low, float high)
-{
-    if(value < low)
-    {
-        return low;
-    }
-
-    if(value > high)
-    {
-        return high;
-    }
-
-    return value;
 }
 
 static float beacon_vec2_norm(float x, float y)
@@ -169,7 +139,7 @@ static float beacon_detection_window_max(uint8_t window_size,
         sample = beacon_detection_history_at(i);
         if(sample != 0)
         {
-            value_max = beacon_maxf(value_max, selector(sample));
+            value_max = car_math_maxf(value_max, selector(sample));
         }
     }
 
@@ -265,9 +235,9 @@ static beacon_detection_sample_t beacon_detection_get_sample(void)
     g_beacon_detection_filter.prev_pitch_deg = sample.pitch_deg;
 
     sample.gyro_xy_dps = beacon_vec2_norm(gyro_x_dps, gyro_y_dps);
-    sample.gyro_z_abs_dps = beacon_absf(gyro_z_dps);
+    sample.gyro_z_abs_dps = car_math_absf(gyro_z_dps);
     accel_norm_g = beacon_vec3_norm(accel_x_g, accel_y_g, accel_z_g);
-    sample.accel_norm_error_g = beacon_absf(accel_norm_g - 1.0f);
+    sample.accel_norm_error_g = car_math_absf(accel_norm_g - 1.0f);
 
     left_front = encoder_get_left_front_filtered_count();
     right_front = encoder_get_right_front_filtered_count();
@@ -292,13 +262,13 @@ static beacon_detection_sample_t beacon_detection_get_sample(void)
     sample.wheel_highpass[1] = right_front - g_beacon_detection_filter.wheel_lpf[1];
     sample.wheel_highpass[2] = left_rear - g_beacon_detection_filter.wheel_lpf[2];
     sample.wheel_highpass[3] = right_rear - g_beacon_detection_filter.wheel_lpf[3];
-    sample.wheel_highpass_count = beacon_absf(sample.wheel_highpass[0]);
+    sample.wheel_highpass_count = car_math_absf(sample.wheel_highpass[0]);
     sample.wheel_highpass_count =
-        beacon_maxf(sample.wheel_highpass_count, beacon_absf(sample.wheel_highpass[1]));
+        car_math_maxf(sample.wheel_highpass_count, car_math_absf(sample.wheel_highpass[1]));
     sample.wheel_highpass_count =
-        beacon_maxf(sample.wheel_highpass_count, beacon_absf(sample.wheel_highpass[2]));
+        car_math_maxf(sample.wheel_highpass_count, car_math_absf(sample.wheel_highpass[2]));
     sample.wheel_highpass_count =
-        beacon_maxf(sample.wheel_highpass_count, beacon_absf(sample.wheel_highpass[3]));
+        car_math_maxf(sample.wheel_highpass_count, car_math_absf(sample.wheel_highpass[3]));
 
     return sample;
 }
@@ -340,7 +310,7 @@ static uint8_t beacon_detection_wheel_mask_from_peak(const float wheel_abs[4],
     float threshold;
 
     mask = 0U;
-    threshold = beacon_maxf(max_abs * 0.45f, 8.0f);
+    threshold = car_math_maxf(max_abs * 0.45f, 8.0f);
     if(wheel_abs[0] >= threshold)
     {
         mask |= BEACON_BUMP_WHEEL_LF_MASK;
@@ -413,8 +383,8 @@ static beacon_bump_location_t beacon_detection_location_from_motion(float forwar
     float strafe_abs;
     beacon_bump_location_t location;
 
-    forward_abs = beacon_absf(forward_velocity);
-    strafe_abs = beacon_absf(strafe_velocity);
+    forward_abs = car_math_absf(forward_velocity);
+    strafe_abs = car_math_absf(strafe_velocity);
     location = BEACON_BUMP_LOCATION_UNKNOWN;
 
     if((forward_abs > 0.25f) && (strafe_abs > 0.25f))
@@ -468,14 +438,14 @@ static beacon_bump_location_t beacon_detection_location_from_wheels(const float 
     float max_wheel;
     beacon_bump_location_t location;
 
-    wheel_abs[0] = beacon_absf(wheel_peak[0]);
-    wheel_abs[1] = beacon_absf(wheel_peak[1]);
-    wheel_abs[2] = beacon_absf(wheel_peak[2]);
-    wheel_abs[3] = beacon_absf(wheel_peak[3]);
+    wheel_abs[0] = car_math_absf(wheel_peak[0]);
+    wheel_abs[1] = car_math_absf(wheel_peak[1]);
+    wheel_abs[2] = car_math_absf(wheel_peak[2]);
+    wheel_abs[3] = car_math_absf(wheel_peak[3]);
     total = wheel_abs[0] + wheel_abs[1] + wheel_abs[2] + wheel_abs[3] + BEACON_DETECTION_EPSILON;
 
-    max_wheel = beacon_maxf(beacon_maxf(wheel_abs[0], wheel_abs[1]),
-                            beacon_maxf(wheel_abs[2], wheel_abs[3]));
+    max_wheel = car_math_maxf(car_math_maxf(wheel_abs[0], wheel_abs[1]),
+                              car_math_maxf(wheel_abs[2], wheel_abs[3]));
     *wheel_mask = beacon_detection_wheel_mask_from_peak(wheel_abs, max_wheel);
 
     front = wheel_abs[0] + wheel_abs[1];
@@ -701,13 +671,13 @@ void beacon_detection_update_100HZ(void)
        (edge_bump != 0U) || (strong_partial_bump != 0U) ||
        (hand_push_bump != 0U))
     {
-        score = beacon_minf(gyro_xy_window / 80.0f, tilt_rate_window / 70.0f);
-        score = beacon_minf(score, beacon_clampf(tilt_window / 4.45f, 0.0f, 4.0f));
-        score = beacon_minf(score, beacon_clampf(accel_window / 0.20f, 0.0f, 4.0f));
+        score = car_math_minf(gyro_xy_window / 80.0f, tilt_rate_window / 70.0f);
+        score = car_math_minf(score, car_math_clampf(tilt_window / 4.45f, 0.0f, 4.0f));
+        score = car_math_minf(score, car_math_clampf(accel_window / 0.20f, 0.0f, 4.0f));
         if(strong_partial_bump != 0U)
         {
-            score = beacon_maxf(score, beacon_minf(gyro_xy_window / 115.0f,
-                                                   wheel_window / 30.0f));
+            score = car_math_maxf(score, car_math_minf(gyro_xy_window / 115.0f,
+                                                       wheel_window / 30.0f));
         }
 
         beacon_detection_latch_event(score,

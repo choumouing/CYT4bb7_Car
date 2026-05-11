@@ -94,67 +94,6 @@ odometer_data_t g_odometer = {0.0f, 0.0f, 0.0f};
 
 static odometer_filter_state_t g_odometer_filter;
 
-static float odometer_absf(float value)
-{
-    return (value >= 0.0f) ? value : -value;
-}
-
-static float odometer_clampf(float value, float low, float high)
-{
-    if(value < low)
-    {
-        return low;
-    }
-
-    if(value > high)
-    {
-        return high;
-    }
-
-    return value;
-}
-
-static float odometer_satf(float value)
-{
-    return odometer_clampf(value, 0.0f, 1.0f);
-}
-
-static float odometer_minf(float a, float b)
-{
-    return (a < b) ? a : b;
-}
-
-static float odometer_maxf(float a, float b)
-{
-    return (a > b) ? a : b;
-}
-
-static float odometer_lpf_scalar(float previous, float raw, float dt, float tau)
-{
-    float beta;
-
-    if(tau <= ODOMETER_EPSILON)
-    {
-        return raw;
-    }
-
-    beta = dt / (tau + dt);
-    return previous + (beta * (raw - previous));
-}
-
-static float odometer_soft_deadband(float value, float deadband)
-{
-    float magnitude;
-
-    magnitude = odometer_absf(value) - deadband;
-    if(magnitude <= 0.0f)
-    {
-        return 0.0f;
-    }
-
-    return (value >= 0.0f) ? magnitude : -magnitude;
-}
-
 static float odometer_vec_norm(odometer_vec2_t value)
 {
     return sqrtf((value.forward * value.forward) + (value.strafe * value.strafe));
@@ -218,13 +157,13 @@ static float odometer_get_encoder_wheel_highpass_count(void)
     g_odometer_filter.wheel_count_lpf[2] += beta * (left_rear - g_odometer_filter.wheel_count_lpf[2]);
     g_odometer_filter.wheel_count_lpf[3] += beta * (right_rear - g_odometer_filter.wheel_count_lpf[3]);
 
-    highpass_abs_max = odometer_absf(left_front - g_odometer_filter.wheel_count_lpf[0]);
-    highpass_abs_max = odometer_maxf(highpass_abs_max,
-                                     odometer_absf(right_front - g_odometer_filter.wheel_count_lpf[1]));
-    highpass_abs_max = odometer_maxf(highpass_abs_max,
-                                     odometer_absf(left_rear - g_odometer_filter.wheel_count_lpf[2]));
-    highpass_abs_max = odometer_maxf(highpass_abs_max,
-                                     odometer_absf(right_rear - g_odometer_filter.wheel_count_lpf[3]));
+    highpass_abs_max = car_math_absf(left_front - g_odometer_filter.wheel_count_lpf[0]);
+    highpass_abs_max = car_math_maxf(highpass_abs_max,
+                                     car_math_absf(right_front - g_odometer_filter.wheel_count_lpf[1]));
+    highpass_abs_max = car_math_maxf(highpass_abs_max,
+                                     car_math_absf(left_rear - g_odometer_filter.wheel_count_lpf[2]));
+    highpass_abs_max = car_math_maxf(highpass_abs_max,
+                                     car_math_absf(right_rear - g_odometer_filter.wheel_count_lpf[3]));
     return highpass_abs_max;
 }
 
@@ -276,7 +215,7 @@ static float odometer_rough_history_max(const float *history)
     value_max = 0.0f;
     for(i = 0U; i < g_odometer_filter.rough_history_count; i++)
     {
-        value_max = odometer_maxf(value_max, history[i]);
+        value_max = car_math_maxf(value_max, history[i]);
     }
 
     return value_max;
@@ -375,12 +314,12 @@ static void odometer_update_accel_bias(odometer_vec2_t encoder_velocity,
        (0U == g_odometer_filter.bump_hold_ticks))
     {
         g_odometer_filter.accel_bias_mps2.forward =
-            odometer_lpf_scalar(g_odometer_filter.accel_bias_mps2.forward,
+            car_filter_lpf1_apply(g_odometer_filter.accel_bias_mps2.forward,
                                 accel_mps2.forward,
                                 ODOMETER_UPDATE_DT_S,
                                 1.2f);
         g_odometer_filter.accel_bias_mps2.strafe =
-            odometer_lpf_scalar(g_odometer_filter.accel_bias_mps2.strafe,
+            car_filter_lpf1_apply(g_odometer_filter.accel_bias_mps2.strafe,
                                 accel_mps2.strafe,
                                 ODOMETER_UPDATE_DT_S,
                                 1.2f);
@@ -416,8 +355,8 @@ static void odometer_update_rough_relax_state(odometer_vec2_t raw_encoder_veloci
     tilt_window_max = odometer_rough_history_max(g_odometer_filter.rough_tilt_history_deg);
     gyro_window_max = odometer_rough_history_max(g_odometer_filter.rough_gyro_history_dps);
     wheel_window_max = odometer_rough_history_max(g_odometer_filter.rough_wheel_history_count);
-    dual_axis_speed = odometer_minf(odometer_absf(raw_encoder_velocity.forward),
-                                   odometer_absf(raw_encoder_velocity.strafe));
+    dual_axis_speed = car_math_minf(car_math_absf(raw_encoder_velocity.forward),
+                                   car_math_absf(raw_encoder_velocity.strafe));
     speed_norm = odometer_vec_norm(raw_encoder_velocity);
     dual_axis_ratio = dual_axis_speed / (speed_norm + ODOMETER_EPSILON);
 
@@ -453,7 +392,7 @@ static float odometer_get_rough_relax_weight(void)
     }
 
     ticks = (float)g_odometer_filter.rough_relax_ticks;
-    return odometer_clampf(ticks / (float)ODOMETER_ROUGH_RELAX_EDGE_TICKS, 0.0f, 1.0f);
+    return car_math_clampf(ticks / (float)ODOMETER_ROUGH_RELAX_EDGE_TICKS, 0.0f, 1.0f);
 }
 
 void odometer_init(void)
@@ -579,31 +518,31 @@ void odometer_update_100HZ(void)
     }
     yaw_delta_rad = odometer_normalize_angle(yaw_now_rad - g_odometer_filter.yaw_zero_rad);
     yaw_step_rad = odometer_normalize_angle(yaw_delta_rad - g_odometer_filter.prev_yaw_delta_rad);
-    yaw_rate_abs = odometer_absf(yaw_step_rad) / ODOMETER_UPDATE_DT_S;
+    yaw_rate_abs = car_math_absf(yaw_step_rad) / ODOMETER_UPDATE_DT_S;
 
-    qvx = odometer_clampf(odometer_absf(encoder_velocity.forward) / ODOMETER_V_REF_MPS, 0.0f, 2.0f);
-    qvy = odometer_clampf(odometer_absf(encoder_velocity.strafe) / ODOMETER_V_REF_MPS, 0.0f, 2.0f);
-    qrx = odometer_clampf(odometer_absf(encoder_accel.forward - accel_corrected.forward) /
+    qvx = car_math_clampf(car_math_absf(encoder_velocity.forward) / ODOMETER_V_REF_MPS, 0.0f, 2.0f);
+    qvy = car_math_clampf(car_math_absf(encoder_velocity.strafe) / ODOMETER_V_REF_MPS, 0.0f, 2.0f);
+    qrx = car_math_clampf(car_math_absf(encoder_accel.forward - accel_corrected.forward) /
                           ODOMETER_RESIDUAL_REF_MPS2,
                           0.0f,
                           2.0f);
-    qry = odometer_clampf(odometer_absf(encoder_accel.strafe - accel_corrected.strafe) /
+    qry = car_math_clampf(car_math_absf(encoder_accel.strafe - accel_corrected.strafe) /
                           ODOMETER_RESIDUAL_REF_MPS2,
                           0.0f,
                           2.0f);
-    reverse_forward = odometer_clampf(-(encoder_velocity.forward *
+    reverse_forward = car_math_clampf(-(encoder_velocity.forward *
                                         g_odometer_filter.prev_encoder_velocity_mps.forward) /
                                       (ODOMETER_REVERSE_REF_MPS * ODOMETER_REVERSE_REF_MPS),
                                       0.0f,
                                       2.0f);
-    reverse_strafe = odometer_clampf(-(encoder_velocity.strafe *
+    reverse_strafe = car_math_clampf(-(encoder_velocity.strafe *
                                        g_odometer_filter.prev_encoder_velocity_mps.strafe) /
                                      (ODOMETER_REVERSE_REF_MPS * ODOMETER_REVERSE_REF_MPS),
                                      0.0f,
                                      2.0f);
-    yaw_risk = odometer_clampf(yaw_rate_abs / ODOMETER_YAW_RATE_REF_RPS, 0.0f, 2.0f);
-    dual_axis = odometer_clampf(odometer_minf(odometer_absf(encoder_velocity.forward),
-                                             odometer_absf(encoder_velocity.strafe)) / ODOMETER_V_REF_MPS,
+    yaw_risk = car_math_clampf(yaw_rate_abs / ODOMETER_YAW_RATE_REF_RPS, 0.0f, 2.0f);
+    dual_axis = car_math_clampf(car_math_minf(car_math_absf(encoder_velocity.forward),
+                                             car_math_absf(encoder_velocity.strafe)) / ODOMETER_V_REF_MPS,
                                 0.0f,
                                 1.5f);
 
@@ -615,7 +554,7 @@ void odometer_update_100HZ(void)
                      (ODOMETER_KX_YAW * yaw_risk) +
                      (ODOMETER_K_DUAL_AXIS * dual_axis) +
                      (ODOMETER_CROSS_AXIS * powf(qvy, ODOMETER_SPEED_POWER_Y) *
-                      odometer_satf(qrx)));
+                      car_math_clampf(qrx, 0.0f, 1.0f)));
     scale_strafe = 1.0f /
                    (1.0f +
                     (ODOMETER_KY_SPEED * powf(qvy, ODOMETER_SPEED_POWER_Y)) +
@@ -624,11 +563,11 @@ void odometer_update_100HZ(void)
                     (ODOMETER_KY_YAW * yaw_risk) +
                     (ODOMETER_K_DUAL_AXIS * dual_axis) +
                     (ODOMETER_CROSS_AXIS * powf(qvx, ODOMETER_SPEED_POWER_X) *
-                     odometer_satf(qry)));
+                     car_math_clampf(qry, 0.0f, 1.0f)));
 
-    encoder_velocity.forward = odometer_soft_deadband(encoder_velocity.forward * scale_forward,
+    encoder_velocity.forward = car_math_soft_deadband(encoder_velocity.forward * scale_forward,
                                                       ODOMETER_DEAD_FORWARD_MPS);
-    encoder_velocity.strafe = odometer_soft_deadband(encoder_velocity.strafe * scale_strafe,
+    encoder_velocity.strafe = car_math_soft_deadband(encoder_velocity.strafe * scale_strafe,
                                                      ODOMETER_DEAD_STRAFE_MPS);
     rough_relax_weight = odometer_get_rough_relax_weight();
     if(rough_relax_weight > 0.0f)
@@ -641,14 +580,14 @@ void odometer_update_100HZ(void)
             ODOMETER_ROUGH_RELAX_STRAFE_GAIN * rough_relax_weight;
     }
 
-    risk = odometer_clampf((0.30f * odometer_maxf(qvx, qvy)) +
-                           (0.45f * odometer_maxf(qrx, qry)) +
-                           (0.15f * odometer_maxf(reverse_forward, reverse_strafe)) +
+    risk = car_math_clampf((0.30f * car_math_maxf(qvx, qvy)) +
+                           (0.45f * car_math_maxf(qrx, qry)) +
+                           (0.15f * car_math_maxf(reverse_forward, reverse_strafe)) +
                            (0.10f * yaw_risk),
                            0.0f,
                            1.0f);
     alpha_raw = ODOMETER_ALPHA_MAX * risk;
-    g_odometer_filter.alpha = odometer_lpf_scalar(g_odometer_filter.alpha,
+    g_odometer_filter.alpha = car_filter_lpf1_apply(g_odometer_filter.alpha,
                                                   alpha_raw,
                                                   ODOMETER_UPDATE_DT_S,
                                                   ODOMETER_ALPHA_TAU_S);

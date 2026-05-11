@@ -24,11 +24,6 @@
 /**
  * @brief 取较大值
  */
-static inline float max_float(float a, float b)
-{
-    return (a > b) ? a : b;
-}
-
 /**
  * @brief gamma迭代求解vlim (当vmax不能达到时)
  *
@@ -54,7 +49,7 @@ static float solve_vlim_iterative(s_curve_planner_t *planner,
                                     float v0, float v1,
                                     float v_max, float a_max, float j_max)
 {
-    float vlim_min = max_float(v0, v1);
+    float vlim_min = car_math_maxf(v0, v1);
     float vlim_max = v_max;
     float vlim = (vlim_min + vlim_max) * 0.5f;
 

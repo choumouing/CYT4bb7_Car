@@ -1119,6 +1119,21 @@
             <name>$PROJ_DIR$\..\..\code\本文件夹作用.txt</name>
         </file>
         <group>
+            <name>Common</name>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Common\car_math.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Common\car_math.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Common\car_filter.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Common\car_filter.h</name>
+            </file>
+        </group>
+        <group>
             <name>HW_Drivers</name>
             <group>
                 <name>Motor</name>

@@ -4,40 +4,6 @@
 /* 本地差异层: Mahony 解算前对 Z 轴陀螺输入施加对称死区，单位 dps */
 #define MAHONY_GYRO_Z_DEADBAND_DPS  0.2f
 
-static float Mahony_Clamp(float value, float min_value, float max_value)
-{
-    if (value < min_value)
-    {
-        return min_value;
-    }
-
-    if (value > max_value)
-    {
-        return max_value;
-    }
-
-    return value;
-}
-
-/*
- * 函数名: Mahony_ApplyDeadband
- * 功能: 对输入量施加对称死区，小于等于死区阈值时直接归零
- * 输入参数:
- *   value    - 输入值
- *   deadband - 死区阈值，要求为非负
- * 返回值:
- *   死区处理后的结果
- */
-static float Mahony_ApplyDeadband(float value, float deadband)
-{
-    if (fabsf(value) <= fabsf(deadband))
-    {
-        return 0.0f;
-    }
-
-    return value;
-}
-
 static uint8_t Mahony_IsFinite(float value)
 {
     if (value != value)
@@ -137,7 +103,7 @@ static float Mahony_Pt1Update(float state, float input, float cutoff_hz, float d
 
     rc = 1.0f / (2.0f * 3.14159265359f * cutoff_hz);
     alpha = dt / (rc + dt);
-    alpha = Mahony_Clamp(alpha, 0.0f, 1.0f);
+    alpha = car_math_clampf(alpha, 0.0f, 1.0f);
     return state + alpha * (input - state);
 }
 
@@ -175,7 +141,7 @@ static float Mahony_CalculateAccelWeightNearness(float accel_mag)
 {
     float accel_trust = 1.0f - fabsf(accel_mag - 1.0f) / MAHONY_ACCEL_TRUST_BAND_G;
 
-    return Mahony_Clamp(accel_trust, 0.0f, 1.0f);
+    return car_math_clampf(accel_trust, 0.0f, 1.0f);
 }
 
 static float Mahony_CalculateAccelWeightRateIgnore(const MahonyAhrs_t *ahrs)
@@ -323,7 +289,7 @@ void MahonyAhrs_Update(MahonyAhrs_t *ahrs,
     ahrs->elapsed_time_s += dt;
 
     /* 先压掉 Z 轴零点附近的残余漂移，再进入 Mahony 后续静止判定与姿态积分 */
-    gyro_z = Mahony_ApplyDeadband(gyro_z, MAHONY_GYRO_Z_DEADBAND_DPS);
+    gyro_z = car_math_deadband(gyro_z, MAHONY_GYRO_Z_DEADBAND_DPS);
 
     // 算模长
     accel_mag = Mahony_VectorMagnitude(accel_x, accel_y, accel_z);
@@ -498,7 +464,7 @@ void MahonyAhrs_GetEuler(const MahonyAhrs_t *ahrs,
                    1.0f - 2.0f * (q1 * q1 + q2 * q2));
 
     sin_pitch = 2.0f * (q0 * q2 - q3 * q1);
-    sin_pitch = Mahony_Clamp(sin_pitch, -1.0f, 1.0f);
+    sin_pitch = car_math_clampf(sin_pitch, -1.0f, 1.0f);
     *pitch = asinf(sin_pitch);
 
     *yaw = atan2f(2.0f * (q0 * q3 + q1 * q2),
