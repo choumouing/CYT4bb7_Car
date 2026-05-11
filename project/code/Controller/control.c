@@ -18,6 +18,10 @@ float control_yaw_rate_current = 0.0f;
 float control_yaw_rate_raw = 0.0f;
 float control_yaw_rate_output = 0.0f;
 
+static float s_yaw_hold_target = 0.0f;
+static uint8 s_last_rotate_active = 0U;
+static uint8 s_yaw_hold_active = 0U;
+
 static float control_normalize_angle_rad(float angle)
 {
     while(angle > CONTROL_PI)
@@ -36,6 +40,13 @@ static float control_normalize_angle_rad(float angle)
 float control_get_current_yaw_angle(void)
 {
     return control_normalize_angle_rad(-g_euler.yaw * CONTROL_DEG_TO_RAD);
+}
+
+void control_yaw_hold_reset(void)
+{
+    s_last_rotate_active = 0U;
+    s_yaw_hold_active = 0U;
+    s_yaw_hold_target = control_get_current_yaw_angle();
 }
 
 static void control_speed_pid_init(IncrementPID *pid)
@@ -121,6 +132,7 @@ void control_cascade_reset(void)
     control_yaw_rate_current = 0.0f;
     control_yaw_rate_raw = 0.0f;
     control_yaw_rate_output = 0.0f;
+    control_yaw_hold_reset();
 }
 
 float control_yaw_angle_loop_update_25HZ(float yaw_angle_target)
@@ -154,6 +166,28 @@ float control_yaw_rate_loop_update_50HZ(float yaw_rate_target)
 void control_cascade_speed_loop_update_100HZ(float forward_target, float strafe_target)
 {
     control_cascade_speed_loop_update_with_rotate_100HZ(forward_target, strafe_target, control_yaw_rate_output);
+}
+
+void control_yaw_hold_update_25HZ(float rotate_target)
+{
+    if(0.0f != rotate_target)
+    {
+        s_yaw_hold_target = control_get_current_yaw_angle();
+        s_yaw_hold_active = 0U;
+    }
+    else
+    {
+        if((0U == s_yaw_hold_active) || (0U != s_last_rotate_active))
+        {
+            s_yaw_hold_target = control_get_current_yaw_angle();
+            control_yaw_angle_loop_reset();
+            s_yaw_hold_active = 1U;
+        }
+
+        control_yaw_angle_loop_update_25HZ(s_yaw_hold_target);
+    }
+
+    s_last_rotate_active = (0.0f != rotate_target) ? 1U : 0U;
 }
 
 void control_cascade_speed_loop_update_with_rotate_100HZ(float forward_target, float strafe_target, float rotate_target)

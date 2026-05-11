@@ -1207,60 +1207,51 @@
         </group>
         <group>
             <name>Controller</name>
-            <group>
-                <name>PID</name>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\PID\pid.c</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\PID\pid.h</name>
-                </file>
-            </group>
-            <group>
-                <name>Control</name>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Control\control.c</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Control\control.h</name>
-                </file>
-            </group>
-            <group>
-                <name>Modes</name>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Modes\target_follow.c</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Modes\target_follow.h</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Modes\target_follow_config.c</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Modes\target_follow_config.h</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Modes\uwb_follow.c</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Modes\uwb_follow.h</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Modes\car_mode.c</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Modes\car_mode.h</name>
-                </file>
-            </group>
-            <group>
-                <name>Scheduler</name>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Scheduler\car_loop.c</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Controller\Scheduler\car_loop.h</name>
-                </file>
-            </group>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\pid.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\pid.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\control.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\control.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_loop.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_loop.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode0.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode1.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode2.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode2_config.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode2_config.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_start_sbus.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_start_sbus.h</name>
+            </file>
             <group>
                 <name>Planner</name>
                 <file>
@@ -1331,6 +1322,15 @@
                 </file>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Protocols\WirelessControl\wireless_control.h</name>
+                </file>
+            </group>
+            <group>
+                <name>SBUS</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Protocols\SBUS\sbus.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Protocols\SBUS\sbus.h</name>
                 </file>
             </group>
         </group>

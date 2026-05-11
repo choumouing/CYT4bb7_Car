@@ -103,7 +103,7 @@ typedef struct {
  *       (v0/v1应为物理坐标系速度，可正可负，函数内部会自动投影到运动方向)
  * @warning distance=0或<5mm时会立即完成(flag=1)
  *
- * @see s_curve_planner_update()
+ * @see s_curve_planner_step()
  */
 int s_curve_planner_init(s_curve_planner_t *planner,
                           float distance,
@@ -126,6 +126,6 @@ int s_curve_planner_init(s_curve_planner_t *planner,
  * @note 更新后可通过planner->v_target获取目标速度
  * @note 完成后planner->is_finished会置1
  */
-void s_curve_planner_update(s_curve_planner_t *planner, float dt);
+void s_curve_planner_step(s_curve_planner_t *planner, float dt);
 
 #endif // _S_CURVE_PLANNER_H_
