@@ -49,6 +49,113 @@ static uint8_t pending_slot_number = 0;                // 待操作的存档号
 #define FLASH_OP_LOAD    1
 #define FLASH_OP_SAVE    2
 
+static uint8_t menu_is_param_item(const menu_item_t *item)
+{
+    if(item == NULL)
+    {
+        return 0U;
+    }
+
+    return ((item->type == MENU_TYPE_PARAMETER) ||
+            (item->type == MENU_TYPE_AIR_PARAMETER)) ? 1U : 0U;
+}
+
+static uint8_t menu_get_item_param_value(const menu_item_t *item, float *value)
+{
+    if((item == NULL) || (value == NULL))
+    {
+        return 0U;
+    }
+
+    if(item->type == MENU_TYPE_PARAMETER)
+    {
+        if(item->param_index >= param_count)
+        {
+            return 0U;
+        }
+        *value = menu_get_param_by_index(item->param_index);
+        return 1U;
+    }
+
+    if(item->type == MENU_TYPE_AIR_PARAMETER)
+    {
+        if(item->param_index >= menu_get_air_param_count())
+        {
+            return 0U;
+        }
+        *value = menu_get_air_param_by_index(item->param_index);
+        return 1U;
+    }
+
+    return 0U;
+}
+
+static uint8_t menu_get_item_param_step(const menu_item_t *item, float *step)
+{
+    const menu_air_param_config_t *air_config;
+
+    if((item == NULL) || (step == NULL))
+    {
+        return 0U;
+    }
+
+    if(item->type == MENU_TYPE_PARAMETER)
+    {
+        if(item->param_index >= param_count)
+        {
+            return 0U;
+        }
+        *step = param_configs[item->param_index].step;
+        return 1U;
+    }
+
+    if(item->type == MENU_TYPE_AIR_PARAMETER)
+    {
+        air_config = menu_get_air_param_config(item->param_index);
+        if(air_config == NULL)
+        {
+            return 0U;
+        }
+        *step = air_config->step;
+        return 1U;
+    }
+
+    return 0U;
+}
+
+static uint8_t menu_set_item_param_value(const menu_item_t *item, float value)
+{
+    if(item == NULL)
+    {
+        return 1U;
+    }
+
+    if(item->type == MENU_TYPE_PARAMETER)
+    {
+        if(item->param_index >= param_count)
+        {
+            return 1U;
+        }
+        menu_set_param_by_index(item->param_index, value);
+        return 0U;
+    }
+
+    if(item->type == MENU_TYPE_AIR_PARAMETER)
+    {
+        return menu_set_air_param_by_index(item->param_index, value);
+    }
+
+    return 1U;
+}
+
+static uint32_t menu_get_slot_page(uint8_t slot, uint8_t legacy)
+{
+    uint32_t base_page;
+
+    base_page = (legacy != 0U) ? MENU_LEGACY_SLOT_BASE_PAGE : MENU_SLOT_BASE_PAGE;
+    return base_page + ((uint32_t)slot * MENU_SLOT_SIZE);
+}
+
 //====================================================菜单核心功能====================================================
 
 /**
@@ -113,13 +220,7 @@ void menu_init(void)
  */
 void menu_update_100HZ(void)
 {
-    // 检查定时器标志
-    if(timer_100HZ_flag)
-    {
-        timer_100HZ_flag = 0;
-        // 处理按键事件
-        menu_process_keys();
-    }
+    menu_process_keys();
 
     // 处理待执行的Flash操作（在主循环中执行，避免在中断中操作Flash）
     if(pending_flash_operation != FLASH_OP_NONE)
@@ -597,8 +698,16 @@ void menu_key_handler(menu_key_t key)
                             break;
 
                         case MENU_TYPE_PARAMETER:
-                            if(current_menu[current_index].param_index < param_count)
+                        case MENU_TYPE_AIR_PARAMETER:
+                            if(menu_is_param_item(&current_menu[current_index]) != 0U)
                             {
+                                if((current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER) &&
+                                   (menu_can_edit_air_params() == 0U))
+                                {
+                                    menu_show_error((menu_is_air_connected() == 0U) ?
+                                                    "Air Offline" : "Car Active");
+                                    break;
+                                }
                                 menu_state = MENU_STATE_EDIT;
                                 menu_request_refresh(REFRESH_VALUE);  // 进入编辑模式，只是颜色变化
                             }
@@ -622,23 +731,40 @@ void menu_key_handler(menu_key_t key)
             break;
 
         case MENU_STATE_EDIT:
-            if(current_menu[current_index].type == MENU_TYPE_PARAMETER &&
-               current_index < current_item_count &&
-               current_menu[current_index].param_index < param_count)
+            if((current_index < current_item_count) &&
+               (menu_is_param_item(&current_menu[current_index]) != 0U))
             {
-                uint8_t param_idx = current_menu[current_index].param_index;
-                float current_val = menu_get_param_by_index(param_idx);
+                float current_val = 0.0f;
+                float step = 0.0f;
 
                 switch(key)
                 {
                     case KEY_UP:
-                        menu_set_param_by_index(param_idx, current_val + param_configs[param_idx].step);
-                        menu_request_refresh(REFRESH_VALUE);  // 参数值变化，局部刷新
+                        if((menu_get_item_param_value(&current_menu[current_index], &current_val) != 0U) &&
+                           (menu_get_item_param_step(&current_menu[current_index], &step) != 0U) &&
+                           (menu_set_item_param_value(&current_menu[current_index], current_val + step) == 0U))
+                        {
+                            menu_request_refresh(REFRESH_VALUE);  // 参数值变化，局部刷新
+                        }
+                        else
+                        {
+                            menu_state = MENU_STATE_NORMAL;
+                            menu_show_error("Set Fail");
+                        }
                         break;
 
                     case KEY_DOWN:
-                        menu_set_param_by_index(param_idx, current_val - param_configs[param_idx].step);
-                        menu_request_refresh(REFRESH_VALUE);  // 参数值变化，局部刷新
+                        if((menu_get_item_param_value(&current_menu[current_index], &current_val) != 0U) &&
+                           (menu_get_item_param_step(&current_menu[current_index], &step) != 0U) &&
+                           (menu_set_item_param_value(&current_menu[current_index], current_val - step) == 0U))
+                        {
+                            menu_request_refresh(REFRESH_VALUE);  // 参数值变化，局部刷新
+                        }
+                        else
+                        {
+                            menu_state = MENU_STATE_NORMAL;
+                            menu_show_error("Set Fail");
+                        }
                         break;
 
                     case KEY_ENTER:
@@ -672,7 +798,8 @@ uint8_t menu_flash_check_slot(uint8_t slot)
     }
 
     // 计算页面编号（每个存档占MENU_SLOT_SIZE页）
-    uint32_t page_num = MENU_SLOT_BASE_PAGE + (slot * MENU_SLOT_SIZE);
+    uint32_t page_num = menu_get_slot_page(slot, 0U);
+    uint8_t has_data;
 
     // Flash边界安全检查
     if(page_num >= FLASH_PAGE_NUM)
@@ -681,7 +808,16 @@ uint8_t menu_flash_check_slot(uint8_t slot)
     }
 
     // 简单检查：页面是否有数据
-    uint8_t has_data = flash_check(0, page_num);
+    has_data = flash_check(0, page_num);
+    if(has_data == 0U)
+    {
+        page_num = menu_get_slot_page(slot, 1U);
+        if(page_num >= FLASH_PAGE_NUM)
+        {
+            return 0;
+        }
+        has_data = flash_check(0, page_num);
+    }
     return has_data;
 }
 
@@ -697,7 +833,7 @@ void menu_flash_load_params(uint8_t slot)
     }
 
     // 计算页面编号（每个存档占MENU_SLOT_SIZE页）
-    uint32_t page_num = MENU_SLOT_BASE_PAGE + (slot * MENU_SLOT_SIZE);
+    uint32_t page_num = menu_get_slot_page(slot, 0U);
 
     if(page_num >= FLASH_PAGE_NUM)
     {
@@ -708,8 +844,13 @@ void menu_flash_load_params(uint8_t slot)
     // 检查是否有保存的数据
     if(!flash_check(0, page_num))
     {
-        menu_show_error("No Data");
-        return;
+        uint32_t legacy_page = menu_get_slot_page(slot, 1U);
+        if((legacy_page >= FLASH_PAGE_NUM) || (!flash_check(0, legacy_page)))
+        {
+            menu_show_error("No Data");
+            return;
+        }
+        page_num = legacy_page;
     }
 
     // 显示加载进度
@@ -756,7 +897,7 @@ void menu_flash_save_params(uint8_t slot)
     }
 
     // 计算页面编号（每个存档占MENU_SLOT_SIZE页）
-    uint32_t page_num = MENU_SLOT_BASE_PAGE + (slot * MENU_SLOT_SIZE);
+    uint32_t page_num = menu_get_slot_page(slot, 0U);
 
     if(page_num >= FLASH_PAGE_NUM)
     {
@@ -800,7 +941,7 @@ void menu_flash_format_slot(uint8_t slot)
     }
 
     // 计算页面编号（每个存档占用2页）
-    uint32_t page_num = MENU_SLOT_BASE_PAGE + (slot * MENU_SLOT_SIZE);
+    uint32_t page_num = menu_get_slot_page(slot, 0U);
 
     // Flash边界安全检查
     if(page_num >= FLASH_PAGE_NUM || (page_num + MENU_SLOT_SIZE - 1) >= FLASH_PAGE_NUM)
@@ -859,6 +1000,8 @@ void menu_render_current(void)
  */
 void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t editing)
 {
+    float value = 0.0f;
+
     if(item == NULL) return;  // 安全检查
 
     // 边界检查: 不渲染超出可视区域的行 (0-7行)
@@ -885,10 +1028,10 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
     }
 
     // 构建显示文本 (左右对齐布局)
-    if(item->type == MENU_TYPE_PARAMETER)
+    if(menu_is_param_item(item) != 0U)
     {
         // 检查参数索引是否有效
-        if(item->param_index >= param_count) return;
+        if(menu_get_item_param_value(item, &value) == 0U) return;
 
         // 参数名称 (左对齐)
         char param_name[20];
@@ -902,7 +1045,6 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
         }
 
         // 参数值 (右对齐，3位小数)
-        float value = menu_get_param_by_index(item->param_index);
         char param_value[12];
         sprintf(param_value, "%7.3f", (double)value);  // 右对齐，宽度7，3位小数
 

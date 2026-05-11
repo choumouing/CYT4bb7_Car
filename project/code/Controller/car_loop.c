@@ -35,10 +35,12 @@ void car_loop_init(void)
 {
     car_loop_runtime_reset();
 
+    menu_init();
     menu_config_init();
     mecanum_motor_init();
     encoder_control_init();
     odometer_init();
+    camera_spi_init();
     beacon_detection_init();
     IMU_Init_All();
     AccelCalibration_Init();
@@ -51,6 +53,7 @@ void car_loop_init(void)
     car_mode_init();
     wifi_core_Init();
     ALX_AOA_Init();
+    air_comm_car_init();
     pit_init(PIT_CH0, 1000);
 }
 
@@ -66,7 +69,10 @@ static void car_loop_100HZ(void)
 
     encoder_update_100HZ();
     odometer_update_100HZ();
+    camera_spi_update_100HZ(s_system_time_ms);
+    air_comm_car_update_100HZ();
     beacon_detection_update_100HZ();
+    menu_update_100HZ();
 
     if(0U != car_control_enabled)
     {
@@ -148,4 +154,6 @@ void car_loop_poll(void)
     }
 
     wifi_core_Poll();
+    camera_spi_poll();
+    air_comm_car_poll();
 }

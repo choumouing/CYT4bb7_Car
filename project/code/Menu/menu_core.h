@@ -38,7 +38,8 @@ extern volatile uint8_t timer_100HZ_flag;    // 100HZ定时器标志
 
 // Flash存档安全配置 (CYT4BB7: 96页，每页2KB)
 #define MENU_SLOT_COUNT         4           // 存档数量
-#define MENU_SLOT_BASE_PAGE     88          // 从第88页开始（预留前面页面给其他功能）
+#define MENU_SLOT_BASE_PAGE     72          // Car菜单存档使用72-79页，避开IMU page 95
+#define MENU_LEGACY_SLOT_BASE_PAGE 88       // 旧菜单只做一次兼容读取，不再写回
 #define MENU_SLOT_SIZE          2           // 每个存档占用2页(4KB)
 #define MENU_MAGIC_NUMBER       0x5A5A5A5A  // 存档验证魔数
 #define MENU_VERSION            0x01        // 存档版本
@@ -54,7 +55,8 @@ extern volatile uint8_t timer_100HZ_flag;    // 100HZ定时器标志
 typedef enum {
     MENU_TYPE_SUBMENU = 0,      // 子菜单项
     MENU_TYPE_FUNCTION,         // 函数项
-    MENU_TYPE_PARAMETER         // 参数项
+    MENU_TYPE_PARAMETER,        // 参数项
+    MENU_TYPE_AIR_PARAMETER     // Air远程参数项
 } menu_type_t;
 
 // 刷新类型枚举（局部刷新优化）
