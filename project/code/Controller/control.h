@@ -25,6 +25,7 @@ extern float control_yaw_rate_raw;
 extern float control_yaw_rate_output;
 
 float control_get_current_yaw_angle(void);
+void control_yaw_hold_reset(void);
 
 /**
  * @brief 初始化四电机速度环
@@ -49,6 +50,7 @@ float control_yaw_angle_loop_update_25HZ(float yaw_angle_target);
  * @return 旋转分量目标，单位为编码器周期计数
  */
 float control_yaw_rate_loop_update_50HZ(float yaw_rate_target);
+void control_yaw_hold_update_25HZ(float rotate_target);
 
 /**
  * @brief 使用当前Yaw角速度环输出更新四轮速度环

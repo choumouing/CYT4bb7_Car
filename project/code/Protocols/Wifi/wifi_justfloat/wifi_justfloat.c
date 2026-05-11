@@ -214,3 +214,23 @@ uint8_t wifi_justfloat_Impl(uint8_t declared_num, uint8_t actual_num, ...)
     wifi_justfloat_profile_update(cost_us, (0U == ret) ? 1U : 0U);
     return ret;
 }
+
+void wifi_justfloat_update_100HZ(uint32_t system_time_ms)
+{
+    wifi_justfloat((float)system_time_ms,
+                   g_imufilter_1000hz.accx,
+                   g_imufilter_1000hz.accy,
+                   g_imufilter_1000hz.accz,
+                   g_imufilter_1000hz.gyrox,
+                   g_imufilter_1000hz.gyroy,
+                   g_imufilter_1000hz.gyroz,
+                   g_euler.roll,
+                   g_euler.pitch,
+                   g_euler.yaw,
+                   g_odometer.strafe_distance,
+                   g_odometer.forward_distance,
+                   encoder_get_left_front_filtered_count(),
+                   encoder_get_right_front_filtered_count(),
+                   encoder_get_left_rear_filtered_count(),
+                   encoder_get_right_rear_filtered_count());
+}

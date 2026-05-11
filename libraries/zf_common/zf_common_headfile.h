@@ -113,7 +113,7 @@
 //=====================================================组件应用层=====================================================
 
 //=====================================================Project Code=====================================================
-#include "Controller/PID/pid.h"
+#include "Controller/pid.h"
 #include "Estimation/Attitude/IMU_Filtter.h"
 #include "Estimation/Attitude/MahonyAhrs.h"
 #include "HW_Drivers/IMU/ICM42688.h"
@@ -129,18 +129,18 @@
 #include "Menu/menu_core.h"
 #include "Menu/menu_config.h"
 
-#include "Controller/Control/control.h"
+#include "Controller/control.h"
 #include "Controller/Planner/s_curve_planner.h"
-#include "Controller/Modes/uwb_follow.h"
-#include "Controller/Modes/target_follow.h"
-#include "Controller/Modes/target_follow_config.h"
-#include "Controller/Modes/car_mode.h"
-#include "Controller/Scheduler/car_loop.h"
+#include "Controller/car_mode.h"
+#include "Controller/car_mode2_config.h"
+#include "Controller/car_start_sbus.h"
+#include "Controller/car_loop.h"
 
 #include "Protocols/Wifi/wifi_cmd/wifi_cmd.h"
 #include "Protocols/Wifi/wifi_justfloat/wifi_justfloat.h"
 #include "Protocols/Wifi/wifi_cal_imu/wifi_cal_imu.h"
 #include "Protocols/Wifi/wifi_core.h"
+#include "Protocols/SBUS/sbus.h"
 #include "Protocols/WirelessControl/wireless_control.h"
 //=====================================================Project Code=====================================================
 #endif

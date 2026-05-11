@@ -369,7 +369,7 @@ int s_curve_planner_init(s_curve_planner_t *planner,
  *
  * @see 函数原型在头文件中有详细说明
  */
-void s_curve_planner_update(s_curve_planner_t *planner, float dt)
+void s_curve_planner_step(s_curve_planner_t *planner, float dt)
 {
     if (planner == NULL || planner->is_running == 0) {
         return;
