@@ -1,70 +1,120 @@
+/**
+ * @file air_comm_car.c
+ * @brief 车端空中通信实现
+ *
+ * 接收状态机（4 状态，逐字节解析）：
+ *   state=0: 帧头匹配（等待 0xAA 0xAA 0x55 0x55）
+ *   state=1: 帧信息（type → seq → len）
+ *   state=2: payload 接收
+ *   state=3: CRC 接收（2 字节）→ 校验 → 处理帧
+ *
+ * 错误处理路径：
+ *   - 帧头错字节：header_count 回退，不丢帧（容错重同步）
+ *   - len > MAX_PAYLOAD：丢弃，state 回 0，计 rx_oversize_count
+ *   - CRC 不匹配：丢弃，计 crc_error_count
+ *   - 接收队列满：丢弃新字节，计 rx_queue_overflow_count
+ *   - ACK 超时：重发原帧，最多 3 次，超时后 ACK_RESULT_TIMEOUT
+ */
+
 #include "air_comm_car.h"
 
+/* ===== 帧头定义（四字节双对，抗误判） ===== */
 #define AIR_COMM_HEADER_0                  (0xAAU)
 #define AIR_COMM_HEADER_1                  (0xAAU)
 #define AIR_COMM_HEADER_2                  (0x55U)
 #define AIR_COMM_HEADER_3                  (0x55U)
 
-#define AIR_COMM_MAX_PAYLOAD               (250U)
-#define AIR_COMM_FRAME_OVERHEAD            (9U)
+/* ===== 帧尺寸 ===== */
+#define AIR_COMM_MAX_PAYLOAD               (250U)  /* payload 最大字节数 */
+#define AIR_COMM_FRAME_OVERHEAD            (9U)    /* 帧开销：head(4)+type(1)+seq(1)+len(1)+crc(2) */
 #define AIR_COMM_MAX_FRAME                 (AIR_COMM_MAX_PAYLOAD + AIR_COMM_FRAME_OVERHEAD)
-#define AIR_COMM_RX_QUEUE_SIZE             (512U)
 
-#define AIR_COMM_MSG_SET_PARAM             (0x01U)
-#define AIR_COMM_MSG_ACK_PARAM             (0x02U)
-#define AIR_COMM_MSG_EXEC_FUNC             (0x03U)
-#define AIR_COMM_MSG_ACK_FUNC              (0x04U)
-#define AIR_COMM_MSG_HEARTBEAT             (0x05U)
-#define AIR_COMM_MSG_RUN_DATA              (0x06U)
+/* ===== 接收队列 ===== */
+#define AIR_COMM_RX_QUEUE_SIZE             (512U)  /* 环形接收缓冲区大小 */
 
-#define COMM_ACK_TIMEOUT_MS                (200U)
-#define COMM_MAX_RETRY                     (3U)
-#define COMM_HEARTBEAT_MS                  (200U)
-#define COMM_OFFLINE_MS                    (600U)
+/* ===== 消息类型 ===== */
+#define AIR_COMM_MSG_SET_PARAM             (0x01U) /* 下发参数（需 ACK） */
+#define AIR_COMM_MSG_ACK_PARAM             (0x02U) /* 参数操作确认 */
+#define AIR_COMM_MSG_EXEC_FUNC             (0x03U) /* 执行函数（需 ACK） */
+#define AIR_COMM_MSG_ACK_FUNC              (0x04U) /* 函数执行确认 */
+#define AIR_COMM_MSG_HEARTBEAT             (0x05U) /* 心跳 */
+#define AIR_COMM_MSG_RUN_DATA              (0x06U) /* 实时数据（下行） */
+
+/* ===== 超时策略 ===== */
+#define COMM_ACK_TIMEOUT_MS                (200U)  /* ACK 超时阈值（ms） */
+#define COMM_MAX_RETRY                     (3U)    /* 最大重试次数 */
+#define COMM_HEARTBEAT_MS                  (200U)  /* 心跳发送间隔（ms） */
+#define COMM_OFFLINE_MS                    (600U)  /* 对端离线判定阈值（ms） */
+
+/* ===== 内部结构体 ===== */
+
+/**
+ * @brief 接收状态机
+ * 逐字节解析帧，state 跟踪当前阶段
+ */
 typedef struct
 {
-    uint8 state;
-    uint8 header_count;
-    uint8 type;
-    uint8 seq;
-    uint8 len;
-    uint8 payload[AIR_COMM_MAX_PAYLOAD];
-    uint16 payload_count;
-    uint16 crc;
-    uint8 crc_count;
+    uint8 state;                        /* 状态机状态：0=帧头, 1=信息, 2=payload, 3=CRC */
+    uint8 header_count;                 /* 帧头匹配进度 / 信息字段进度 */
+    uint8 type;                         /* 消息类型 */
+    uint8 seq;                          /* 帧序号 */
+    uint8 len;                          /* payload 长度 */
+    uint8 payload[AIR_COMM_MAX_PAYLOAD]; /* payload 缓冲区 */
+    uint16 payload_count;               /* 已接收 payload 字节数 */
+    uint16 crc;                         /* 收到的 CRC 值（小端） */
+    uint8 crc_count;                    /* CRC 字节接收进度 */
 } air_comm_rx_state_t;
 
+/**
+ * @brief ACK 等待状态
+ * 保存最近一次需要 ACK 的发送帧，用于超时重发
+ */
 typedef struct
 {
-    uint8 active;
-    uint8 type;
-    uint8 seq;
-    uint8 retry;
-    uint8 result;
-    uint8 status;
-    uint32 send_time;
-    uint8 frame[AIR_COMM_MAX_FRAME];
-    uint16 frame_len;
+    uint8 active;                       /* 1=有 ACK 等待中 */
+    uint8 type;                         /* 等待 ACK 的消息类型 */
+    uint8 seq;                          /* 等待 ACK 的帧序号 */
+    uint8 retry;                        /* 已重试次数 */
+    uint8 result;                       /* ACK 结果（NONE/OK/TIMEOUT/ERROR） */
+    uint8 status;                       /* 对端返回的状态码 */
+    uint32 send_time;                   /* 首次发送时间（ms） */
+    uint8 frame[AIR_COMM_MAX_FRAME];    /* 保存的帧副本（用于重发） */
+    uint16 frame_len;                   /* 帧长度 */
 } air_comm_ack_state_t;
 
+/**
+ * @brief 环形接收队列
+ * UART 中断写入 head，主循环从 tail 读取
+ * head/tail 用 volatile 保证中断/主循环可见性
+ */
 typedef struct
 {
     uint8 data[AIR_COMM_RX_QUEUE_SIZE];
-    volatile uint16 head;
-    volatile uint16 tail;
+    volatile uint16 head;               /* 写入位置（中断修改） */
+    volatile uint16 tail;               /* 读取位置（主循环修改） */
 } air_comm_rx_queue_t;
 
+/* ===== 静态状态 ===== */
 static air_comm_rx_state_t s_air_comm_rx;
 static air_comm_ack_state_t s_air_comm_ack;
 static air_comm_rx_queue_t s_air_comm_rx_queue;
 static air_comm_stats_t s_air_comm_stats;
 static air_comm_run_data_fn s_air_comm_run_data_callback;
-static volatile uint32 s_air_comm_tick_ms;
-static uint32 s_air_comm_last_peer_ms;
-static uint32 s_air_comm_last_heartbeat_ms;
-static uint8 s_air_comm_seq;
-static uint8 s_air_comm_initialized;
+static volatile uint32 s_air_comm_tick_ms;          /* 1ms tick（中断修改） */
+static uint32 s_air_comm_last_peer_ms;              /* 最近一次收到对端心跳的时间 */
+static uint32 s_air_comm_last_heartbeat_ms;         /* 最近一次发送心跳的时间 */
+static uint8 s_air_comm_seq;                        /* 下一个发送帧的序号 */
+static uint8 s_air_comm_initialized;                /* 初始化标志 */
 
+/* ===== CRC16-CCITT（多项式 0x1021，初始 0xFFFF） ===== */
+
+/**
+ * @brief CRC16-CCITT 校验
+ * 覆盖范围：帧头到 payload 末尾（不含 CRC 自身）
+ * @param data 数据指针
+ * @param len 数据长度
+ * @return CRC16 值
+ */
 static uint16 air_comm_crc16(const uint8 *data, uint16 len)
 {
     uint16 crc = 0xFFFFU;
@@ -90,6 +140,11 @@ static uint16 air_comm_crc16(const uint8 *data, uint16 len)
     return crc;
 }
 
+/* ===== 字节序工具 ===== */
+
+/**
+ * @brief 从字节缓冲区读取 float（按字节拷贝，避免对齐问题）
+ */
 static float air_comm_read_float(const uint8 *buffer)
 {
     float value;
@@ -102,6 +157,9 @@ static float air_comm_read_float(const uint8 *buffer)
     return value;
 }
 
+/**
+ * @brief 将 float 写入字节缓冲区
+ */
 static void air_comm_write_float(uint8 *buffer, float value)
 {
     uint8 *ptr = (uint8 *)&value;
@@ -112,6 +170,9 @@ static void air_comm_write_float(uint8 *buffer, float value)
     buffer[3] = ptr[3];
 }
 
+/**
+ * @brief 将 uint32 小端写入字节缓冲区
+ */
 static void air_comm_write_u32(uint8 *buffer, uint32 value)
 {
     buffer[0] = (uint8)(value & 0xFFU);
@@ -120,6 +181,14 @@ static void air_comm_write_u32(uint8 *buffer, uint32 value)
     buffer[3] = (uint8)((value >> 24) & 0xFFU);
 }
 
+/* ===== 发送层 ===== */
+
+/**
+ * @brief 通过 UART3 发送原始数据
+ * @param data 数据指针
+ * @param len 数据长度
+ * @return 1=成功，0=失败
+ */
 static uint8 air_comm_send_uart(const uint8 *data, uint16 len)
 {
     if((data == NULL) || (len == 0U))
@@ -131,6 +200,11 @@ static uint8 air_comm_send_uart(const uint8 *data, uint16 len)
     return 1U;
 }
 
+/**
+ * @brief 查询请求类型对应的期望 ACK 类型
+ * @param request_type 请求消息类型
+ * @return 期望的 ACK 消息类型，0=不需要 ACK
+ */
 static uint8 air_comm_expected_ack_type(uint8 request_type)
 {
     if(request_type == AIR_COMM_MSG_SET_PARAM)
@@ -144,6 +218,17 @@ static uint8 air_comm_expected_ack_type(uint8 request_type)
     return 0U;
 }
 
+/**
+ * @brief 从 ACK payload 解析状态码
+ *
+ * ACK_PARAM payload: [status(1B)] → 取 payload[0]
+ * ACK_FUNC payload:  [func_id(1B)][status(1B)][result(4B)] → 取 payload[1]
+ *
+ * @param ack_type ACK 消息类型
+ * @param payload payload 指针
+ * @param len payload 长度
+ * @return 状态码，异常返回 AIR_COMM_STATUS_ERROR
+ */
 static uint8 air_comm_parse_ack_status(uint8 ack_type,
                                        const uint8 *payload,
                                        uint8 len)
@@ -166,6 +251,18 @@ static uint8 air_comm_parse_ack_status(uint8 ack_type,
     return AIR_COMM_STATUS_ERROR;
 }
 
+/**
+ * @brief 组装并发送一帧
+ *
+ * 帧布局：[AA AA 55 55] [type] [seq] [len] [payload...] [crc_lo crc_hi]
+ *
+ * @param type 消息类型
+ * @param seq 帧序号
+ * @param payload payload 数据
+ * @param len payload 长度
+ * @param save_for_ack 1=保存帧副本（用于超时重发）
+ * @return 1=成功，0=失败
+ */
 static uint8 air_comm_send_frame(uint8 type,
                                  uint8 seq,
                                  const uint8 *payload,
@@ -181,20 +278,24 @@ static uint8 air_comm_send_frame(uint8 type,
         return 0U;
     }
 
+    /* 帧头 */
     frame[pos++] = AIR_COMM_HEADER_0;
     frame[pos++] = AIR_COMM_HEADER_1;
     frame[pos++] = AIR_COMM_HEADER_2;
     frame[pos++] = AIR_COMM_HEADER_3;
+    /* 帧信息 */
     frame[pos++] = type;
     frame[pos++] = seq;
     frame[pos++] = len;
 
+    /* payload */
     if((len > 0U) && (payload != NULL))
     {
         memcpy(&frame[pos], payload, len);
         pos += len;
     }
 
+    /* CRC 覆盖帧头到 payload 末尾 */
     crc = air_comm_crc16(frame, pos);
     frame[pos++] = (uint8)(crc & 0xFFU);
     frame[pos++] = (uint8)((crc >> 8) & 0xFFU);
@@ -204,12 +305,14 @@ static uint8 air_comm_send_frame(uint8 type,
         return 0U;
     }
 
+    /* 需要 ACK 时保存帧副本 */
     if(save_for_ack != 0U)
     {
         memcpy(s_air_comm_ack.frame, frame, pos);
         s_air_comm_ack.frame_len = pos;
     }
 
+    /* 统计 */
     s_air_comm_stats.tx_frame_count++;
     s_air_comm_stats.tx_byte_count += pos;
     if(type == AIR_COMM_MSG_HEARTBEAT)
@@ -220,6 +323,16 @@ static uint8 air_comm_send_frame(uint8 type,
     return 1U;
 }
 
+/**
+ * @brief 发送消息（高层封装）
+ *
+ * @param type 消息类型
+ * @param payload payload 数据
+ * @param len payload 长度
+ * @param need_ack 1=需要 ACK（会检查是否有未完成 ACK）
+ * @return 1=成功，0=失败
+ * 注意：need_ack=1 时，如果已有待确认 ACK，直接返回失败
+ */
 static uint8 air_comm_send(uint8 type, const uint8 *payload, uint8 len, uint8 need_ack)
 {
     uint8 seq;
@@ -250,6 +363,11 @@ static uint8 air_comm_send(uint8 type, const uint8 *payload, uint8 len, uint8 ne
     return 1U;
 }
 
+/**
+ * @brief 发送心跳帧
+ * payload: [reserved(2B)][tick_ms(4B)] 共 6 字节
+ * 不需要 ACK，不保存帧副本
+ */
 static void air_comm_send_heartbeat(void)
 {
     uint8 payload[6];
@@ -263,12 +381,33 @@ static void air_comm_send_heartbeat(void)
     }
 }
 
+/* ===== 接收处理 ===== */
+
+/**
+ * @brief 标记收到对端心跳
+ * 更新 last_peer_ms 和 online_status=1
+ */
 static void air_comm_mark_peer_heartbeat(void)
 {
     s_air_comm_last_peer_ms = s_air_comm_tick_ms;
     s_air_comm_stats.online_status = 1U;
 }
 
+/**
+ * @brief 匹配 ACK 帧
+ *
+ * 匹配条件：
+ *   1. 当前有待确认 ACK（active=1）
+ *   2. ACK 类型匹配（ack_type == expected）
+ *   3. 序号匹配（seq == 等待的 seq）
+ *
+ * 匹配成功后：清除 active，解析 status，更新统计
+ *
+ * @param ack_type 收到的 ACK 类型
+ * @param seq 收到的序号
+ * @param payload payload 数据
+ * @param len payload 长度
+ */
 static void air_comm_match_ack(uint8 ack_type,
                                uint8 seq,
                                const uint8 *payload,
@@ -290,6 +429,7 @@ static void air_comm_match_ack(uint8 ack_type,
 
     status = air_comm_parse_ack_status(ack_type, payload, len);
 
+    /* 清除等待状态 */
     s_air_comm_ack.active = 0U;
     s_air_comm_ack.status = status;
     s_air_comm_stats.last_ack_type = s_air_comm_ack.type;
@@ -307,6 +447,15 @@ static void air_comm_match_ack(uint8 ack_type,
     }
 }
 
+/**
+ * @brief 处理实时数据帧
+ *
+ * RUN_DATA payload 格式：[count(1B)][float0(4B)][float1(4B)]...
+ * count = float 个数（≤32）
+ *
+ * @param payload payload 指针
+ * @param len payload 长度
+ */
 static void air_comm_handle_run_data(const uint8 *payload, uint8 len)
 {
     uint8 count;
@@ -342,6 +491,20 @@ static void air_comm_handle_run_data(const uint8 *payload, uint8 len)
     }
 }
 
+/**
+ * @brief 帧分发器（CRC 校验通过后调用）
+ *
+ * 分发逻辑：
+ *   ACK_PARAM / ACK_FUNC → 匹配 ACK
+ *   HEARTBEAT → 标记对端在线
+ *   RUN_DATA → 回调上层
+ *   其他类型 → 忽略
+ *
+ * @param type 消息类型
+ * @param seq 帧序号
+ * @param payload payload
+ * @param len payload 长度
+ */
 static void air_comm_handle_frame(uint8 type,
                                   uint8 seq,
                                   const uint8 *payload,
@@ -368,12 +531,22 @@ static void air_comm_handle_frame(uint8 type,
     }
 }
 
+/**
+ * @brief 处理一帧完整的接收数据
+ *
+ * 流程：
+ *   1. 重建完整帧（用于 CRC 校验）
+ *   2. 计算 CRC 并与收到的 CRC 比较
+ *   3. 不匹配 → crc_error_count++，丢弃
+ *   4. 匹配 → rx_frame_count++，分发处理
+ */
 static void air_comm_process_rx_frame(void)
 {
     uint8 frame[AIR_COMM_MAX_FRAME];
     uint16 pos = 0U;
     uint16 crc_calc;
 
+    /* 重建帧 */
     frame[pos++] = AIR_COMM_HEADER_0;
     frame[pos++] = AIR_COMM_HEADER_1;
     frame[pos++] = AIR_COMM_HEADER_2;
@@ -388,6 +561,7 @@ static void air_comm_process_rx_frame(void)
         pos += s_air_comm_rx.len;
     }
 
+    /* CRC 校验 */
     crc_calc = air_comm_crc16(frame, pos);
     if(crc_calc != s_air_comm_rx.crc)
     {
@@ -403,13 +577,38 @@ static void air_comm_process_rx_frame(void)
                           s_air_comm_rx.len);
 }
 
+/**
+ * @brief 逐字节接收状态机
+ *
+ * state=0（帧头匹配）：
+ *   按顺序匹配 AA AA 55 55，任何字节不匹配则重置
+ *   header_count 用作帧头匹配进度计数器
+ *
+ * state=1（帧信息）：
+ *   header_count 复用为信息字段进度：
+ *     0 → type
+ *     1 → seq
+ *     2 → len → 根据 len 决定下一步
+ *       len > MAX_PAYLOAD → 丢弃，回 state=0
+ *       len == 0 → 直接跳 state=3 收 CRC
+ *       len > 0 → 跳 state=2 收 payload
+ *
+ * state=2（payload）：
+ *   逐字节写入 payload 缓冲区
+ *   收满 len 字节后跳 state=3
+ *
+ * state=3（CRC）：
+ *   收 2 字节 CRC → 调 process_rx_frame → 回 state=0
+ *
+ * @param byte 新收到的字节
+ */
 static void air_comm_rx_byte_parser(uint8 byte)
 {
     s_air_comm_stats.rx_raw_byte_count++;
 
     switch(s_air_comm_rx.state)
     {
-        case 0:
+        case 0: /* 帧头匹配 */
             if((s_air_comm_rx.header_count == 0U) && (byte == AIR_COMM_HEADER_0))
             {
                 s_air_comm_rx.header_count = 1U;
@@ -429,11 +628,12 @@ static void air_comm_rx_byte_parser(uint8 byte)
             }
             else
             {
+                /* 不匹配：如果当前字节恰好是帧头首字节，保留进度为 1 */
                 s_air_comm_rx.header_count = (byte == AIR_COMM_HEADER_0) ? 1U : 0U;
             }
             break;
 
-        case 1:
+        case 1: /* 帧信息：type → seq → len */
             if(s_air_comm_rx.header_count == 0U)
             {
                 s_air_comm_rx.type = byte;
@@ -451,22 +651,25 @@ static void air_comm_rx_byte_parser(uint8 byte)
                 s_air_comm_rx.payload_count = 0U;
                 if(byte > AIR_COMM_MAX_PAYLOAD)
                 {
+                    /* payload 超限：丢弃 */
                     s_air_comm_stats.rx_oversize_count++;
                     s_air_comm_rx.state = 0U;
                 }
                 else if(byte == 0U)
                 {
+                    /* 无 payload：直接收 CRC */
                     s_air_comm_rx.state = 3U;
                     s_air_comm_rx.crc_count = 0U;
                 }
                 else
                 {
+                    /* 有 payload：收 payload */
                     s_air_comm_rx.state = 2U;
                 }
             }
             break;
 
-        case 2:
+        case 2: /* payload 接收 */
             if(s_air_comm_rx.payload_count < AIR_COMM_MAX_PAYLOAD)
             {
                 s_air_comm_rx.payload[s_air_comm_rx.payload_count++] = byte;
@@ -478,7 +681,7 @@ static void air_comm_rx_byte_parser(uint8 byte)
             }
             break;
 
-        case 3:
+        case 3: /* CRC 接收 */
             if(s_air_comm_rx.crc_count == 0U)
             {
                 s_air_comm_rx.crc = byte;
@@ -493,13 +696,20 @@ static void air_comm_rx_byte_parser(uint8 byte)
             }
             break;
 
-        default:
+        default: /* 异常状态：重置 */
             s_air_comm_rx.state = 0U;
             s_air_comm_rx.header_count = 0U;
             break;
     }
 }
 
+/* ===== 接收队列 ===== */
+
+/**
+ * @brief 从环形队列弹出一个字节
+ * @param byte 输出字节
+ * @return 1=有数据，0=队列空
+ */
 static uint8 air_comm_rx_queue_pop(uint8 *byte)
 {
     uint16 tail;
@@ -525,14 +735,30 @@ static uint8 air_comm_rx_queue_pop(uint8 *byte)
     return 1U;
 }
 
+/* ===== ACK 超时与在线检测 ===== */
+
+/**
+ * @brief 检查 ACK 超时和对端在线状态
+ *
+ * ACK 超时处理：
+ *   - 超过 200ms 无 ACK
+ *   - 重试次数 < 3 → 重发保存的帧，retry++
+ *   - 重试次数 >= 3 → active=0, result=TIMEOUT
+ *
+ * 在线检测：
+ *   - 超过 600ms 未收到对端心跳 → online_status=2（离线）
+ *   - last_peer_ms=0 表示已判定离线（避免重复判定）
+ */
 static void air_comm_task_ack_and_online(void)
 {
+    /* ACK 超时检查 */
     if(s_air_comm_ack.active != 0U)
     {
         if((s_air_comm_tick_ms - s_air_comm_ack.send_time) >= COMM_ACK_TIMEOUT_MS)
         {
             if(s_air_comm_ack.retry < COMM_MAX_RETRY)
             {
+                /* 重发 */
                 if(air_comm_send_uart(s_air_comm_ack.frame, s_air_comm_ack.frame_len) != 0U)
                 {
                     s_air_comm_ack.send_time = s_air_comm_tick_ms;
@@ -544,6 +770,7 @@ static void air_comm_task_ack_and_online(void)
             }
             else
             {
+                /* 重试耗尽：超时 */
                 s_air_comm_ack.active = 0U;
                 s_air_comm_ack.result = AIR_COMM_ACK_RESULT_TIMEOUT;
                 s_air_comm_ack.status = AIR_COMM_STATUS_ERROR;
@@ -555,15 +782,18 @@ static void air_comm_task_ack_and_online(void)
         }
     }
 
+    /* 对端在线检测 */
     if(s_air_comm_last_peer_ms != 0U)
     {
         if((s_air_comm_tick_ms - s_air_comm_last_peer_ms) >= COMM_OFFLINE_MS)
         {
-            s_air_comm_stats.online_status = 2U;
+            s_air_comm_stats.online_status = 2U;  /* 离线 */
             s_air_comm_last_peer_ms = 0U;
         }
     }
 }
+
+/* ===== 公共接口 ===== */
 
 void air_comm_car_init(void)
 {
@@ -587,6 +817,11 @@ void air_comm_car_tick_1MS(void)
     s_air_comm_tick_ms++;
 }
 
+/**
+ * @brief 主循环轮询入口
+ * 处理量：最多处理 512 字节（一整轮队列），防止阻塞主循环
+ * 流程：取字节 → 解析 → 检查 ACK 超时/在线
+ */
 void air_comm_car_poll(void)
 {
     uint8 byte;
@@ -606,6 +841,11 @@ void air_comm_car_poll(void)
     air_comm_task_ack_and_online();
 }
 
+/**
+ * @brief 100Hz 更新入口
+ * 检查是否需要发心跳（每 200ms 一次）
+ * 同时检查 ACK 超时（冗余检查，确保及时）
+ */
 void air_comm_car_update_100HZ(void)
 {
     if(s_air_comm_initialized == 0U)
@@ -622,6 +862,11 @@ void air_comm_car_update_100HZ(void)
     air_comm_task_ack_and_online();
 }
 
+/**
+ * @brief UART 接收中断回调
+ * @param byte 接收到的字节
+ * 写入环形队列，满则丢弃并计 overflow
+ */
 void air_comm_car_rx_byte(uint8 byte)
 {
     uint16 next_head;
@@ -657,6 +902,16 @@ uint32 air_comm_car_get_tick(void)
     return s_air_comm_tick_ms;
 }
 
+/**
+ * @brief 下发参数（需 ACK）
+ *
+ * payload 格式：[name_len(1B)][name...][value(4B float)]
+ * 总长度 = 1 + name_len + 4
+ *
+ * @param name 参数名（C 字符串，≤16 字节）
+ * @param value 参数值
+ * @return 0=发送成功，1=失败
+ */
 uint8 air_comm_car_set_param(const char *name, float value)
 {
     uint8 payload[1U + AIR_COMM_PARAM_NAME_MAX + 4U];
@@ -683,6 +938,14 @@ uint8 air_comm_car_set_param(const char *name, float value)
     return (air_comm_send(AIR_COMM_MSG_SET_PARAM, payload, pos, 1U) != 0U) ? 0U : 1U;
 }
 
+/**
+ * @brief 执行对端函数（需 ACK）
+ *
+ * payload 格式：[func_id(1B)][reserved(1B)]
+ *
+ * @param func_id 函数 ID
+ * @return 0=发送成功，1=失败
+ */
 uint8 air_comm_car_exec_func(uint8 func_id)
 {
     uint8 payload[2];

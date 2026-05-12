@@ -1,11 +1,21 @@
+/* Mode2：目标点导航模式
+ *
+ * 功能：UWB+里程计多点巡航，自动在目标点间切换
+ * 状态机：IDLE → FOLLOW_TAG（跟随标签）/ GOTO_TARGET（前往目标）/ TARGET_REACHED（到达）
+ * 切换逻辑：标签在线且车在保护半径内 → 找候选目标 → 前往 → 到达标记 → 找下一个
+ *          标签不在线或车超出保护半径 → 退回FOLLOW_TAG（Mode1跟随）
+ * 数据来源：里程计g_odometer + UWB ALX_AOA + IMU航向角
+ * 输出：car_forward/strafe_target（编码器计数），rotate始终为0
+ */
 #include "car_mode.h"
 
 
-car_mode2_state_t g_car_mode2_state = {0};
+car_mode2_state_t g_car_mode2_state = {0};  // 运行状态（供诊断页读取）
 
-static PositionalPID s_target_forward_pid;
-static PositionalPID s_target_strafe_pid;
+static PositionalPID s_target_forward_pid;   // 目标导航前后轴PID
+static PositionalPID s_target_strafe_pid;    // 目标导航左右轴PID
 
+/* 计算两点间欧氏距离（m） */
 static float car_mode2_distance(float strafe_a, float forward_a,
                                     float strafe_b, float forward_b)
 {
@@ -17,6 +27,7 @@ static float car_mode2_distance(float strafe_a, float forward_a,
     return sqrtf((ds * ds) + (df * df));
 }
 
+/* 初始化/重置目标导航PID（使用car_mode.h中的常量参数） */
 static void car_mode2_pid_init(void)
 {
     PositionalPID_Init(&s_target_forward_pid,
@@ -35,6 +46,7 @@ static void car_mode2_pid_init(void)
                        TARGET_FOLLOW_OUTPUT_LIMIT);
 }
 
+/* 清零所有运行时状态（坐标、输出、子状态等） */
 static void car_mode2_clear_runtime(void)
 {
     g_car_mode2_state.car_strafe_m = 0.0f;
@@ -61,6 +73,9 @@ static void car_mode2_clear_runtime(void)
     g_car_mode2_state.output_valid = 0U;
 }
 
+/* 向量限幅：等比例缩小使最大分量不超过TARGET_FOLLOW_OUTPUT_LIMIT
+ * 防止单轴过大导致麦克纳姆轮解算异常
+ */
 static void car_mode2_apply_vector_limit(void)
 {
     float abs_forward;
@@ -82,6 +97,7 @@ static void car_mode2_apply_vector_limit(void)
     g_car_mode2_state.strafe_target *= scale;
 }
 
+/* 复制Mode1的跟随输出到Mode2（当车不在标签保护半径内或无候选目标时降级到跟随） */
 static void car_mode2_copy_tag_follow_output(void)
 {
     g_car_mode2_state.mode = TARGET_FOLLOW_MODE_FOLLOW_TAG;
@@ -94,6 +110,10 @@ static void car_mode2_copy_tag_follow_output(void)
                                           g_car_mode1_state.strafe_target : 0.0f;
 }
 
+/* 判断目标点是否合格（未到达 + 在标签保护半径内 + 在匹配半径内）
+ * 返回1=合格，0=不合格
+ * distance_m：可选输出，目标到标签的距离
+ */
 static uint8 car_mode2_target_is_eligible(uint8 index, float *distance_m)
 {
     float distance;
@@ -123,6 +143,10 @@ static uint8 car_mode2_target_is_eligible(uint8 index, float *distance_m)
     return 0U;
 }
 
+/* 找最近的合格目标点
+ * 优先返回当前活跃目标（如果仍合格），否则遍历所有目标找最近的
+ * 返回目标索引，无合格目标返回TARGET_FOLLOW_INVALID_INDEX
+ */
 static uint8 car_mode2_find_candidate(float *candidate_distance_m)
 {
     uint8 i;
@@ -165,6 +189,11 @@ static uint8 car_mode2_find_candidate(float *candidate_distance_m)
     return best_index;
 }
 
+/* 刷新标签全局坐标
+ * 输入：UWB滤波后相对坐标（cm）+ 当前航向角 + 里程计
+ * 计算：将UWB相对坐标旋转到全局坐标系，加上车当前位置
+ * 输出：tag_strafe_m/tag_forward_m（标签全局坐标），car_in_tag_range（车是否在保护半径内）
+ */
 static void car_mode2_refresh_tag_position(void)
 {
     float rel_x_cm;
@@ -201,6 +230,13 @@ static void car_mode2_refresh_tag_position(void)
         (g_car_mode2_state.car_tag_distance_m <= TARGET_FOLLOW_TAG_GUARD_RADIUS_M) ? 1U : 0U;
 }
 
+/* 前往指定目标点
+ * 流程：
+ *   1. 计算全局误差 → 到达判定（<REACHED_RADIUS则标记到达并返回）
+ *   2. 全局误差旋转到车体坐标系（用航向角）
+ *   3. 死区处理 → PID计算 → 向量限幅 → 写输出
+ * 输出：forward_target + strafe_target（编码器计数）
+ */
 static void car_mode2_drive_to_target(uint8 index)
 {
     float yaw_rad;
@@ -329,6 +365,16 @@ uint8 car_mode2_set_target(uint8 index, float strafe_m, float forward_m)
     return 1U;
 }
 
+/* Mode2主更新函数（25HZ）
+ * 数据流：
+ *   1. 先调用Mode1更新（计算跟随输出备用）
+ *   2. 检查标签在线 → 不在线则清零返回
+ *   3. 刷新标签全局坐标
+ *   4. 车不在标签保护半径内 → 降级到跟随模式
+ *   5. 找候选目标 → 无合格目标 → 降级到跟随
+ *   6. 有候选目标 → 前往目标 → 写输出
+ * 最终输出：car_forward/strafe_target，rotate始终为0
+ */
 void car_mode2_update_25HZ(uint32 now_ms)
 {
     float tag_target_distance;

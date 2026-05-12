@@ -1,38 +1,26 @@
 #include "motor.h"
 
-
-
-/**
- * @brief  初始化四轮电机
- */
+/* 初始化四轮电机 GPIO + PWM，频率 17kHz */
 void mecanum_motor_init(void)
 {
-    // 电机1 - 左前
+    // 左前
     gpio_init(MOTOR_M1_DIR, GPO, GPIO_LOW, GPO_PUSH_PULL);
     pwm_init(MOTOR_M1_PWM, 17000, 0);
 
-    // 电机2 - 右前
+    // 右前
     gpio_init(MOTOR_M2_DIR, GPO, GPIO_LOW, GPO_PUSH_PULL);
     pwm_init(MOTOR_M2_PWM, 17000, 0);
 
-    // 电机3 - 左后
+    // 左后
     gpio_init(MOTOR_M3_DIR, GPO, GPIO_LOW, GPO_PUSH_PULL);
     pwm_init(MOTOR_M3_PWM, 17000, 0);
 
-    // 电机4 - 右后
+    // 右后
     gpio_init(MOTOR_M4_DIR, GPO, GPIO_LOW, GPO_PUSH_PULL);
     pwm_init(MOTOR_M4_PWM, 17000, 0);
 }
 
-/*
-------------------------------------------------------------------------------------------------------------------
-函数简介     pwm限幅
-参数说明     
-返回参数     
-使用示例     
-备注信息     
--------------------------------------------------------------------------------------------------------------------
-*/
+/* PWM 占空比限幅 */
 int16_t speed_limit(int16_t speed)
 {
     if(speed > MOTOR_PWM_MAX)
@@ -46,31 +34,28 @@ int16_t speed_limit(int16_t speed)
     return speed;
 }
 
-/**
- * @brief  设置单个电机速度
- * @param  dir_pin: 方向控制引脚
- * @param  pwm_ch: PWM通道
- * @param  speed: 速度值（正值正转，负值反转）
- * @param  invert: 是否反转方向 (1=反转, 0=不反转)
+/*
+ * 设置单个电机速度
+ * 流程：限幅 -> invert 取反 -> speed>=0 则 DIR=LOW 正转，否则 DIR=HIGH 反转
+ * PWM 占空比始终取绝对值传入
  */
 void motor_set_single(gpio_pin_enum dir_pin, pwm_channel_enum pwm_ch, int16_t speed, uint8_t invert)
 {
     speed = speed_limit(speed);
 
-    // 如果需要反转，取反速度
     if (invert)
     {
-        speed = -speed;
+        speed = -speed;         // 机械装配反转：取反 speed
     }
 
     if (speed >= 0)
     {
-        gpio_set_level(dir_pin, GPIO_LOW);      // 正转
+        gpio_set_level(dir_pin, GPIO_LOW);      // 正转：DIR 拉低
         pwm_set_duty(pwm_ch, speed);
     }
     else
     {
-        gpio_set_level(dir_pin, GPIO_HIGH);     // 反转
+        gpio_set_level(dir_pin, GPIO_HIGH);     // 反转：DIR 拉高
         pwm_set_duty(pwm_ch, -speed);
     }
 }

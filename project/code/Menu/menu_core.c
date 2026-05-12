@@ -50,6 +50,7 @@ static uint8_t pending_slot_number = 0;                // 待操作的存档号
 #define FLASH_OP_LOAD    1
 #define FLASH_OP_SAVE    2
 
+/* 判断菜单项是否为参数类型（本地参数或Air参数） */
 static uint8_t menu_is_param_item(const menu_item_t *item)
 {
     if(item == NULL)
@@ -61,6 +62,7 @@ static uint8_t menu_is_param_item(const menu_item_t *item)
             (item->type == MENU_TYPE_AIR_PARAMETER)) ? 1U : 0U;
 }
 
+/* 获取菜单项对应的参数值（统一处理本地/Air参数） */
 static uint8_t menu_get_item_param_value(const menu_item_t *item, float *value)
 {
     if((item == NULL) || (value == NULL))
@@ -91,6 +93,7 @@ static uint8_t menu_get_item_param_value(const menu_item_t *item, float *value)
     return 0U;
 }
 
+/* 获取菜单项对应的编辑步进值 */
 static uint8_t menu_get_item_param_step(const menu_item_t *item, float *step)
 {
     const menu_air_param_config_t *air_config;
@@ -124,6 +127,7 @@ static uint8_t menu_get_item_param_step(const menu_item_t *item, float *step)
     return 0U;
 }
 
+/* 设置菜单项对应的参数值（自动处理Air参数的dirty标记） */
 static uint8_t menu_set_item_param_value(const menu_item_t *item, float value)
 {
     if(item == NULL)
@@ -160,6 +164,7 @@ typedef struct
     char slot_name[16];
 } menu_flash_slot_header_t;
 
+/* 获取存档对应的Flash页号（legacy=1使用旧地址88+，兼容旧版数据） */
 static uint32_t menu_get_slot_page(uint8_t slot, uint8_t legacy);
 
 static uint32_t menu_flash_calc_data_checksum(uint16_t count, uint32_t offset)

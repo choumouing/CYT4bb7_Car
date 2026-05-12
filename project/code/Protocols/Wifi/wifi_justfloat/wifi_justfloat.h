@@ -1,8 +1,25 @@
-/*****************************************************************************
- * 文件: wifi_justfloat.h
- * 模块: WiFi JustFloat 遥测
- * 职责: 通过 wifi_cmd 提供的发送接口输出 VOFA JustFloat 二进制遥测
- *****************************************************************************/
+/**
+ * @file wifi_justfloat.h
+ * @brief WiFi JustFloat 遥测模块
+ *
+ * 功能：通过 WiFi SPI 发送 VOFA+ JustFloat 二进制遥测帧
+ *
+ * JustFloat 帧格式：
+ *   [float_ch0(4B)][float_ch1(4B)]...[float_chN(4B)][0x00 0x00 0x80 0x7F]
+ *   尾部 4 字节为帧尾标记（float NaN 变体），VOFA+ 据此识别帧边界
+ *   最大支持 16 个 float 通道
+ *
+ * 发送控流：
+ *   - 待机态 + 用户未使能 → 跳过发送（skip_count++）
+ *   - 文本命令正在发送 → 跳过发送（避免 SPI 总线竞争）
+ *   - 其他情况正常发送
+ *
+ * 性能实测：每次调用约 10us
+ *
+ * 使用方式（宏封装）：
+ *   wifi_justfloat(val1, val2, ...);  // 最多 16 个参数
+ *   宏展开后按参数个数调用对应的 WIFI_JUSTFLOAT_CALL_N
+ */
 
 #include "zf_common_headfile.h"
 #ifndef WIFI_JUSTFLOAT_H

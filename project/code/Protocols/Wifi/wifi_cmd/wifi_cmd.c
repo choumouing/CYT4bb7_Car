@@ -1,8 +1,21 @@
-/*****************************************************************************
- * 文件: wifi_cmd.c
- * 模块: WiFi 命令基础层
- * 职责: 负责 wifi_spi 初始化、UDP socket 建立、文本命令收发与命令路由
- *****************************************************************************/
+/**
+ * @file wifi_cmd.c
+ * @brief WiFi 命令基础层实现
+ *
+ * 文本接收状态机（逐字节）：
+ *   - 收到 CR → 期望 LF
+ *   - 收到 LF（在期望中）→ 完整一行 → 路由分发
+ *   - 非法字符（<32 或 >126，且非 TAB）→ 标记 invalid
+ *   - 超过 WIFI_CMD_LINE_MAX → 标记 overflow
+ *   - invalid 或 overflow 的行收到 LF 时回复 ERR format
+ *
+ * 命令路由：wifi_cmd_dispatch_line() 按首 token 分发
+ *   ping → "OK ping"
+ *   help → "OK help commands=..."
+ *   start/stop → 控制 JustFloat 遥测开关
+ *   imu → 转发到 wifi_cal_imu_ProcessLine()
+ *   其他 → "ERR unknown command"
+ */
 
 #include "wifi_cmd.h"
 

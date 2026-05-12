@@ -259,6 +259,7 @@ static void sync_air_function(void)
     }
 }
 
+/* 显示一行诊断文本（line 0-7，每行16像素高） */
 static void diag_show_line(uint8 line, const char *text)
 {
     if(line >= MENU_MAX_VISIBLE_LINES)
@@ -269,6 +270,7 @@ static void diag_show_line(uint8 line, const char *text)
     ips114_show_string(0, (uint16)(line * 16U), text);
 }
 
+/* 诊断页初始化：清屏 + 设置默认颜色字体 */
 static void diag_begin(void)
 {
     ips114_clear();
@@ -276,6 +278,7 @@ static void diag_begin(void)
     ips114_set_font(UI_FONT_NORMAL);
 }
 
+/* 诊断页：IMU数据（欧拉角 + 陀螺仪 + 加速度计） */
 static void diag_imu_function(void)
 {
     char text[32];
@@ -298,6 +301,7 @@ static void diag_imu_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
+/* 诊断页：四轮编码器（滤波值 + 原始值） */
 static void diag_encoder_function(void)
 {
     char text[32];
@@ -319,6 +323,7 @@ static void diag_encoder_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
+/* 诊断页：位置信息（里程计 + UWB原始/滤波坐标） */
 static void diag_position_function(void)
 {
     char text[32];
@@ -348,6 +353,7 @@ static void diag_position_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
+/* 诊断页：PID中间变量（航向环 + 左前轮P/I/Output） */
 static void diag_pid_function(void)
 {
     char text[32];
@@ -371,6 +377,7 @@ static void diag_pid_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
+/* 诊断页：AirComm通信状态（在线/ACK/同步统计） */
 static void diag_air_function(void)
 {
     char text[32];

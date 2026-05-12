@@ -1,9 +1,21 @@
+/********************************************************************
+ * 文件名  : MahonyAhrs.c
+ * 模块    : Mahony AHRS 姿态解算实现
+ * 位置    : Estimation/Attitude
+ * 数据流  :
+ *   输入: 机体系角速度 dps + 比力 g（来自 1kHz 滤波器输出）
+ *   处理: 陀螺积分 + 加速度计修正（P 控制器）-> 四元数更新
+ *   输出: 姿态四元数 -> 欧拉角（度），供 odometer/EKF/控制使用
+ * 调用方  : IMU_TOP.c IMU_Update_1000HZ()
+ * 单位    : 陀螺 dps，加速度 g，输出角度 度
+ ********************************************************************/
 #include "MahonyAhrs.h"
 
 
 /* 本地差异层: Mahony 解算前对 Z 轴陀螺输入施加对称死区，单位 dps */
 #define MAHONY_GYRO_Z_DEADBAND_DPS  0.2f
 
+/* 检查浮点数是否有限（排除 NaN 和过大值） */
 static uint8_t Mahony_IsFinite(float value)
 {
     if (value != value)
@@ -19,11 +31,13 @@ static uint8_t Mahony_IsFinite(float value)
     return 1U;
 }
 
+/* 计算向量模长平方，避免开方 */
 static float Mahony_VectorMagnitudeSquared(float x, float y, float z)
 {
     return x * x + y * y + z * z;
 }
 
+/* 计算向量模长，模长过小返回 0（MAHONY_VECTOR_NORM_MIN=1e-6 阈值） */
 static float Mahony_VectorMagnitude(float x, float y, float z)
 {
     float mag_sq = Mahony_VectorMagnitudeSquared(x, y, z);

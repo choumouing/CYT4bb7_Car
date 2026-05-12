@@ -1,3 +1,8 @@
+/**
+ * @file car_filter.c
+ * @brief 滤波工具实现
+ */
+
 #include "car_filter.h"
 
 
@@ -12,6 +17,7 @@ void car_filter_lpf1_reset(car_filter_lpf1_t *filter, float value)
     filter->ready = 1U;
 }
 
+/* 有状态低通：alpha 自动 clamp 到 [0,1]，首次输入自动初始化 */
 float car_filter_lpf1_update(car_filter_lpf1_t *filter, float input, float alpha)
 {
     if(0 == filter)
@@ -39,6 +45,7 @@ float car_filter_lpf1_update(car_filter_lpf1_t *filter, float input, float alpha
     return filter->value;
 }
 
+/* 无状态低通：参数非法时直通返回 input，避免错误滤波 */
 float car_filter_lpf1_apply(float previous, float input, float dt_s, float tau_s)
 {
     float alpha;
@@ -52,6 +59,7 @@ float car_filter_lpf1_apply(float previous, float input, float dt_s, float tau_s
     return previous + (alpha * (input - previous));
 }
 
+/* 三值中值：三次比较交换排序后取中间值 */
 float car_filter_median3f(float a, float b, float c)
 {
     float t;

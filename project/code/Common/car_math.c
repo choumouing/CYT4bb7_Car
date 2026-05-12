@@ -1,3 +1,8 @@
+/**
+ * @file car_math.c
+ * @brief 通用浮点数学工具实现
+ */
+
 #include "car_math.h"
 
 
@@ -46,6 +51,7 @@ float car_math_limit_absf(float value, float limit)
     return value;
 }
 
+/* 硬死区：落在 deadband 范围内直接归零 */
 float car_math_deadband(float value, float deadband)
 {
     if(car_math_absf(value) <= deadband)
@@ -56,6 +62,7 @@ float car_math_deadband(float value, float deadband)
     return value;
 }
 
+/* 软死区：去掉死区宽度后，剩余量从零开始输出，保留符号 */
 float car_math_soft_deadband(float value, float deadband)
 {
     float magnitude;
@@ -69,6 +76,7 @@ float car_math_soft_deadband(float value, float deadband)
     return (value >= 0.0f) ? magnitude : -magnitude;
 }
 
+/* 线性映射，in_max == in_min 时返回 out_min 避免除零 */
 float car_math_map_linear(float value,
                           float in_min,
                           float in_max,

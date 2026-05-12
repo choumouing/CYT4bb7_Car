@@ -202,20 +202,7 @@ static float s_static_relock_trim_g[3] = {0.0f, 0.0f, 0.0f};
 static uint8_t s_static_relock_trim_ready = 0U;
 #endif
 
-/* ========================= �������ߺ��� ========================= */
-
-static float clampf_local(float v, float min_v, float max_v)
-{
-    if (v < min_v)
-    {
-        return min_v;
-    }
-    if (v > max_v)
-    {
-        return max_v;
-    }
-    return v;
-}
+/* ========================= 工具函数 ========================= */
 
 static bool is_finitef_local(float v)
 {
@@ -225,11 +212,6 @@ static bool is_finitef_local(float v)
 static float vec3_norm(float x, float y, float z)
 {
     return sqrtf(x * x + y * y + z * z);
-}
-
-static float fabsf_local(float v)
-{
-    return (v >= 0.0f) ? v : -v;
 }
 
 /*
@@ -279,13 +261,13 @@ static void set_identity_matrix(float matrix[3][3])
 static bool matrix_is_identity(const float matrix[3][3])
 {
     const float eps = 1.0e-6f;
-    if (fabsf_local(matrix[0][0] - 1.0f) > eps || fabsf_local(matrix[1][1] - 1.0f) > eps || fabsf_local(matrix[2][2] - 1.0f) > eps)
+    if (fabsf(matrix[0][0] - 1.0f) > eps || fabsf(matrix[1][1] - 1.0f) > eps || fabsf(matrix[2][2] - 1.0f) > eps)
     {
         return false;
     }
-    if (fabsf_local(matrix[0][1]) > eps || fabsf_local(matrix[0][2]) > eps ||
-        fabsf_local(matrix[1][0]) > eps || fabsf_local(matrix[1][2]) > eps ||
-        fabsf_local(matrix[2][0]) > eps || fabsf_local(matrix[2][1]) > eps)
+    if (fabsf(matrix[0][1]) > eps || fabsf(matrix[0][2]) > eps ||
+        fabsf(matrix[1][0]) > eps || fabsf(matrix[1][2]) > eps ||
+        fabsf(matrix[2][0]) > eps || fabsf(matrix[2][1]) > eps)
     {
         return false;
     }
@@ -310,11 +292,11 @@ static int32_t gauss_solve_9x9(float a[9][10], float x[9])
     for (i = 0; i < 9; i++)
     {
         /* partial pivoting */
-        float max_val = fabsf_local(a[i][i]);
+        float max_val = fabsf(a[i][i]);
         uint8_t max_row = i;
         for (k = (uint8_t)(i + 1U); k < 9U; k++)
         {
-            float v = fabsf_local(a[k][i]);
+            float v = fabsf(a[k][i]);
             if (v > max_val)
             {
                 max_val = v;
@@ -376,7 +358,7 @@ static int32_t mat3_inverse_sym(const float A[3][3], float inv[3][3])
     cofactor[2][2] = A[0][0] * A[1][1] - A[0][1] * A[1][0];
 
     det = A[0][0] * cofactor[0][0] + A[0][1] * cofactor[0][1] + A[0][2] * cofactor[0][2];
-    if (fabsf_local(det) < 1.0e-12f)
+    if (fabsf(det) < 1.0e-12f)
     {
         return -1;
     }
@@ -619,7 +601,7 @@ static int32_t ellip_validate_solution(const float orient[][3],
 
         mat3_mul_vec(M, centered, corrected);
         corr_norm = vec3_norm(corrected[0], corrected[1], corrected[2]);
-        norm_err = fabsf_local(corr_norm - 1.0f);
+        norm_err = fabsf(corr_norm - 1.0f);
         sum_sq_norm_err += norm_err * norm_err;
         if (norm_err > max_norm_err)
         {
@@ -678,7 +660,7 @@ static bool euler_ready(void)
         return false;
     }
 
-    if (fabsf_local((s2r + c2r) - 1.0f) > 0.2f || fabsf_local((s2p + c2p) - 1.0f) > 0.2f)
+    if (fabsf((s2r + c2r) - 1.0f) > 0.2f || fabsf((s2p + c2p) - 1.0f) > 0.2f)
     {
         return false;
     }
@@ -786,13 +768,13 @@ static void sanitize_scale(void)
     uint8_t i;
     for (i = 0U; i < 3U; i++)
     {
-        if (!is_finitef_local(g_accel_calibration.accel_scale[i]) || (fabsf_local(g_accel_calibration.accel_scale[i]) < 1.0e-6f))
+        if (!is_finitef_local(g_accel_calibration.accel_scale[i]) || (fabsf(g_accel_calibration.accel_scale[i]) < 1.0e-6f))
         {
             g_accel_calibration.accel_scale[i] = 1.0f;
         }
         else
         {
-            g_accel_calibration.accel_scale[i] = clampf_local(
+            g_accel_calibration.accel_scale[i] = car_math_clampf(
                 g_accel_calibration.accel_scale[i],
                 ACCEL_CALIBRATION_SCALE_MIN,
                 ACCEL_CALIBRATION_SCALE_MAX);
@@ -805,7 +787,7 @@ static void clamp_bias(void)
     uint8_t i;
     for (i = 0U; i < 3U; i++)
     {
-        g_accel_calibration.accel_bias_g[i] = clampf_local(
+        g_accel_calibration.accel_bias_g[i] = car_math_clampf(
             g_accel_calibration.accel_bias_g[i],
             -ACCEL_CALIBRATION_BIAS_MAX_G,
             ACCEL_CALIBRATION_BIAS_MAX_G);
@@ -824,7 +806,7 @@ static float mean_scale(void)
 static void apply_uniform_scale(float scale)
 {
     uint8_t i;
-    const float scale_limited = clampf_local(scale,
+    const float scale_limited = car_math_clampf(scale,
                                              ACCEL_CALIBRATION_SCALE_MIN,
                                              ACCEL_CALIBRATION_SCALE_MAX);
 
@@ -843,12 +825,12 @@ static bool imu_sample_valid(float ax, float ay, float az, float gx, float gy, f
         return false;
     }
 
-    if (fabsf_local(ax) > IMU_ACCEL_G_MAX_ABS || fabsf_local(ay) > IMU_ACCEL_G_MAX_ABS || fabsf_local(az) > IMU_ACCEL_G_MAX_ABS)
+    if (fabsf(ax) > IMU_ACCEL_G_MAX_ABS || fabsf(ay) > IMU_ACCEL_G_MAX_ABS || fabsf(az) > IMU_ACCEL_G_MAX_ABS)
     {
         return false;
     }
 
-    if (fabsf_local(gx) > IMU_GYRO_DPS_MAX_ABS || fabsf_local(gy) > IMU_GYRO_DPS_MAX_ABS || fabsf_local(gz) > IMU_GYRO_DPS_MAX_ABS)
+    if (fabsf(gx) > IMU_GYRO_DPS_MAX_ABS || fabsf(gy) > IMU_GYRO_DPS_MAX_ABS || fabsf(gz) > IMU_GYRO_DPS_MAX_ABS)
     {
         return false;
     }
@@ -999,7 +981,7 @@ static bool static_relock_sample_valid(const float accel_corrected_body_g[3],
         return false;
     }
 
-    if (fabsf_local(accel_norm_g - 1.0f) > ACCEL_CALIBRATION_STATIC_RELOCK_ACC_ERR_MAX_G)
+    if (fabsf(accel_norm_g - 1.0f) > ACCEL_CALIBRATION_STATIC_RELOCK_ACC_ERR_MAX_G)
     {
         return false;
     }
@@ -1032,13 +1014,13 @@ static void static_relock_update_trim(const float accel_corrected_body_g[3],
 
     if (s_static_relock_trim_ready == 0U)
     {
-        s_static_relock_trim_g[0] = clampf_local(residual_g[0],
+        s_static_relock_trim_g[0] = car_math_clampf(residual_g[0],
                                                  -ACCEL_CALIBRATION_STATIC_RELOCK_TRIM_MAX_G,
                                                  ACCEL_CALIBRATION_STATIC_RELOCK_TRIM_MAX_G);
-        s_static_relock_trim_g[1] = clampf_local(residual_g[1],
+        s_static_relock_trim_g[1] = car_math_clampf(residual_g[1],
                                                  -ACCEL_CALIBRATION_STATIC_RELOCK_TRIM_MAX_G,
                                                  ACCEL_CALIBRATION_STATIC_RELOCK_TRIM_MAX_G);
-        s_static_relock_trim_g[2] = clampf_local(residual_g[2],
+        s_static_relock_trim_g[2] = car_math_clampf(residual_g[2],
                                                  -ACCEL_CALIBRATION_STATIC_RELOCK_TRIM_MAX_G,
                                                  ACCEL_CALIBRATION_STATIC_RELOCK_TRIM_MAX_G);
         s_static_relock_trim_ready = 1U;
@@ -1049,7 +1031,7 @@ static void static_relock_update_trim(const float accel_corrected_body_g[3],
     {
         s_static_relock_trim_g[i] += ACCEL_CALIBRATION_STATIC_RELOCK_ALPHA *
                                      (residual_g[i] - s_static_relock_trim_g[i]);
-        s_static_relock_trim_g[i] = clampf_local(s_static_relock_trim_g[i],
+        s_static_relock_trim_g[i] = car_math_clampf(s_static_relock_trim_g[i],
                                                  -ACCEL_CALIBRATION_STATIC_RELOCK_TRIM_MAX_G,
                                                  ACCEL_CALIBRATION_STATIC_RELOCK_TRIM_MAX_G);
     }
@@ -1087,7 +1069,7 @@ static void update_bias_online(const float accel_body_g[3],
         return;
     }
 
-    if (fabsf_local(accel_norm - 1.0f) > ACCEL_CALIBRATION_ONLINE_ACCEL_ERR_MAX_G)
+    if (fabsf(accel_norm - 1.0f) > ACCEL_CALIBRATION_ONLINE_ACCEL_ERR_MAX_G)
     {
         return;
     }
@@ -1135,7 +1117,7 @@ static void update_scale_online(const float accel_body_g[3], const float gyro_bo
         return;
     }
 
-    if (fabsf_local(accel_norm_g - 1.0f) > ACCEL_CALIBRATION_ONLINE_SCALE_ERR_MAX_G)
+    if (fabsf(accel_norm_g - 1.0f) > ACCEL_CALIBRATION_ONLINE_SCALE_ERR_MAX_G)
     {
         return;
     }
@@ -1147,7 +1129,7 @@ static void update_scale_online(const float accel_body_g[3], const float gyro_bo
     }
 
     target_scale = cur_scale / accel_norm_g;
-    target_scale = clampf_local(target_scale,
+    target_scale = car_math_clampf(target_scale,
                                 ACCEL_CALIBRATION_SCALE_MIN,
                                 ACCEL_CALIBRATION_SCALE_MAX);
 
@@ -1200,11 +1182,11 @@ static void update_runtime_quality(const float accel_corrected_body_g[3], const 
     }
 
     mean += alpha * (accel_norm_g - mean);
-    dev = fabsf_local(accel_norm_g - mean);
+    dev = fabsf(accel_norm_g - mean);
     std += alpha * (dev - std);
 
-    g_accel_calibration.accel_norm_mean_g = clampf_local(mean, 0.6f, 1.4f);
-    g_accel_calibration.accel_norm_std_g = clampf_local(std, 0.0f, 0.25f);
+    g_accel_calibration.accel_norm_mean_g = car_math_clampf(mean, 0.6f, 1.4f);
+    g_accel_calibration.accel_norm_std_g = car_math_clampf(std, 0.0f, 0.25f);
 }
 
 static uint8_t imu_calib_count_done_faces(uint8_t done_mask)
@@ -1351,12 +1333,12 @@ static uint8_t imu_calib_apply_blob(const IMUCalibBlob_t *blob)
 
         /* Determine if it's a full matrix or diagonal only */
         {
-            float off_diag_sum = fabsf_local(blob->accel_corr_matrix[0][1]) +
-                                 fabsf_local(blob->accel_corr_matrix[0][2]) +
-                                 fabsf_local(blob->accel_corr_matrix[1][0]) +
-                                 fabsf_local(blob->accel_corr_matrix[1][2]) +
-                                 fabsf_local(blob->accel_corr_matrix[2][0]) +
-                                 fabsf_local(blob->accel_corr_matrix[2][1]);
+            float off_diag_sum = fabsf(blob->accel_corr_matrix[0][1]) +
+                                 fabsf(blob->accel_corr_matrix[0][2]) +
+                                 fabsf(blob->accel_corr_matrix[1][0]) +
+                                 fabsf(blob->accel_corr_matrix[1][2]) +
+                                 fabsf(blob->accel_corr_matrix[2][0]) +
+                                 fabsf(blob->accel_corr_matrix[2][1]);
             params.use_full_matrix = (off_diag_sum > 1.0e-6f) ? 1U : 0U;
         }
 
@@ -2088,7 +2070,7 @@ static int32_t imu_calib_update_ellip_step(void)
                     }
                     mat3_mul_vec(M, centered, corrected);
                     corr_norm = vec3_norm(corrected[0], corrected[1], corrected[2]);
-                    norm_err = fabsf_local(corr_norm - 1.0f);
+                    norm_err = fabsf(corr_norm - 1.0f);
                     if (norm_err > max_norm_err)
                     {
                         max_norm_err = norm_err;
@@ -2172,9 +2154,9 @@ static int8_t imu_calib_pick_face(const float accel_body_g[3])
         return -1;
     }
 
-    abs_x = fabsf_local(accel_body_g[0]);
-    abs_y = fabsf_local(accel_body_g[1]);
-    abs_z = fabsf_local(accel_body_g[2]);
+    abs_x = fabsf(accel_body_g[0]);
+    abs_y = fabsf(accel_body_g[1]);
+    abs_z = fabsf(accel_body_g[2]);
 
     max_abs = abs_x;
     axis = 0U;
@@ -2274,7 +2256,7 @@ static int32_t imu_calib_update_gyro_step(void)
     acc_norm_g = vec3_norm(ax, ay, az);
     s_imu_calib.gyro_total_samples++;
     static_ok = ((gyro_norm_dps < IMU_CALIB_GYRO_STATIC_MAX_DPS) &&
-                 (fabsf_local(acc_norm_g - 1.0f) < IMU_CALIB_GYRO_STATIC_ACC_ERR_G)) ? 1U : 0U;
+                 (fabsf(acc_norm_g - 1.0f) < IMU_CALIB_GYRO_STATIC_ACC_ERR_G)) ? 1U : 0U;
 
     if (s_imu_calib.gyro_valid_samples == 0U)
     {
@@ -2356,9 +2338,9 @@ static int32_t imu_calib_update_gyro_step(void)
         if ((std_x > IMU_CALIB_GYRO_STD_MAX_DPS) ||
             (std_y > IMU_CALIB_GYRO_STD_MAX_DPS) ||
             (std_z > IMU_CALIB_GYRO_STD_MAX_DPS) ||
-            (fabsf_local(bx) > IMU_CALIB_GYRO_BIAS_MAX_DPS) ||
-            (fabsf_local(by) > IMU_CALIB_GYRO_BIAS_MAX_DPS) ||
-            (fabsf_local(bz) > IMU_CALIB_GYRO_BIAS_MAX_DPS))
+            (fabsf(bx) > IMU_CALIB_GYRO_BIAS_MAX_DPS) ||
+            (fabsf(by) > IMU_CALIB_GYRO_BIAS_MAX_DPS) ||
+            (fabsf(bz) > IMU_CALIB_GYRO_BIAS_MAX_DPS))
         {
             imu_calib_emit_text("ERR imu gyro 失败 原因=质量不足 bias_dps=%f,%f,%f std_dps=%f,%f,%f",
                                 bx, by, bz, std_x, std_y, std_z);
@@ -2613,14 +2595,14 @@ static int32_t imu_calib_update_acc6_step(void)
             mean_neg = s_imu_calib.acc6_face_sum[face_neg][axis] / (float)s_imu_calib.acc6_face_samples[face_neg];
             delta = mean_pos - mean_neg;
 
-            if (!is_finitef_local(mean_pos) || !is_finitef_local(mean_neg) || (fabsf_local(delta) < 0.40f))
+            if (!is_finitef_local(mean_pos) || !is_finitef_local(mean_neg) || (fabsf(delta) < 0.40f))
             {
                 return -1;
             }
 
             params.accel_bias_g[axis] = 0.5f * (mean_pos + mean_neg);
-            params.accel_scale[axis] = 2.0f / fabsf_local(delta);
-            params.accel_scale[axis] = clampf_local(params.accel_scale[axis], ACCEL_CALIBRATION_SCALE_MIN, ACCEL_CALIBRATION_SCALE_MAX);
+            params.accel_scale[axis] = 2.0f / fabsf(delta);
+            params.accel_scale[axis] = car_math_clampf(params.accel_scale[axis], ACCEL_CALIBRATION_SCALE_MIN, ACCEL_CALIBRATION_SCALE_MAX);
             params.accel_corr_matrix[axis][axis] = params.accel_scale[axis];
         }
 
@@ -2655,10 +2637,10 @@ static int32_t imu_calib_update_acc6_step(void)
             corr_vec[1] = (mean_vec[1] - params.accel_bias_g[1]) * params.accel_scale[1];
             corr_vec[2] = (mean_vec[2] - params.accel_bias_g[2]) * params.accel_scale[2];
 
-            norm_err = fabsf_local(vec3_norm(corr_vec[0], corr_vec[1], corr_vec[2]) - 1.0f);
-            dom_err = fabsf_local(corr_vec[dom_axis] - expect_sign);
-            off_1 = fabsf_local(corr_vec[off_axis_1]);
-            off_2 = fabsf_local(corr_vec[off_axis_2]);
+            norm_err = fabsf(vec3_norm(corr_vec[0], corr_vec[1], corr_vec[2]) - 1.0f);
+            dom_err = fabsf(corr_vec[dom_axis] - expect_sign);
+            off_1 = fabsf(corr_vec[off_axis_1]);
+            off_2 = fabsf(corr_vec[off_axis_2]);
 
             if (norm_err > max_norm_err)
             {
@@ -3194,7 +3176,7 @@ bool AccelCalibration_Start(void)
 
         if (is_finitef_local(global_mean_norm) && (global_mean_norm > 0.2f))
         {
-            const float norm_limited = clampf_local(global_mean_norm, 0.85f, 1.15f);
+            const float norm_limited = car_math_clampf(global_mean_norm, 0.85f, 1.15f);
             startup_scale = 1.0f / norm_limited;
         }
 
@@ -3706,12 +3688,12 @@ uint8_t IMUCalib_ReadFlashInfo(IMUCalibFlashInfo_t *info)
     memcpy(info->accel_bias_g, blob.accel_bias_g, sizeof(info->accel_bias_g));
     memcpy(info->accel_corr_matrix, blob.accel_corr_matrix, sizeof(info->accel_corr_matrix));
     memcpy(info->imu_to_body, blob.imu_to_body, sizeof(info->imu_to_body));
-    info->use_full_matrix = (fabsf_local(blob.accel_corr_matrix[0][1]) +
-                             fabsf_local(blob.accel_corr_matrix[0][2]) +
-                             fabsf_local(blob.accel_corr_matrix[1][0]) +
-                             fabsf_local(blob.accel_corr_matrix[1][2]) +
-                             fabsf_local(blob.accel_corr_matrix[2][0]) +
-                             fabsf_local(blob.accel_corr_matrix[2][1]) > 1.0e-6f) ? 1U : 0U;
+    info->use_full_matrix = (fabsf(blob.accel_corr_matrix[0][1]) +
+                             fabsf(blob.accel_corr_matrix[0][2]) +
+                             fabsf(blob.accel_corr_matrix[1][0]) +
+                             fabsf(blob.accel_corr_matrix[1][2]) +
+                             fabsf(blob.accel_corr_matrix[2][0]) +
+                             fabsf(blob.accel_corr_matrix[2][1]) > 1.0e-6f) ? 1U : 0U;
     return 1U;
 }
 

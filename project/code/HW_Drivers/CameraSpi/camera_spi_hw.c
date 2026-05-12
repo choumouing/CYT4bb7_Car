@@ -2,40 +2,45 @@
 
 #include "scb/cy_scb_spi.h"
 
+/* SPI 硬件资源（SPI_0 = SCB7） */
 #define CAMERA_SPI_HW_CHANNEL               SPI_0
-#define CAMERA_SPI_HW_BAUD                  (10000000U)
+#define CAMERA_SPI_HW_BAUD                  (10000000U)     /* 10MHz SPI 时钟 */
 #define CAMERA_SPI_HW_CLK                   SPI0_CLK_P02_2
 #define CAMERA_SPI_HW_MOSI                  SPI0_MOSI_P02_1
 #define CAMERA_SPI_HW_MISO                  SPI0_MISO_P02_0
-#define CAMERA_SPI_HW_SCB                   SCB7
+#define CAMERA_SPI_HW_SCB                   SCB7            /* PDL SCB 实例 */
 #define CAMERA_SPI_HW_SCB_IRQ               scb_7_interrupt_IRQn
 #define CAMERA_SPI_HW_CPU_IRQ               CPUIntIdx5_IRQn
-#define CAMERA_SPI_HW_IRQ_PRIORITY          (4U)
-#define CAMERA_SPI_HW_CS_SETUP_DELAY_US     (10U)
+#define CAMERA_SPI_HW_IRQ_PRIORITY          (4U)            /* 中断优先级 */
+#define CAMERA_SPI_HW_CS_SETUP_DELAY_US     (10U)           /* CS 拉低后等 10us 再开始时钟 */
 
+/* SPI 传输状态（支持一次非阻塞传输） */
 typedef struct
 {
-    cy_stc_scb_spi_context_t context;
-    volatile uint8 busy;
-    camera_spi_hw_slave_id_t active_slave;
+    cy_stc_scb_spi_context_t context;       /* PDL 驱动上下文 */
+    volatile uint8 busy;                    /* 1=传输进行中 */
+    camera_spi_hw_slave_id_t active_slave;  /* 当前活动从设备 */
 } camera_spi_hw_state_t;
 
+/* 三个从设备的 CS 引脚（低电平选中） */
 static const gpio_pin_enum s_camera_spi_cs_pins[CAMERA_SPI_HW_SLAVE_COUNT] =
 {
-    P02_3,
-    P01_0,
-    P19_0
+    P02_3,  /* SLAVE_1 */
+    P01_0,  /* SLAVE_2 */
+    P19_0   /* SLAVE_3 */
 };
 
+/* 三个从设备的 INT 引脚（从设备就绪时拉高，接 EXTI） */
 static const gpio_pin_enum s_camera_spi_int_pins[CAMERA_SPI_HW_SLAVE_COUNT] =
 {
-    P02_4,
-    P01_1,
-    P19_1
+    P02_4,  /* SLAVE_1 */
+    P01_1,  /* SLAVE_2 */
+    P19_1   /* SLAVE_3 */
 };
 
 static camera_spi_hw_state_t s_camera_spi_hw;
 
+/* 构建 SCB SPI 配置：主模式，Motorola，8bit，MSB first，CPOL0_CPHA0 */
 static void camera_spi_hw_build_config(cy_stc_scb_spi_config_t *config)
 {
     memset(config, 0, sizeof(*config));
@@ -50,6 +55,7 @@ static void camera_spi_hw_build_config(cy_stc_scb_spi_config_t *config)
     config->sclkMode = CY_SCB_SPI_CPHA0_CPOL0;
 }
 
+/* SCB7 中断处理（在 ISR 中注册），转发给 PDL 驱动 */
 void camera_spi_hw_irq_handler(void)
 {
     Cy_SCB_SPI_Interrupt(CAMERA_SPI_HW_SCB, &s_camera_spi_hw.context);
@@ -97,6 +103,11 @@ void camera_spi_hw_init(void)
     exti_init(P19_1, EXTI_TRIGGER_RISING);
 }
 
+/*
+ * 启动非阻塞 SPI 传输
+ * 流程：参数检查 -> 清 FIFO -> 置 busy -> 拉低 CS -> 等 10us -> 发起 PDL Transfer
+ * 若 Cy_SCB_SPI_Transfer 失败，立即拉高 CS 并清除 busy
+ */
 uint8 camera_spi_hw_start_transfer(camera_spi_hw_slave_id_t id,
                                    uint8 *tx_buffer,
                                    uint8 *rx_buffer,
@@ -141,6 +152,7 @@ uint8 camera_spi_hw_start_transfer(camera_spi_hw_slave_id_t id,
     return CAMERA_SPI_HW_TRANSFER_OK;
 }
 
+/* 查询传输完成：1=完成（含错误完成），0=仍在传输，busy=0 返回 0 */
 uint8 camera_spi_hw_transfer_finished(void)
 {
     uint32 transfer_status;
@@ -159,6 +171,10 @@ uint8 camera_spi_hw_transfer_finished(void)
     return (uint8)(((transfer_status & CY_SCB_SPI_TRANSFER_ACTIVE) == 0U) ? 1U : 0U);
 }
 
+/*
+ * 结束传输：检查传输状态 -> 拉高 CS -> 释放 busy
+ * 返回 OK / ERROR / BUSY
+ */
 uint8 camera_spi_hw_finish_transfer(void)
 {
     uint32 transfer_status;
@@ -197,6 +213,7 @@ void camera_spi_hw_abort_transfer(void)
     }
 }
 
+/* 读取从设备就绪引脚（INT），1=数据就绪可读取 */
 uint8 camera_spi_hw_get_ready_level(camera_spi_hw_slave_id_t id)
 {
     if(id >= CAMERA_SPI_HW_SLAVE_COUNT)

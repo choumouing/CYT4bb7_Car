@@ -1,13 +1,12 @@
 #include "ALX_AOA.h"
 
 /*
-Position frame layout from vendor STM32F1 demo, big-endian wire fields:
-FF FF FF FF | PacketLength | SequenceID | RequestCommand | VersionID |
-AnchorID | TagID | Distance | Azimuth | Elevation | TagStatus |
-BatchSn | Reserve | Xor
-
-RequestCommand is at byte offset 8, not 6.
-*/
+ * 帧格式（大端字节序）：
+ * FF FF FF FF | PacketLength(2) | SequenceID(2) | RequestCommand(2) | VersionID(2) |
+ * AnchorID(4) | TagID(4) | Distance(4) | Azimuth(2s) | Elevation(2s) | TagStatus |
+ * BatchSn | Reserve | Xor
+ * 注意：Command 在 byte offset 8，不是 6
+ */
 
 #define ALX_AOA_OFFSET_PACKET_LENGTH        (4)
 #define ALX_AOA_OFFSET_COMMAND              (8)
@@ -47,6 +46,7 @@ static uint8  alx_aoa_filt_init     = 0;
 static uint8  alx_aoa_outlier_count = 0;
 static uint32 alx_aoa_last_filt_ms  = 0;
 
+/* 环形缓冲区辅助：索引递增（到尾则回绕） */
 static uint16 alx_aoa_next_index (uint16 index)
 {
     index ++;
@@ -57,6 +57,7 @@ static uint16 alx_aoa_next_index (uint16 index)
     return index;
 }
 
+/* 返回环形缓冲区中待处理字节数 */
 static uint16 alx_aoa_rx_count (void)
 {
     uint16 head = alx_aoa_rx_head;
@@ -70,6 +71,7 @@ static uint16 alx_aoa_rx_count (void)
     return (uint16)(ALX_AOA_RX_BUFFER_SIZE - tail + head);
 }
 
+/* 从环形缓冲区弹出一个字节，返回 1=成功，0=空 */
 static uint8 alx_aoa_pop_byte (uint8 *dat)
 {
     if(alx_aoa_rx_head == alx_aoa_rx_tail)
@@ -83,11 +85,13 @@ static uint8 alx_aoa_pop_byte (uint8 *dat)
     return 1;
 }
 
+/* 大端 16 位无符号 */
 static uint16 alx_aoa_read_be16 (const uint8 *dat)
 {
     return (uint16)(((uint16)dat[0] << 8) | dat[1]);
 }
 
+/* 大端 32 位无符号 */
 static uint32 alx_aoa_read_be32 (const uint8 *dat)
 {
     return (((uint32)dat[0] << 24) |
@@ -96,6 +100,7 @@ static uint32 alx_aoa_read_be32 (const uint8 *dat)
             ((uint32)dat[3]));
 }
 
+/* 大端 16 位有符号（补码转换） */
 static int16 alx_aoa_read_s16 (const uint8 *dat)
 {
     uint16 value = alx_aoa_read_be16(dat);
@@ -118,11 +123,17 @@ static int32 alx_aoa_float_to_s32 (float value)
     return (int32)(value - 0.5f);
 }
 
+/* 角度（整数度）-> 弧度 */
 static float alx_aoa_angle_to_rad (int16 angle)
 {
     return (((float)angle) / ALX_AOA_ANGLE_SCALE) * ALX_AOA_DEG_TO_RAD;
 }
 
+/*
+ * 球坐标 -> 平面 xy
+ * x = distance * sin(azimuth)
+ * y = -distance * sin(elevation)
+ */
 static void alx_aoa_calculate_xy (ALX_AOA_Position_t *position)
 {
     float azimuth_rad = alx_aoa_angle_to_rad(position->azimuth_deg);
@@ -134,6 +145,7 @@ static void alx_aoa_calculate_xy (ALX_AOA_Position_t *position)
     position->z_cm = 0;
 }
 
+/* 原始数据有效性检查：距离、角度、范围过滤 */
 static uint8 alx_aoa_raw_valid (const ALX_AOA_Position_t *p)
 {
     if(0 == p->distance_cm)
@@ -234,6 +246,13 @@ static uint8 alx_aoa_observation_gate_ok (float rx, float ry)
     return 1;
 }
 
+/*
+ * alpha-beta 滤波 + 中值滤波 + 观测门限
+ * 三种状态：
+ *   1) 观测有效且在门限内 -> 正常 alpha-beta 更新
+ *   2) 观测无效且连续丢点 >= REACQUIRE_COUNT -> 强制重捕获
+ *   3) 其他 -> 仅预测，速度衰减
+ */
 static void alx_aoa_filter_xy (const ALX_AOA_Position_t *p, uint32 now_ms)
 {
     float raw_x;
@@ -336,6 +355,7 @@ static void alx_aoa_filter_xy (const ALX_AOA_Position_t *p, uint32 now_ms)
     alx_aoa_y_cm = alx_aoa_filt_y_cm;
 }
 
+/* 丢弃帧缓冲区前 length 字节（已处理） */
 static void alx_aoa_drop_frame_bytes (uint16 length)
 {
     if(length >= alx_aoa_frame_length)
@@ -408,6 +428,7 @@ static uint8 alx_aoa_seek_header (void)
     return 0;
 }
 
+/* 解析位置帧：提取角度/距离 -> 计算 xy -> alpha-beta 滤波 */
 static void alx_aoa_parse_position (const uint8 *frame, uint32 now_ms)
 {
     alx_aoa_latest_position.base_id        = alx_aoa_read_be32(&frame[ALX_AOA_OFFSET_ANCHOR_ID]);
@@ -424,6 +445,7 @@ static void alx_aoa_parse_position (const uint8 *frame, uint32 now_ms)
     alx_aoa_stats.frame_total ++;
 }
 
+/* 从帧缓冲区循环解析：找帧头 -> 读命令 -> 按类型处理 */
 static uint8 alx_aoa_parse_stream (uint32 now_ms)
 {
     uint16 packet_length;

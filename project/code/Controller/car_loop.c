@@ -1,3 +1,13 @@
+/* 主循环调度模块
+ *
+ * 各频率任务职责：
+ *   1000HZ：IMU数据更新（不能阻塞，必须快速返回）
+ *   100HZ：编码器/里程计/速度环/通信/菜单刷新（核心控制频率）
+ *   50HZ：角速度环PID更新
+ *   25HZ：UWB更新/遥控器/模式管理/航向保持
+ *
+ * 数据流：car_loop_init初始化→PIT中断置标志→car_loop_poll轮询执行
+ */
 #include "car_loop.h"
 
 
@@ -6,14 +16,15 @@ volatile uint8_t timer_50HZ_flag = 0U;
 volatile uint8_t timer_25HZ_flag = 0U;
 volatile uint16 g_tick_1000HZ = 0U;
 
+/* 全局控制目标（模式层写入，控制层读取） */
 float car_forward_target = 0.0f;
 float car_strafe_target = 0.0f;
 float car_rotate_target = 0.0f;
-uint8 car_control_enabled = 0U;
-uint8 car_emergency_stop_active = 1U;
+uint8 car_control_enabled = 0U;             // 0=禁止控制（安全状态）
+uint8 car_emergency_stop_active = 1U;       // 默认紧急停（上电安全）
 
-static uint32 s_telemetry_timestamp_count = 0U;
-static uint32 s_system_time_ms = 0U;
+static uint32 s_telemetry_timestamp_count = 0U;  // 100HZ滴答计数
+static uint32 s_system_time_ms = 0U;              // 系统时间（ms，10ms递增）
 
 static void car_loop_runtime_reset(void)
 {
@@ -57,11 +68,23 @@ void car_loop_init(void)
     pit_init(PIT_CH0, 1000);
 }
 
+/* 1000HZ任务：IMU原始数据读取+滤波
+ * 注意：此函数在PIT中断中调用，不能阻塞，不能操作Flash/SPI
+ */
 static void car_loop_1000HZ(void)
 {
     IMU_Update_1000HZ();
 }
 
+/* 100HZ任务：核心控制频率
+ * 职责：
+ *   1. 编码器读取+滤波 → 里程计积分
+ *   2. 摄像头SPI通信 + 信标检测
+ *   3. AirComm通信 + Air参数同步
+ *   4. 菜单按键处理+屏幕刷新
+ *   5. 四轮速度环PID（控制使能时）或安全停机
+ *   6. WiFi调试数据发送
+ */
 static void car_loop_100HZ(void)
 {
     s_telemetry_timestamp_count++;
@@ -75,6 +98,7 @@ static void car_loop_100HZ(void)
     beacon_detection_update_100HZ();
     menu_update_100HZ();
 
+    /* 控制使能：执行速度环；否则安全停机 */
     if(0U != car_control_enabled)
     {
         control_cascade_speed_loop_update_100HZ(car_forward_target, car_strafe_target);
@@ -88,6 +112,13 @@ static void car_loop_100HZ(void)
     wifi_justfloat_update_100HZ(s_system_time_ms);
 }
 
+/* 50HZ任务：角速度环PID更新
+ * 逻辑：
+ *   - 控制使能 + 有旋转输入：直接用遥控器角速度（rad/s）
+ *   - 控制使能 + 无旋转输入：用角度环输出的角速度目标（航向保持）
+ *   - 控制禁止：输出0（安全）
+ * 注意：此任务独立于速度环（100HZ），两者频率不同
+ */
 static void car_loop_50HZ(void)
 {
     if(0U != car_control_enabled)
@@ -107,6 +138,15 @@ static void car_loop_50HZ(void)
     }
 }
 
+/* 25HZ任务：上层逻辑频率
+ * 职责：
+ *   1. UWB AoA数据更新
+ *   2. SBUS遥控器数据解析
+ *   3. 无线控制状态机（wireless_control）
+ *   4. 小车启动/模式状态机（car_start_sbus）
+ *   5. 模式分发（car_mode_update → mode0/1/2）
+ *   6. 航向保持逻辑（松开旋转摇杆时锁定朝向）
+ */
 static void car_loop_25HZ(void)
 {
     ALX_AOA_Update_25HZ(s_system_time_ms);
@@ -125,10 +165,16 @@ static void car_loop_25HZ(void)
     }
 }
 
+/* 主循环轮询入口
+ * 执行顺序：1000HZ（追赶）→ 25HZ → 50HZ → 100HZ
+ * 注意：1000HZ有防堆积保护（最多追100次），防止IMU落后太多时卡死
+ * 最后处理非周期任务：WiFi轮询、摄像头SPI轮询、AirComm轮询
+ */
 void car_loop_poll(void)
 {
     uint16 imu_tick_guard = 0U;
 
+    /* 1000HZ任务：在主循环中追赶中断累积的tick */
     while((g_tick_1000HZ > 0U) && (imu_tick_guard < 100U))
     {
         g_tick_1000HZ--;
