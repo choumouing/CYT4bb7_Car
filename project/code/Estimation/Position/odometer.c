@@ -1,99 +1,112 @@
 #include "odometer.h"
 
 
-#define ODOMETER_UPDATE_DT_S                (0.01f)
-#define ODOMETER_STARTUP_HOLD_TICKS         (50U)
-#define ODOMETER_FORWARD_COUNT_PER_METER    (11287.0f)
-#define ODOMETER_STRAFE_COUNT_PER_METER_ABS (12100.0f)
+/* ===== 基本参数 ===== */
+#define ODOMETER_UPDATE_DT_S                (0.01f)     /* 100Hz 调用周期 */
+#define ODOMETER_STARTUP_HOLD_TICKS         (50U)       /* 启动稳定期，约 0.5s */
+#define ODOMETER_FORWARD_COUNT_PER_METER    (11287.0f)  /* 前后轴编码器脉冲/米 */
+#define ODOMETER_STRAFE_COUNT_PER_METER_ABS (12100.0f)  /* 横向轴编码器脉冲/米(绝对值) */
 
-#define ODOMETER_KX_SPEED                   (0.00529850743f)
-#define ODOMETER_KY_SPEED                   (0.0f)
-#define ODOMETER_KX_RESIDUAL                (0.488792866f)
-#define ODOMETER_KY_RESIDUAL                (0.00697509527f)
-#define ODOMETER_KX_REVERSE                 (1.00619317f)
-#define ODOMETER_KY_REVERSE                 (0.00000105576f)
-#define ODOMETER_KX_YAW                     (0.68f)
-#define ODOMETER_KY_YAW                     (0.80f)
-#define ODOMETER_K_DUAL_AXIS                (0.0653664524f)
-#define ODOMETER_V_REF_MPS                  (1.66942520f)
-#define ODOMETER_RESIDUAL_REF_MPS2          (8.33671585f)
-#define ODOMETER_RISK_GAMMA                 (7.68239773f)
-#define ODOMETER_YAW_GAIN                   (0.72f)
-#define ODOMETER_DEAD_FORWARD_MPS           (0.000000424f)
-#define ODOMETER_DEAD_STRAFE_MPS            (0.00496915618f)
-#define ODOMETER_SPEED_POWER_X              (2.51620747f)
-#define ODOMETER_SPEED_POWER_Y              (1.26317978f)
-#define ODOMETER_CROSS_AXIS                 (1.83240615f)
-#define ODOMETER_REVERSE_REF_MPS            (0.0759208411f)
-#define ODOMETER_YAW_RATE_REF_RPS           (0.936060514f)
+/* ===== 速度衰减模型系数（离线标定值，别手改） ===== */
+#define ODOMETER_KX_SPEED                   (0.00529850743f)  /* 前向：速度风险权重 */
+#define ODOMETER_KY_SPEED                   (0.0f)            /* 横向：速度风险权重 */
+#define ODOMETER_KX_RESIDUAL                (0.488792866f)    /* 前向：残差风险权重 */
+#define ODOMETER_KY_RESIDUAL                (0.00697509527f)  /* 横向：残差风险权重 */
+#define ODOMETER_KX_REVERSE                 (1.00619317f)     /* 前向：反转惩罚权重 */
+#define ODOMETER_KY_REVERSE                 (0.00000105576f)  /* 横向：反转惩罚权重 */
+#define ODOMETER_KX_YAW                     (0.68f)           /* 前向：偏航风险权重 */
+#define ODOMETER_KY_YAW                     (0.80f)           /* 横向：偏航风险权重 */
+#define ODOMETER_K_DUAL_AXIS                (0.0653664524f)   /* 双轴同时运动交叉干扰 */
+#define ODOMETER_V_REF_MPS                  (1.66942520f)     /* 速度归一化参考值 */
+#define ODOMETER_RESIDUAL_REF_MPS2          (8.33671585f)     /* 加速度残差归一化参考 */
+#define ODOMETER_RISK_GAMMA                 (7.68239773f)     /* 残差风险曲线指数 */
+#define ODOMETER_YAW_GAIN                   (0.72f)           /* 偏航角投影增益（防过转） */
+#define ODOMETER_DEAD_FORWARD_MPS           (0.000000424f)    /* 前向死区 */
+#define ODOMETER_DEAD_STRAFE_MPS            (0.00496915618f)  /* 横向死区 */
+#define ODOMETER_SPEED_POWER_X              (2.51620747f)     /* 前向速度风险曲线幂次 */
+#define ODOMETER_SPEED_POWER_Y              (1.26317978f)     /* 横向速度风险曲线幂次 */
+#define ODOMETER_CROSS_AXIS                 (1.83240615f)     /* 交叉轴耦合系数 */
+#define ODOMETER_REVERSE_REF_MPS            (0.0759208411f)   /* 反转归一化参考 */
+#define ODOMETER_YAW_RATE_REF_RPS           (0.936060514f)    /* 偏航角速率归一化参考 */
 
-#define ODOMETER_ALPHA_MAX                  (0.03f)
-#define ODOMETER_ALPHA_TAU_S                (0.06f)
+/* ===== 融合滤波参数 ===== */
+#define ODOMETER_ALPHA_MAX                  (0.03f)     /* 编码器 vs 加速度计融合上限 */
+#define ODOMETER_ALPHA_TAU_S                (0.06f)     /* alpha 低通时间常数 */
+
+/* ===== 数学常量（注意：DEG_TO_RAD / PI 等已有 car_math 定义，
+ *    这里保留是为了避免破坏已标定的浮点精度，改用 car_math 时需逐个验证） ===== */
 #define ODOMETER_DEG_TO_RAD                 (0.017453292519943295f)
 #define ODOMETER_RAD_TO_DEG                 (57.295779513082320876f)
 #define ODOMETER_PI                         (3.14159265358979323846f)
 #define ODOMETER_TWO_PI                     (6.28318530717958647692f)
-#define ODOMETER_EPSILON                    (1.0e-6f)
+#define ODOMETER_EPSILON                    (1.0e-6f)   /* 防除零 */
 
-#define ODOMETER_ACCEL_BIAS_SPEED_MAX_MPS      (0.08f)
-#define ODOMETER_ACCEL_BIAS_GYRO_MAX_DPS       (6.0f)
-#define ODOMETER_ACCEL_BIAS_TILT_RATE_MAX_DPS  (8.0f)
-#define ODOMETER_ACCEL_BIAS_NORM_MIN_G         (0.94f)
-#define ODOMETER_ACCEL_BIAS_NORM_MAX_G         (1.06f)
-#define ODOMETER_BUMP_HOLD_TICKS               (80U)
-#define ODOMETER_BUMP_GYRO_DPS                 (25.0f)
-#define ODOMETER_BUMP_TILT_RATE_DPS            (25.0f)
-#define ODOMETER_BUMP_NORM_MIN_G               (0.85f)
-#define ODOMETER_BUMP_NORM_MAX_G               (1.15f)
+/* ===== 加速度偏置学习条件 ===== */
+#define ODOMETER_ACCEL_BIAS_SPEED_MAX_MPS      (0.08f)   /* 低速才学偏置 */
+#define ODOMETER_ACCEL_BIAS_GYRO_MAX_DPS       (6.0f)    /* 角速率阈值 */
+#define ODOMETER_ACCEL_BIAS_TILT_RATE_MAX_DPS  (8.0f)    /* 倾斜速率阈值 */
+#define ODOMETER_ACCEL_BIAS_NORM_MIN_G         (0.94f)   /* 加速度计模长下限 */
+#define ODOMETER_ACCEL_BIAS_NORM_MAX_G         (1.06f)   /* 加速度计模长上限 */
 
-#define ODOMETER_ROUGH_HISTORY_SIZE            (11U)
-#define ODOMETER_ROUGH_TILT_DEG                (3.8f)
-#define ODOMETER_ROUGH_GYRO_DPS                (80.0f)
-#define ODOMETER_ROUGH_WHEEL_COUNT             (20.0f)
-#define ODOMETER_ROUGH_DUAL_AXIS_MPS           (0.05f)
-#define ODOMETER_ROUGH_DUAL_RATIO              (0.10f)
-#define ODOMETER_WHEEL_HIGHPASS_TAU_S          (0.08f)
-#define ODOMETER_ROUGH_PRELOAD_TICKS           (20U)
-#define ODOMETER_ROUGH_RELAX_HOLD_TICKS        (70U)
-#define ODOMETER_ROUGH_RELAX_EDGE_TICKS        (21U)
-#define ODOMETER_ROUGH_RELAX_FORWARD_GAIN      (0.66f)
-#define ODOMETER_ROUGH_RELAX_STRAFE_GAIN       (0.59f)
+/* ===== 颠簸/碰撞检测阈值 ===== */
+#define ODOMETER_BUMP_HOLD_TICKS               (80U)     /* 颠簸后屏蔽时间，约 0.8s */
+#define ODOMETER_BUMP_GYRO_DPS                 (25.0f)   /* 角速率触发阈值 */
+#define ODOMETER_BUMP_TILT_RATE_DPS            (25.0f)   /* 倾斜速率触发阈值 */
+#define ODOMETER_BUMP_NORM_MIN_G               (0.85f)   /* 撞击加速度下限 */
+#define ODOMETER_BUMP_NORM_MAX_G               (1.15f)   /* 撞击加速度上限 */
 
+/* ===== 粗糙路面检测（地面不平时放松编码器信任） ===== */
+#define ODOMETER_ROUGH_HISTORY_SIZE            (11U)     /* 滑动窗口长度 */
+#define ODOMETER_ROUGH_TILT_DEG                (3.8f)    /* 倾斜角触发阈值 */
+#define ODOMETER_ROUGH_GYRO_DPS                (80.0f)   /* 角速率触发阈值 */
+#define ODOMETER_ROUGH_WHEEL_COUNT             (20.0f)   /* 轮速高通触发阈值 */
+#define ODOMETER_ROUGH_DUAL_AXIS_MPS           (0.05f)   /* 双轴最低速度要求 */
+#define ODOMETER_ROUGH_DUAL_RATIO              (0.10f)   /* 双轴比例最低要求 */
+#define ODOMETER_WHEEL_HIGHPASS_TAU_S          (0.08f)   /* 轮速高通滤波时间常数 */
+#define ODOMETER_ROUGH_PRELOAD_TICKS           (20U)     /* 粗糙检测预加载延时 */
+#define ODOMETER_ROUGH_RELAX_HOLD_TICKS        (70U)     /* 放松状态持续时间 */
+#define ODOMETER_ROUGH_RELAX_EDGE_TICKS        (21U)     /* 放松权重渐变边缘 */
+#define ODOMETER_ROUGH_RELAX_FORWARD_GAIN      (0.66f)   /* 前向放松增益（0~1） */
+#define ODOMETER_ROUGH_RELAX_STRAFE_GAIN       (0.59f)   /* 横向放松增益（0~1） */
+
+/* 二维向量，forward/strafe 方向 */
 typedef struct
 {
     float forward;
     float strafe;
 } odometer_vec2_t;
 
+/* 里程计内部滤波器状态（仅本文件使用） */
 typedef struct
 {
-    odometer_vec2_t velocity_mps;
-    odometer_vec2_t prev_encoder_velocity_mps;
-    odometer_vec2_t accel_bias_mps2;
-    float yaw_zero_rad;
-    float prev_yaw_delta_rad;
-    float roll_zero_rad;
-    float pitch_zero_rad;
-    float prev_roll_rad;
-    float prev_pitch_rad;
-    float alpha;
-    float rough_tilt_history_deg[ODOMETER_ROUGH_HISTORY_SIZE];
-    float rough_gyro_history_dps[ODOMETER_ROUGH_HISTORY_SIZE];
-    float rough_wheel_history_count[ODOMETER_ROUGH_HISTORY_SIZE];
-    float wheel_count_lpf[4];
-    uint16_t bump_hold_ticks;
-    uint16_t rough_relax_ticks;
-    uint16_t startup_hold_ticks;
-    uint8_t rough_history_index;
-    uint8_t rough_history_count;
-    uint8_t tilt_ready;
-    uint8_t yaw_ready;
+    odometer_vec2_t velocity_mps;               /* 融合后速度 */
+    odometer_vec2_t prev_encoder_velocity_mps;   /* 上一帧编码器速度（用于算加速度和反转） */
+    odometer_vec2_t accel_bias_mps2;             /* 加速度计偏置（低通学习值） */
+    float yaw_zero_rad;                          /* 航向零点 */
+    float prev_yaw_delta_rad;                    /* 上一帧航向偏移 */
+    float roll_zero_rad;                         /* 横滚零点 */
+    float pitch_zero_rad;                        /* 俯仰零点 */
+    float prev_roll_rad;                         /* 上一帧横滚角 */
+    float prev_pitch_rad;                        /* 上一帧俯仰角 */
+    float alpha;                                 /* 编码器/加速度计融合系数 */
+    float rough_tilt_history_deg[ODOMETER_ROUGH_HISTORY_SIZE];   /* 粗糙路面：倾斜角历史 */
+    float rough_gyro_history_dps[ODOMETER_ROUGH_HISTORY_SIZE];   /* 粗糙路面：角速率历史 */
+    float rough_wheel_history_count[ODOMETER_ROUGH_HISTORY_SIZE]; /* 粗糙路面：轮速高通历史 */
+    float wheel_count_lpf[4];                    /* 4轮低通滤波器状态 */
+    uint16_t bump_hold_ticks;                    /* 颠簸屏蔽倒计时 */
+    uint16_t rough_relax_ticks;                  /* 粗糙路面放松倒计时 */
+    uint16_t startup_hold_ticks;                 /* 启动稳定倒计时 */
+    uint8_t rough_history_index;                 /* 环形缓冲区写指针 */
+    uint8_t rough_history_count;                 /* 已填充数量 */
+    uint8_t tilt_ready;                          /* 倾斜零点已初始化 */
+    uint8_t yaw_ready;                           /* 航向零点已初始化 */
 } odometer_filter_state_t;
 
 odometer_data_t g_odometer = {0.0f, 0.0f, 0.0f};
 
 static odometer_filter_state_t g_odometer_filter;
 
+/* 二维向量模长 */
 static float odometer_vec_norm(odometer_vec2_t value)
 {
     return sqrtf((value.forward * value.forward) + (value.strafe * value.strafe));
@@ -104,6 +117,7 @@ static float odometer_vec3_norm(float x, float y, float z)
     return sqrtf((x * x) + (y * y) + (z * z));
 }
 
+/* 角度归一化到 [-PI, PI) */
 static float odometer_normalize_angle(float angle)
 {
     while(angle > ODOMETER_PI)
@@ -119,6 +133,8 @@ static float odometer_normalize_angle(float angle)
     return angle;
 }
 
+/* 读4轮编码器增量，解算成前后/横向脉冲数
+ * 麦克纳姆轮解算：forward = (LF+RF+LR+RR)/4, strafe = (-LF+RF+LR-RR)/4 */
 static odometer_vec2_t odometer_get_encoder_delta_count(void)
 {
     odometer_vec2_t count;
@@ -137,6 +153,8 @@ static odometer_vec2_t odometer_get_encoder_delta_count(void)
     return count;
 }
 
+/* 轮速高通滤波，返回4轮高通绝对值的最大值
+ * 用于粗糙路面检测：高通值大 = 轮子在跳 */
 static float odometer_get_encoder_wheel_highpass_count(void)
 {
     float left_front;
@@ -167,6 +185,7 @@ static float odometer_get_encoder_wheel_highpass_count(void)
     return highpass_abs_max;
 }
 
+/* 清空粗糙路面检测历史缓冲区 */
 static void odometer_rough_history_clear(void)
 {
     uint8_t i;
@@ -221,6 +240,7 @@ static float odometer_rough_history_max(const float *history)
     return value_max;
 }
 
+/* 编码器脉冲 -> 速度(m/s) */
 static odometer_vec2_t odometer_get_encoder_velocity(odometer_vec2_t delta_count)
 {
     odometer_vec2_t velocity;
@@ -230,6 +250,9 @@ static odometer_vec2_t odometer_get_encoder_velocity(odometer_vec2_t delta_count
     return velocity;
 }
 
+/* 学习加速度计偏置
+ * 条件：低速 + 低角速率 + 加速度计模长在 0.94~1.06g 内 + 无颠簸
+ * 满足条件时用 LPF 慢慢收敛偏置值 */
 static void odometer_update_accel_bias(odometer_vec2_t encoder_velocity,
                                        odometer_vec2_t accel_mps2,
                                        float *gyro_norm_dps_out,
@@ -329,6 +352,9 @@ static void odometer_update_accel_bias(odometer_vec2_t encoder_velocity,
     g_odometer_filter.prev_pitch_rad = pitch_rad;
 }
 
+/* 粗糙路面状态更新
+ * 检测条件：双轴运动 + 窗口内倾斜/角速率/轮速高通都超阈值
+ * 触发后进入放松态，允许编码器更接近原始值 */
 static void odometer_update_rough_relax_state(odometer_vec2_t raw_encoder_velocity,
                                               float gyro_norm_dps,
                                               float tilt_rate_dps)
@@ -377,6 +403,7 @@ static void odometer_update_rough_relax_state(odometer_vec2_t raw_encoder_veloci
     (void)tilt_rate_dps;
 }
 
+/* 粗糙路面放松权重，0~1，带渐入渐出 */
 static float odometer_get_rough_relax_weight(void)
 {
     float ticks;
@@ -464,10 +491,12 @@ void odometer_update_100HZ(void)
     float tilt_rate_dps;
     float rough_relax_weight;
 
+    /* --- 1. 读编码器算原始速度 --- */
     delta_count = odometer_get_encoder_delta_count();
     encoder_velocity = odometer_get_encoder_velocity(delta_count);
     raw_encoder_velocity = encoder_velocity;
 
+    /* --- 2. 启动稳定期：清零所有状态，丢弃数据 --- */
     if(g_odometer_filter.startup_hold_ticks > 0U)
     {
         yaw_now_rad = g_euler.yaw * ODOMETER_DEG_TO_RAD;
@@ -493,6 +522,7 @@ void odometer_update_100HZ(void)
         return;
     }
 
+    /* --- 3. 读加速度计，学习偏置，算修正后加速度 --- */
     accel_raw.forward = 0.0f;
     accel_raw.strafe = 0.0f;
     accel_z_mps2 = 0.0f;
@@ -504,11 +534,13 @@ void odometer_update_100HZ(void)
     accel_corrected.forward = accel_raw.forward - g_odometer_filter.accel_bias_mps2.forward;
     accel_corrected.strafe = accel_raw.strafe - g_odometer_filter.accel_bias_mps2.strafe;
 
+    /* --- 4. 编码器微分加速度（用于残差计算） --- */
     encoder_accel.forward = (encoder_velocity.forward -
                              g_odometer_filter.prev_encoder_velocity_mps.forward) / ODOMETER_UPDATE_DT_S;
     encoder_accel.strafe = (encoder_velocity.strafe -
                             g_odometer_filter.prev_encoder_velocity_mps.strafe) / ODOMETER_UPDATE_DT_S;
 
+    /* --- 5. 偏航角处理（相对零点的增量） --- */
     yaw_now_rad = g_euler.yaw * ODOMETER_DEG_TO_RAD;
     if(0U == g_odometer_filter.yaw_ready)
     {
@@ -520,6 +552,7 @@ void odometer_update_100HZ(void)
     yaw_step_rad = odometer_normalize_angle(yaw_delta_rad - g_odometer_filter.prev_yaw_delta_rad);
     yaw_rate_abs = car_math_absf(yaw_step_rad) / ODOMETER_UPDATE_DT_S;
 
+    /* --- 6. 各种风险因子归一化到 [0,2] --- */
     qvx = car_math_clampf(car_math_absf(encoder_velocity.forward) / ODOMETER_V_REF_MPS, 0.0f, 2.0f);
     qvy = car_math_clampf(car_math_absf(encoder_velocity.strafe) / ODOMETER_V_REF_MPS, 0.0f, 2.0f);
     qrx = car_math_clampf(car_math_absf(encoder_accel.forward - accel_corrected.forward) /
@@ -546,6 +579,7 @@ void odometer_update_100HZ(void)
                                 0.0f,
                                 1.5f);
 
+    /* --- 7. 编码器速度衰减系数（风险越大衰减越多） --- */
     scale_forward = 1.0f /
                     (1.0f +
                      (ODOMETER_KX_SPEED * powf(qvx, ODOMETER_SPEED_POWER_X)) +
@@ -565,6 +599,7 @@ void odometer_update_100HZ(void)
                     (ODOMETER_CROSS_AXIS * powf(qvx, ODOMETER_SPEED_POWER_X) *
                      car_math_clampf(qry, 0.0f, 1.0f)));
 
+    /* --- 8. 死区 + 粗糙路面放松 --- */
     encoder_velocity.forward = car_math_soft_deadband(encoder_velocity.forward * scale_forward,
                                                       ODOMETER_DEAD_FORWARD_MPS);
     encoder_velocity.strafe = car_math_soft_deadband(encoder_velocity.strafe * scale_strafe,
@@ -580,6 +615,7 @@ void odometer_update_100HZ(void)
             ODOMETER_ROUGH_RELAX_STRAFE_GAIN * rough_relax_weight;
     }
 
+    /* --- 9. 综合风险 -> 融合系数 alpha（越大越信加速度计） --- */
     risk = car_math_clampf((0.30f * car_math_maxf(qvx, qvy)) +
                            (0.45f * car_math_maxf(qrx, qry)) +
                            (0.15f * car_math_maxf(reverse_forward, reverse_strafe)) +
@@ -592,6 +628,7 @@ void odometer_update_100HZ(void)
                                                   ODOMETER_UPDATE_DT_S,
                                                   ODOMETER_ALPHA_TAU_S);
 
+    /* --- 10. 编码器 + 加速度计融合 --- */
     predicted_forward = g_odometer_filter.velocity_mps.forward +
                         (accel_corrected.forward * ODOMETER_UPDATE_DT_S);
     predicted_strafe = g_odometer_filter.velocity_mps.strafe +
@@ -601,6 +638,7 @@ void odometer_update_100HZ(void)
     fused_strafe = (g_odometer_filter.alpha * predicted_strafe) +
                    ((1.0f - g_odometer_filter.alpha) * encoder_velocity.strafe);
 
+    /* --- 11. 偏航投影 + 累积位移 --- */
     yaw_for_projection = yaw_delta_rad * ODOMETER_YAW_GAIN;
     cos_yaw = cosf(yaw_for_projection);
     sin_yaw = sinf(yaw_for_projection);

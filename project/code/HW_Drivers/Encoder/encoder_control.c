@@ -1,16 +1,15 @@
 /*********************************************************************************************************************
 * CYT4BB 编码器控制模块 - 实现文件
 *
-* 文件功能：封装正交编码器的初始化、读取功能
+* 文件功能：封装四路正交编码器的初始化、周期读取、卡尔曼滤波
+* 轮子到编码器映射：左前->M3, 右前->M4, 左后->M2, 右后->M1
 ********************************************************************************************************************/
 
 #include "encoder_control.h"
 
 // ========================== 全局变量定义 ==========================
 
-
-// Physical wheel mapping after chassis wiring update:
-// left front -> M3, right front -> M4, left rear -> M2, right rear -> M1.
+/* 轮子到编码器通道映射（根据底盘接线确定）：左前->M3, 右前->M4, 左后->M2, 右后->M1 */
 encoder_data_t encoder_left_front = {
     .index = ENCODER_M3_INDEX,
     .ch1_pin = ENCODER_M3_A,
@@ -58,11 +57,10 @@ encoder_data_t encoder_right_rear = {
 };
 
 
-/**
- * @brief  一阶卡尔曼滤波
- * @param  encoder: 编码器数据结构指针
- * @param  measurement: 当前测量值
- * @return 滤波后的估计值
+/*
+ * 一阶标量卡尔曼滤波
+ * 输入：原始脉冲计数（float）
+ * 输出：平滑后的估计值，同时更新 encoder->count_filtered 和 kalman_p
  */
 static float encoder_kalman_filter(encoder_data_t *encoder, float measurement)
 {
@@ -76,28 +74,25 @@ static float encoder_kalman_filter(encoder_data_t *encoder, float measurement)
 }
 
 
-/**
- * @brief  更新单个编码器的数据
- * @param  encoder:    编码器数据结构指针
- * @return 无
+/*
+ * 更新单个编码器：读取硬件计数 -> 清零 -> invert 取反 -> 卡尔曼滤波 -> 累加里程
+ * 每个编码器在 100Hz 中断中被调用一次
  */
 static void encoder_update_single(encoder_data_t *encoder)
 {
-    // 读取编码器计数并清零
     int16_t count = encoder_get_count(encoder->index);
     encoder_clear_count(encoder->index);
-    // 处理反向
-    if (encoder->invert)count = -count;
+
+    if (encoder->invert)
+        count = -count;             // 接线反了？invert=1 自动取反
+
     encoder->count_raw = count;
     encoder_kalman_filter(encoder, (float)encoder->count_raw);
-    // 更新累计计数
-    encoder->count_total += encoder->count_raw;
+    encoder->count_total += encoder->count_raw;     // 里程累计
 }
 
 
-/**
- * @brief  初始化编码器模块
- */
+/* 初始化四路 TC 正交编码器硬件 */
 void encoder_control_init(void)
 {
     encoder_quad_init(encoder_left_front.index, encoder_left_front.ch1_pin, encoder_left_front.ch2_pin);
@@ -105,9 +100,7 @@ void encoder_control_init(void)
     encoder_quad_init(encoder_left_rear.index, encoder_left_rear.ch1_pin, encoder_left_rear.ch2_pin);
     encoder_quad_init(encoder_right_rear.index, encoder_right_rear.ch1_pin, encoder_right_rear.ch2_pin);
 }
-/**
- * @brief  读取编码器计数并更新数据
- */
+/* 100Hz 中断入口：更新四路编码器速度、滤波和里程 */
 void encoder_update_100HZ(void)
 {
     encoder_update_single(&encoder_left_front); 
@@ -115,114 +108,73 @@ void encoder_update_100HZ(void)
     encoder_update_single(&encoder_left_rear);
     encoder_update_single(&encoder_right_rear);
 }
-/**
- * @brief  获取左前编码器周期计数（速度）
- */
+/* 各轮原始速度读取（脉冲/周期） */
 int16_t encoder_get_left_front_count(void)
 {
     return encoder_left_front.count_raw;
 }
-/**
- * @brief  获取右前编码器周期计数（速度）
- */
 int16_t encoder_get_right_front_count(void)
 {
     return encoder_right_front.count_raw;
 }
-/**
- * @brief  获取左后编码器周期计数（速度）
- */
 int16_t encoder_get_left_rear_count(void)
 {
     return encoder_left_rear.count_raw;
 }
-/**
- * @brief  获取右后编码器周期计数（速度）
- */
 int16_t encoder_get_right_rear_count(void)
 {
     return encoder_right_rear.count_raw;
 }
-/**
- * @brief  获取左前编码器滤波后周期计数（速度）
- */
+
+/* 各轮卡尔曼滤波后速度 */
 float encoder_get_left_front_filtered_count(void)
 {
     return encoder_left_front.count_filtered;
 }
-/**
- * @brief  获取右前编码器滤波后周期计数（速度）
- */
 float encoder_get_right_front_filtered_count(void)
 {
     return encoder_right_front.count_filtered;
 }
-/**
- * @brief  获取左后编码器滤波后周期计数（速度）
- */
 float encoder_get_left_rear_filtered_count(void)
 {
     return encoder_left_rear.count_filtered;
 }
-/**
- * @brief  获取右后编码器滤波后周期计数（速度）
- */
 float encoder_get_right_rear_filtered_count(void)
 {
     return encoder_right_rear.count_filtered;
 }
-/**
- * @brief  获取左前编码器累计计数
- */
+
+/* 各轮累计里程（脉冲数） */
 int32_t encoder_get_left_front_total(void)
 {
     return encoder_left_front.count_total;
 }
-/**
- * @brief  获取右前编码器累计计数
- */
 int32_t encoder_get_right_front_total(void)
 {
     return encoder_right_front.count_total;
 }
-/**
- * @brief  获取左后编码器累计计数
- */
 int32_t encoder_get_left_rear_total(void)
 {
     return encoder_left_rear.count_total;
 }
-/**
- * @brief  获取右后编码器累计计数
- */
 int32_t encoder_get_right_rear_total(void)
 {
     return encoder_right_rear.count_total;
 }
-/**
- * @brief  清零左前编码器累计计数
- */
+
+/* 清零累计里程 */
 void encoder_clear_left_front_total(void)
 {
     encoder_left_front.count_total = 0;
 }
-/**
- * @brief  清零右前编码器累计计数
- */
 void encoder_clear_right_front_total(void)
 {
     encoder_right_front.count_total = 0;
-}  
-/**
- * @brief  清零左后编码器累计计数
- */
+}
 void encoder_clear_left_rear_total(void)
 {
     encoder_left_rear.count_total = 0;
 }
-/**
- * @brief  清零右后编码器累计计数
- */
 void encoder_clear_right_rear_total(void)
 {
     encoder_right_rear.count_total = 0;

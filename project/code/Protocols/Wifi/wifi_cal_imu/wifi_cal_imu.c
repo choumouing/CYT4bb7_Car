@@ -1,8 +1,16 @@
-/*****************************************************************************
- * 文件: wifi_cal_imu.c
- * 模块: WiFi IMU 校准命令转接
- * 职责: 负责 imu 命令解析、状态约束检查、中文帮助输出与 IMU 校准接口转接
- *****************************************************************************/
+/**
+ * @file wifi_cal_imu.c
+ * @brief WiFi IMU 校准命令实现
+ *
+ * 命令解析流程：
+ *   wifi_cal_imu_ProcessLine("imu start gyro")
+ *     → token_root="imu", token_cmd="start", token_arg1="gyro"
+ *     → wifi_cal_imu_process_start("gyro") → IMUCalib_StartGyro()
+ *
+ * 文本回传通道：
+ *   校准过程中的状态文本通过 wifi_cal_imu_text_sink() → wifi_cmd_SendLine()
+ *   发送失败时降级到 printf（调试串口）
+ */
 
 #include "wifi_cal_imu.h"
 

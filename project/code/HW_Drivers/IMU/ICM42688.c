@@ -31,9 +31,9 @@
 
 /*
  * ICM42688 默认配置（1kHz）
- * 1) 陀螺仪量程 2000dps，适合飞控快速机动场景
+ * 1) 陀螺仪量程 2000dps，覆盖小车常见角速度
  * 2) 加速度量程 16g，覆盖常见动态范围
- * 3) 二阶滤波 + 合适带宽，兼顾噪声与延迟
+ * 3) 三阶滤波 + Bandwidth_Factor_2，兼顾噪声与延迟
  * 4) 上电后进入 LN（Low Noise）模式
  */
 ICM42688_CONFIG_STRUCT ICM42688_CONFIG = {
@@ -420,10 +420,8 @@ static void Set_ICM42688_LN_Mode(void)
 }
 
 /*
- * 获取一次传感器数据
- * - 陀螺仪单位：dps
- * - 加速度单位：g
- * - 若已完成零偏标定，则自动扣除陀螺仪零偏
+ * 读取一次传感器数据，存入 ICM42688（物理量）和 ICM42688_RAW（LSB）
+ * 流程：burst 读 13 字节 -> LSB/灵敏度 -> 乘轴符号 -> 扣零偏（如果已标定）
  */
 void ICM42688_Get_Data(void)
 {
@@ -436,6 +434,7 @@ void ICM42688_Get_Data(void)
 
     ICM42688_Read_Burst(&ICM42688_RAW);
 
+    /* LSB -> 物理值（dps 或 g） */
     gyro_x_raw = ICM42688_RAW.gyro_x_lsb / Gyro_Sensitivity;
     gyro_y_raw = ICM42688_RAW.gyro_y_lsb / Gyro_Sensitivity;
     gyro_z_raw = ICM42688_RAW.gyro_z_lsb / Gyro_Sensitivity;
@@ -444,6 +443,7 @@ void ICM42688_Get_Data(void)
     acc_y_raw = ICM42688_RAW.acc_y_lsb / Acc_Sensitivity;
     acc_z_raw = ICM42688_RAW.acc_z_lsb / Acc_Sensitivity;
 
+    /* 乘轴符号，转为车体坐标系 */
     ICM42688.gyro_x = ICM42688_SIGN_GX * gyro_x_raw;
     ICM42688.gyro_y = ICM42688_SIGN_GY * gyro_y_raw;
     ICM42688.gyro_z = ICM42688_SIGN_GZ * gyro_z_raw;
@@ -452,6 +452,7 @@ void ICM42688_Get_Data(void)
     ICM42688.acc_y = ICM42688_SIGN_AY * acc_y_raw;
     ICM42688.acc_z = ICM42688_SIGN_AZ * acc_z_raw;
 
+    /* 已标定则扣除陀螺零偏 */
     if (ICM42688_Bias_Init_Flag == 1)
     {
         ICM42688.gyro_x -= ICM42688_Bias_gyro_x;
@@ -462,8 +463,9 @@ void ICM42688_Get_Data(void)
 
 /*
  * 陀螺仪静态零偏标定
- * - 标定期间需保持设备静止
- * - times 最小限制为 500
+ * - 标定期间必须保持设备静止！
+ * - times 最小 500，建议 1000+，标定耗时约 times/1000 秒
+ * - 结果存入 Bias_gyro_x/y/z，并置位 Bias_Init_Flag（只能标定一次）
  */
 void ICM42688_Bias_Init(uint32 times)
 {
@@ -497,6 +499,7 @@ void ICM42688_Bias_Init(uint32 times)
     ICM42688_Bias_Init_Flag = 1;
 }
 
+/* 设置陀螺零偏（dps），enable=0 时关闭零偏补偿。用于从 Flash 恢复标定值 */
 void ICM42688_SetGyroBiasDps(float bx, float by, float bz, uint8 enable)
 {
     ICM42688_Bias_gyro_x = bx;
@@ -505,6 +508,7 @@ void ICM42688_SetGyroBiasDps(float bx, float by, float bz, uint8 enable)
     ICM42688_Bias_Init_Flag = (enable != 0U) ? 1U : 0U;
 }
 
+/* 读取当前陀螺零偏（dps）和启用状态，用于保存到 Flash */
 void ICM42688_GetGyroBiasDps(float *bx, float *by, float *bz, uint8 *enable)
 {
     if (bx != NULL)

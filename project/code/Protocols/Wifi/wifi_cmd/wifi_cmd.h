@@ -1,8 +1,21 @@
-/*****************************************************************************
- * 文件: wifi_cmd.h
- * 模块: WiFi 命令基础层
- * 职责: 负责 wifi_spi 初始化、UDP socket 建立、文本命令收发与基础文本解析工具
- *****************************************************************************/
+/**
+ * @file wifi_cmd.h
+ * @brief WiFi 命令基础层
+ *
+ * 功能：WiFi SPI 初始化、UDP socket 建立、文本命令收发与基础文本解析
+ * 链路配置：WiFi SSID/密码通过宏定义，UDP 连接到上位机指定 IP:Port
+ *
+ * 文本命令协议：
+ *   - 发送/接收格式：UTF-8 文本 + CRLF 结尾
+ *   - 接收状态机逐字节喂入，按 CR/LF 拆行
+ *   - 命令路由到上层模块（如 imu 命令路由到 wifi_cal_imu）
+ *
+ * 发送接口：
+ *   - wifi_cmd_SendBuffer: 提交二进制数据 + 触发 UDP 发包
+ *   - wifi_cmd_SendBufferNoFlush: 只提交不发包（用于批量写入）
+ *   - wifi_cmd_FlushNow: 立即触发 UDP 发包
+ *   - wifi_cmd_SendLine: 发送文本行（自动补 CRLF）
+ */
 
 #include "zf_common_headfile.h"
 #ifndef WIFI_CMD_H

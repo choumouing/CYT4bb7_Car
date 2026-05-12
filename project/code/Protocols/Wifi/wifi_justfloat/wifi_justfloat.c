@@ -1,8 +1,19 @@
-/*****************************************************************************
- * 文件: wifi_justfloat.c
- * 模块: WiFi JustFloat 遥测
- * 职责: 负责 VOFA JustFloat 二进制帧打包、待机态控流与发送耗时统计
- *****************************************************************************/
+/**
+ * @file wifi_justfloat.c
+ * @brief WiFi JustFloat 遥测实现
+ *
+ * 帧打包：va_arg 逐通道取 double 转 float → 写入帧缓冲区 → 追加帧尾
+ * 发送：wifi_cmd_SendBuffer() 提交 → 后续 poll 触发 UDP 发包
+ * 耗时统计：timer 硬件定时器测量 us 级精度
+ *
+ * wifi_justfloat_update_100HZ() 为具体遥测通道绑定：
+ *   ch0:  system_time_ms
+ *   ch1-3: 加速度 accx/accy/accz
+ *   ch4-6: 角速度 gyrox/gyroy/gyroz
+ *   ch7-9: 欧拉角 roll/pitch/yaw
+ *   ch10-11: 平移/前进里程
+ *   ch12-15: 四轮编码器滤波计数
+ */
 
 #include "wifi_justfloat.h"
 

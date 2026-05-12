@@ -12,35 +12,37 @@
 #define BEACON_DETECTION_EVENT_COOLDOWN_TICKS  (90U)
 #define BEACON_DETECTION_EPSILON               (1.0e-6f)
 
+/* 单次采样数据（IMU + 编码器 + 轮速高通） */
 typedef struct
 {
-    float roll_deg;
-    float pitch_deg;
-    float tilt_deg;
-    float tilt_rate_dps;
-    float gyro_xy_dps;
-    float gyro_z_abs_dps;
-    float accel_norm_error_g;
-    float speed_mps;
-    float forward_velocity_mps;
-    float strafe_velocity_mps;
-    float wheel_highpass_count;
-    float wheel_highpass[4];
+    float roll_deg;              /* 横滚角 */
+    float pitch_deg;             /* 俯仰角 */
+    float tilt_deg;              /* 倾斜总角（相对零点） */
+    float tilt_rate_dps;         /* 倾斜角速率 */
+    float gyro_xy_dps;           /* XY平面角速率模长 */
+    float gyro_z_abs_dps;        /* Z轴角速率绝对值 */
+    float accel_norm_error_g;    /* 加速度计模长与1g的偏差 */
+    float speed_mps;             /* 车速 */
+    float forward_velocity_mps;  /* 前后速度 */
+    float strafe_velocity_mps;   /* 横向速度 */
+    float wheel_highpass_count;  /* 4轮高通最大值 */
+    float wheel_highpass[4];     /* 各轮高通值 */
 } beacon_detection_sample_t;
 
+/* 内部滤波器状态（环形历史缓冲区 + 状态） */
 typedef struct
 {
-    beacon_detection_sample_t history[BEACON_DETECTION_HISTORY_SIZE];
-    float roll_zero_deg;
-    float pitch_zero_deg;
-    float prev_roll_deg;
-    float prev_pitch_deg;
-    float wheel_lpf[4];
-    uint16_t startup_hold_ticks;
-    uint16_t cooldown_ticks;
-    uint8_t history_index;
-    uint8_t history_count;
-    uint8_t tilt_ready;
+    beacon_detection_sample_t history[BEACON_DETECTION_HISTORY_SIZE]; /* 环形采样历史 */
+    float roll_zero_deg;      /* 横滚零点 */
+    float pitch_zero_deg;     /* 俯仰零点 */
+    float prev_roll_deg;      /* 上一帧横滚角（算角速率用） */
+    float prev_pitch_deg;     /* 上一帧俯仰角 */
+    float wheel_lpf[4];       /* 4轮低通滤波状态 */
+    uint16_t startup_hold_ticks; /* 启动稳定倒计时 */
+    uint16_t cooldown_ticks;     /* 碰撞冷却倒计时（防连发） */
+    uint8_t history_index;       /* 环形缓冲区写指针 */
+    uint8_t history_count;       /* 已填充数量 */
+    uint8_t tilt_ready;          /* 倾斜零点已初始化 */
 } beacon_detection_filter_t;
 
 beacon_detection_state_t g_beacon_detection;
@@ -48,6 +50,7 @@ beacon_detection_state_t g_beacon_detection;
 static beacon_detection_filter_t g_beacon_detection_filter;
 static beacon_camera_target_t g_beacon_camera_target;
 
+/* 取两数最小值 */
 static uint8_t beacon_minu8(uint8_t a, uint8_t b)
 {
     return (a < b) ? a : b;
@@ -92,6 +95,7 @@ static void beacon_detection_history_clear(void)
     g_beacon_detection_filter.history_count = 0U;
 }
 
+/* 压入一帧采样到环形缓冲区 */
 static void beacon_detection_push_sample(const beacon_detection_sample_t *sample)
 {
     g_beacon_detection_filter.history[g_beacon_detection_filter.history_index] = *sample;
@@ -107,6 +111,7 @@ static void beacon_detection_push_sample(const beacon_detection_sample_t *sample
     }
 }
 
+/* 按 age 取历史采样（0=最新） */
 static const beacon_detection_sample_t *beacon_detection_history_at(uint8_t age)
 {
     uint8_t index;
@@ -125,6 +130,8 @@ static const beacon_detection_sample_t *beacon_detection_history_at(uint8_t age)
     return &g_beacon_detection_filter.history[index];
 }
 
+/* 滑动窗口内取某字段的最大值
+ * selector: 函数指针，从采样中提取目标字段 */
 static float beacon_detection_window_max(uint8_t window_size,
                                          float (*selector)(const beacon_detection_sample_t *sample))
 {
@@ -147,6 +154,7 @@ static float beacon_detection_window_max(uint8_t window_size,
     return value_max;
 }
 
+/* ===== 以下为 selector 函数，配合 window_max 使用 ===== */
 static float beacon_select_tilt(const beacon_detection_sample_t *sample)
 {
     return sample->tilt_deg;
@@ -182,6 +190,7 @@ static float beacon_select_wheel_highpass(const beacon_detection_sample_t *sampl
     return sample->wheel_highpass_count;
 }
 
+/* 采集一帧完整样本（IMU + 编码器 + 轮速高通） */
 static beacon_detection_sample_t beacon_detection_get_sample(void)
 {
     beacon_detection_sample_t sample;
@@ -274,6 +283,7 @@ static beacon_detection_sample_t beacon_detection_get_sample(void)
     return sample;
 }
 
+/* 取短窗口内高通值最大时刻的各轮值（用于定位碰撞轮子） */
 static void beacon_detection_get_peak_wheel(float wheel_peak[4])
 {
     float value_max;
@@ -304,6 +314,7 @@ static void beacon_detection_get_peak_wheel(float wheel_peak[4])
     }
 }
 
+/* 根据轮速高通峰值生成轮子掩码（超过阈值45%或至少8 count的轮子都算） */
 static uint8_t beacon_detection_wheel_mask_from_peak(const float wheel_abs[4],
                                                      float max_abs)
 {
@@ -332,6 +343,7 @@ static uint8_t beacon_detection_wheel_mask_from_peak(const float wheel_abs[4],
     return mask;
 }
 
+/* 碰撞位置 -> 轮子掩码（速度优先定位时用） */
 static uint8_t beacon_detection_wheel_mask_from_location(beacon_bump_location_t location)
 {
     uint8_t mask;
@@ -377,6 +389,7 @@ static uint8_t beacon_detection_wheel_mask_from_location(beacon_bump_location_t 
     return mask;
 }
 
+/* 根据运动方向推断碰撞位置（速度够快时用这个，比轮速法更准） */
 static beacon_bump_location_t beacon_detection_location_from_motion(float forward_velocity,
                                                                     float strafe_velocity)
 {
@@ -423,6 +436,9 @@ static beacon_bump_location_t beacon_detection_location_from_motion(float forwar
     return location;
 }
 
+/* 根据轮速高通峰值组合判断碰撞位置
+ * 把4轮分组（前/后/左/右/对角），哪组总值最大就判哪
+ * 如果最大组占比 <58% 则判为 UNKNOWN（信号太分散） */
 static beacon_bump_location_t beacon_detection_location_from_wheels(const float wheel_peak[4],
                                                                     uint8_t *partial_bump,
                                                                     uint8_t *wheel_mask)
@@ -493,6 +509,8 @@ static beacon_bump_location_t beacon_detection_location_from_wheels(const float 
     return location;
 }
 
+/* 锁存一次碰撞事件到 g_beacon_detection
+ * 位置判定优先用运动方向法，速度>0.25m/s时覆盖轮速法结果 */
 static void beacon_detection_latch_event(float score,
                                          beacon_bump_confidence_t confidence,
                                          float gyro_xy_dps,
@@ -539,6 +557,7 @@ static void beacon_detection_latch_event(float score,
     g_beacon_detection_filter.cooldown_ticks = BEACON_DETECTION_EVENT_COOLDOWN_TICKS;
 }
 
+/* 从 Camera SPI 更新追踪目标 */
 static void beacon_detection_update_camera_target(void)
 {
     camera_spi_target_t spi_target;
@@ -619,16 +638,19 @@ void beacon_detection_update_100HZ(void)
     uint8_t strong_partial_bump;
     uint8_t hand_push_bump;
 
+    /* --- 1. 采集样本 + 更新摄像头目标 --- */
     beacon_detection_update_camera_target();
     sample = beacon_detection_get_sample();
     beacon_detection_push_sample(&sample);
 
+    /* --- 2. 启动稳定期：直接返回不检测 --- */
     if(g_beacon_detection_filter.startup_hold_ticks > 0U)
     {
         g_beacon_detection_filter.startup_hold_ticks--;
         return;
     }
 
+    /* --- 3. hold 倒计时：到时自动清碰撞标志 --- */
     if(g_beacon_detection.hold_ticks > 0U)
     {
         g_beacon_detection.hold_ticks--;
@@ -639,12 +661,14 @@ void beacon_detection_update_100HZ(void)
         }
     }
 
+    /* --- 4. 冷却期：防碰撞后马上再触发 --- */
     if(g_beacon_detection_filter.cooldown_ticks > 0U)
     {
         g_beacon_detection_filter.cooldown_ticks--;
         return;
     }
 
+    /* --- 5. 滑动窗口取各指标最大值 --- */
     gyro_xy_window = beacon_detection_window_max(BEACON_DETECTION_SHORT_WINDOW,
                                                  beacon_select_gyro_xy);
     gyro_z_window = beacon_detection_window_max(BEACON_DETECTION_SHORT_WINDOW,
@@ -660,6 +684,12 @@ void beacon_detection_update_100HZ(void)
     wheel_window = beacon_detection_window_max(BEACON_DETECTION_SHORT_WINDOW,
                                                beacon_select_wheel_highpass);
 
+    /* --- 6. 5种碰撞判据（任一触发即算碰撞） ---
+     * classic: 标准碰撞
+     * axis: 轴向碰撞（更严格的角速率/倾斜要求）
+     * edge: 边角碰撞（更高车速+更大倾斜）
+     * strong_partial: 强部分碰撞（极高的角速率+轮速高通）
+     * hand_push: 手推/轻触（低速低信号，判低置信度） */
     classic_bump = ((speed_window > 0.08f) &&
                     (gyro_z_window < 35.0f) &&
                     (gyro_xy_window > 80.0f) &&
@@ -692,6 +722,7 @@ void beacon_detection_update_100HZ(void)
                       (accel_window > 0.055f) &&
                       (wheel_window > 10.0f)) ? 1U : 0U;
 
+    /* --- 7. 计算碰撞强度评分 + 锁存事件 --- */
     if((classic_bump != 0U) || (axis_bump != 0U) ||
        (edge_bump != 0U) || (strong_partial_bump != 0U) ||
        (hand_push_bump != 0U))

@@ -1,14 +1,27 @@
+/********************************************************************
+ * 文件名  : IMU_TOP.c
+ * 模块    : IMU 顶层调度实现
+ * 位置    : Estimation/Attitude
+ * 数据流  :
+ *   ICM42688_Get_Data()
+ *     -> s_imu_raw_calib_1000hz（原始快照，给校准用）
+ *     -> AccelCalibration_ApplySensorCorrection（安装旋转+偏置补偿）
+ *     -> IMUFilter_Update（抗混叠->陷波->低通，输出 g_imufilter_1000hz）
+ *     -> IMUCalib_Update / AccelCalibration_Update（校准状态机）
+ *     -> MahonyAhrs_Update（姿态四元数）
+ *     -> MahonyAhrs_GetEulerDegrees（输出欧拉角到 g_euler）
+ ********************************************************************/
+
 #include "IMU_TOP.h"
 
 #define IMU_DEG_TO_RAD (0.017453292519943295f)
 
-/* ======================== IMU 全局状�?======================== */
-/* IMU滤波数据通过 g_imufilter_1000hz (IMU_Filtter.h) 访问 */
-MahonyAhrs_t g_mahony_ahrs;       /* Mahony 姿态解算器状�?*/
-MahonyAhrs_Euler_t g_euler;       /* 当前姿态欧拉角（度�?*/
-uint8 g_imu_ready = 0U;           /* IMU 是否完成初始化与自检 */
-static imudata_t s_imu_raw_calib_1000hz = {0}; /* 当前 1kHz 原始 IMU 快照，供校准链读取 */
-static uint8 s_imu_initializing = 0U;
+/* ======================== IMU 全局状态 ======================== */
+MahonyAhrs_t g_mahony_ahrs;       /* Mahony 姿态解算器状态 */
+MahonyAhrs_Euler_t g_euler;       /* 当前姿态欧拉角（单位: 度） */
+uint8 g_imu_ready = 0U;           /* 1=IMU 初始化+自检+暖机全部完成 */
+static imudata_t s_imu_raw_calib_1000hz = {0}; /* 当前帧原始 IMU 快照，供校准链读取 */
+static uint8 s_imu_initializing = 0U;           /* 1=正在初始化中（暖机阶段） */
 extern uint32 tick_1000us_cnt;
 /* ======================== 本地工具函数 ======================== */
 static uint8 IMU_IsFiniteFloat(float value)
@@ -64,10 +77,13 @@ void IMU_GetRawSampleForCalibration(float *gx, float *gy, float *gz,
 }
 
 /*
- * 函数功能: 上电读取短窗口数据做基础健康检�? * 检查项  :
- *   1) 数据是否有效（无 NaN/异常值）
- *   2) 静止时平均角速度是否在合理范�? *   3) 加速度模长均值是否接�?1g
- * 返回�? : 1=通过�?=失败
+ * 上电自检：读取短窗口（200 帧）数据做基础健康检查
+ * 检查项：
+ *   1) 传感器数据是否有限（无 NaN/异常大值）
+ *   2) 静止时陀螺仪平均模长是否 < 8 dps
+ *   3) 加速度模长均值是否在 0.75~1.25g 范围内
+ * 返回值：1=通过（可安全使用），0=失败（传感器异常，死循环）
+ * 调用要求：调用时需静止放置
  */
 static uint8 IMU_Startup_SelfCheck(void)
 {
@@ -122,7 +138,8 @@ static uint8 IMU_Startup_SelfCheck(void)
 	return 1U;
 }
 
-/* ======================== IMU 初始�?======================== */
+/* ======================== IMU 初始化 ======================== */
+/* 调用后 IMU 进入就绪状态（g_imu_ready=1），可以开始 1kHz 更新 */
 void IMU_Init_All(void)
 {
 	uint32 i;
@@ -131,10 +148,10 @@ void IMU_Init_All(void)
 	s_imu_initializing = 1U;
 	s_imu_raw_calib_1000hz = (imudata_t){0};
 
-	/* 步骤1: 上电初始�?ICM42688 驱动 */
+	/* 步骤1: 初始化 ICM42688 驱动（SPI 通信、量程配置等） */
 	ICM42688_Init(&ICM42688_CONFIG);
 
-	/* 步骤2: 上电自检（必须静止放置） */
+	/* 步骤2: 上电自检（必须静止放置，失败则死循环） */
 	if (0U == IMU_Startup_SelfCheck())
 	{
 		printf("IMU startup self-check failed.\r\n");
@@ -154,7 +171,7 @@ void IMU_Init_All(void)
 	g_euler.sin_pitch = 0.0f;
 	g_euler.cos_pitch = 1.0f;
 
-	/* 步骤4: 暖机，丢弃前若干帧用于稳定滤波器内部状�?*/
+	/* 步骤4: 暖机，丢弃前 1000 帧（约 1s），让滤波器内部状态收敛 */
 	for (i = 0U; i < IMU_WARMUP_DISCARD_SAMPLES; i++)
 	{
 		IMU_Update_1000HZ();
@@ -165,10 +182,9 @@ void IMU_Init_All(void)
 	s_imu_initializing = 0U;
 }
 
-/* IMU 1kHz*/
+/* 1kHz 主更新，由定时器中断或主循环调用 */
 void IMU_Update_1000HZ(void)
 {
-	/* 步骤1: �?ICM42688 读取一帧原始传感器数据 */
 	const float dt_s = IMU_UPDATE_DT_SEC;
 	float ahrs_gx;
 	float ahrs_gy;
@@ -228,11 +244,14 @@ void IMU_Update_1000HZ(void)
 			dt_s);
 	}
 
-	/* 步骤5: 计算欧拉角（单位: 度）并缓�?*/
+	/* 步骤5: 从四元数提取欧拉角（单位: 度），缓存到 g_euler 供全局使用 */
 	g_euler = MahonyAhrs_GetEulerDegrees(&g_mahony_ahrs);
 
 }
 
+/* 重置 yaw 为 0，保留当前 roll/pitch 不变
+ * 安全影响：改变航向基准，里程计的 yaw 投影也会基于新零点
+ * 使用场景：启动时/手动校准航向 */
 void IMU_ResetYaw(void)
 {
 	float roll_rad;

@@ -1,13 +1,19 @@
+/* Air参数远程同步模块 - 实现
+ *
+ * Flash存档布局：页80-87（4个slot，每个2页/4KB）
+ * 同步协议：车端发送set_param(name, value) → Air回复ACK(ok/fail)
+ * 每次只同步一个参数，100HZ轮询逐个清除dirty
+ */
 #include "menu_air_support.h"
 
-#define MENU_AIR_SLOT_BASE_PAGE             (80U)
-#define MENU_AIR_SLOT_COUNT                 (4U)
-#define MENU_AIR_SLOT_SIZE                  (2U)
-#define MENU_AIR_MAGIC_NUMBER               (0x41495250UL)
-#define MENU_AIR_VERSION                    (1U)
-#define MENU_AIR_MAX_PARAMS                 (16U)
-#define MENU_AIR_SYNC_INVALID_INDEX         (0xFFU)
-#define MENU_AIR_ACK_TYPE_SET_PARAM         (0x01U)
+#define MENU_AIR_SLOT_BASE_PAGE             (80U)       // Air存档起始页（避开车端72-79）
+#define MENU_AIR_SLOT_COUNT                 (4U)        // 存档槽数量
+#define MENU_AIR_SLOT_SIZE                  (2U)        // 每个槽占用页数
+#define MENU_AIR_MAGIC_NUMBER               (0x41495250UL)  // "AIRP"魔数
+#define MENU_AIR_VERSION                    (1U)        // 存档版本
+#define MENU_AIR_MAX_PARAMS                 (16U)       // 最大参数数量
+#define MENU_AIR_SYNC_INVALID_INDEX         (0xFFU)     // 无效索引标记
+#define MENU_AIR_ACK_TYPE_SET_PARAM         (0x01U)     // set_param命令的ACK类型
 
 typedef struct
 {
@@ -59,6 +65,7 @@ static uint8 menu_air_find_dirty_index(void)
     return MENU_AIR_SYNC_INVALID_INDEX;
 }
 
+/* 标记指定参数为dirty（需要同步到Air） */
 static void menu_air_mark_dirty(uint8 index)
 {
     if(index < s_air_param_count)
@@ -66,19 +73,6 @@ static void menu_air_mark_dirty(uint8 index)
         s_air_param_dirty[index] = 1U;
         s_air_sync_status.dirty_count = menu_air_dirty_count();
     }
-}
-
-static float menu_air_clamp(float value, float min_val, float max_val)
-{
-    if(value < min_val)
-    {
-        return min_val;
-    }
-    if(value > max_val)
-    {
-        return max_val;
-    }
-    return value;
 }
 
 static uint32 menu_air_calc_checksum(uint8 count)
@@ -204,7 +198,7 @@ void menu_register_param_air(const char *name, float *var, float step, float min
     s_air_params[s_air_param_count].min_val = min;
     s_air_params[s_air_param_count].max_val = max;
     *(s_air_params[s_air_param_count].variable) =
-        menu_air_clamp(*(s_air_params[s_air_param_count].variable), min, max);
+        car_math_clampf(*(s_air_params[s_air_param_count].variable), min, max);
     s_air_param_count++;
 }
 
@@ -235,7 +229,7 @@ uint8 menu_set_air_param_by_index(uint8 index, float value)
         return 1U;
     }
 
-    value = menu_air_clamp(value, s_air_params[index].min_val, s_air_params[index].max_val);
+    value = car_math_clampf(value, s_air_params[index].min_val, s_air_params[index].max_val);
     *(s_air_params[index].variable) = value;
     menu_air_mark_dirty(index);
 
@@ -289,6 +283,13 @@ uint8 menu_sync_all_air_params(void)
     return 0U;
 }
 
+/* 100HZ同步轮询
+ * 逻辑：
+ *   1. 正在发送 → 等ACK回来，处理结果（成功清dirty，失败也清dirty避免死循环）
+ *   2. 空闲 → 找第一个dirty参数 → 发送set_param命令
+ *   3. 发送失败 → 立即清dirty + 记录失败
+ * 注意：每次只处理一个参数，100HZ逐个同步
+ */
 void menu_air_update_100HZ(void)
 {
     uint8 ack_type = 0U;
@@ -395,7 +396,7 @@ uint8 menu_load_air_slot(uint8 slot)
     for(index = 0U; index < count; index++)
     {
         value = flash_union_buffer[offset + index].float_type;
-        value = menu_air_clamp(value, s_air_params[index].min_val, s_air_params[index].max_val);
+        value = car_math_clampf(value, s_air_params[index].min_val, s_air_params[index].max_val);
         *(s_air_params[index].variable) = value;
     }
 

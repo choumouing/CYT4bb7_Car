@@ -1,11 +1,21 @@
+/* 小车启动状态机 + 模式选择模块
+ *
+ * 数据来源：wireless_control_get_state()（遥控器解析结果）
+ * 输出：car_mode_e供car_mode_update_25HZ使用
+ * 安全逻辑：上电默认紧急停，遥控器显式发出启动命令才进入RUNNING
+ */
 #include "car_start_sbus.h"
 
 
 car_start_sbus_state_e g_car_start_sbus_state = CAR_START_SBUS_STATE_INIT;
 
-static car_mode_e s_car_mode = CAR_MODE_0;
-static uint8 s_emergency_stop_active = 1U;
+static car_mode_e s_car_mode = CAR_MODE_0;       // 当前模式
+static uint8 s_emergency_stop_active = 1U;       // 紧急停车标志（默认停车）
 
+/* 刷新模式选择
+ * 当前逻辑：uwb_follow_requested=1 → Mode1，否则 → Mode0
+ * mode_request_valid=0时强制Mode0
+ */
 static void car_start_sbus_refresh_mode(void)
 {
     const wireless_control_state_t *remote = wireless_control_get_state();
@@ -38,6 +48,14 @@ void car_start_sbus_reset(void)
     s_emergency_stop_active = 1U;
 }
 
+/* 25HZ状态机更新
+ * 调用链：car_loop_25HZ → 此函数
+ * 状态转换：
+ *   INIT → STANDBY（立即）
+ *   STANDBY → RUNNING：遥控器control_enabled=1且mode_request_valid=1
+ *   RUNNING → STANDBY：遥控器关闭控制或模式请求失效
+ * 每次都更新紧急停车标志（透传遥控器）
+ */
 void car_start_sbus_update_25HZ(void)
 {
     const wireless_control_state_t *remote = wireless_control_get_state();
