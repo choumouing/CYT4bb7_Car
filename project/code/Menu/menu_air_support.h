@@ -14,10 +14,21 @@
 
 #include "zf_common_headfile.h"
 
+#define MENU_AIR_SYNC_MODE_IDLE             (0U)
+#define MENU_AIR_SYNC_MODE_COMMIT           (1U)
+#define MENU_AIR_SYNC_MODE_FULL             (2U)
+#define MENU_AIR_SYNC_MODE_DONE             (3U)
+#define MENU_AIR_SYNC_MODE_FAIL             (4U)
+#define MENU_AIR_SYNC_REASON_NONE           (0U)
+#define MENU_AIR_SYNC_REASON_BOOT           (1U)
+#define MENU_AIR_SYNC_REASON_LOAD           (2U)
+#define MENU_AIR_SYNC_REASON_MANUAL         (3U)
+#define MENU_AIR_SYNC_REASON_COMMIT         (4U)
+
 /* Air参数配置结构体 */
 typedef struct
 {
-    char name[16];          // 参数名（用于AirComm传输）
+    char name[32];          // 参数名（用于AirComm传输）
     float *variable;        // 参数变量指针
     float step;             // 编辑步进值
     float min_val;          // 最小值
@@ -36,14 +47,12 @@ typedef struct
     uint32 send_count;          // 总发送次数
     uint32 ok_count;            // 成功次数
     uint32 fail_count;          // 失败次数
+    uint8 mode;
+    uint8 reason;
+    uint32 timeout_count;
 } menu_air_sync_status_t;
 
 /* Air参数变量（菜单可调） */
-extern float air_min_area;      // 最小检测面积（像素）
-extern float air_hold_ms;       // 保持时间（ms）
-extern float air_x_bias;        // X轴偏移补偿（像素）
-extern float air_y_bias;        // Y轴偏移补偿（像素）
-
 void menu_air_support_init(void);                                                       // 初始化（注册默认参数+加载slot0）
 void menu_register_param_air(const char *name, float *var, float step, float min, float max);  // 注册Air参数
 uint8 menu_get_air_param_count(void);                                                   // 获取参数数量
@@ -53,6 +62,10 @@ const menu_air_param_config_t *menu_get_air_param_config(uint8 index);          
 uint8 menu_is_air_connected(void);                                                      // Air是否在线
 uint8 menu_can_edit_air_params(void);                                                   // 是否允许编辑（在线且未运行）
 uint8 menu_sync_all_air_params(void);                                                   // 标记所有参数为dirty（触发全量同步）
+uint8 menu_air_commit_param(uint8 index);
+uint8 menu_air_sync_all_start(uint8 reason);
+uint8 menu_air_is_busy(void);
+void menu_air_stop_param_sync(void);
 void menu_air_update_100HZ(void);                                                       // 100HZ同步轮询
 void menu_get_air_sync_status(menu_air_sync_status_t *status);                          // 获取同步状态
 uint8 menu_load_air_slot(uint8 slot);                                                   // 从Flash加载Air参数存档

@@ -12,6 +12,8 @@
 #ifndef _MENU_CORE_H_
 #define _MENU_CORE_H_
 
+void menu_discard_key_events(void);
+
 
 
 // 外部变量声明
@@ -70,7 +72,7 @@ typedef enum {
 
 // 菜单项结构
 typedef struct menu_item {
-    char name[16];              // 菜单项名称（英文，最大15字符）
+    char name[32];              // 菜单项名称
     menu_type_t type;           // 菜单项类型
     union {
         struct menu_item* submenu;      // 子菜单指针

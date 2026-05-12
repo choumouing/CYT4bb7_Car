@@ -19,7 +19,7 @@
  *   0x03 EXEC_FUNC  - 执行函数（需 ACK）    payload: [func_id][reserved]
  *   0x04 ACK_FUNC   - 函数执行确认           payload: [func_id][status][result(4B)]
  *   0x05 HEARTBEAT  - 心跳（不需 ACK）      payload: [reserved(2B)][tick_ms(4B)]
- *   0x06 RUN_DATA   - 实时数据（下行）      payload: [count][float0][float1]...
+ *   0x06 RUN_DATA   - 双向实时数据（无 ACK） payload: [count][float0][float1]...
  *
  * ACK/重试策略：
  *   - SET_PARAM / EXEC_FUNC 发送后启动 ACK 等待
@@ -47,7 +47,7 @@
 #include "zf_common_headfile.h"
 
 /* ===== 参数限制 ===== */
-#define AIR_COMM_PARAM_NAME_MAX             (16U)   /* 参数名最大长度（字节） */
+#define AIR_COMM_PARAM_NAME_MAX             (32U)   /* 参数名最大长度（字节） */
 #define AIR_COMM_FUNC_PARAMS_MAX            (8U)    /* 函数参数最大个数 */
 #define AIR_COMM_RUN_DATA_MAX_FLOATS        (32U)   /* 实时数据最大 float 个数 */
 #define AIR_COMM_BAUDRATE                   (1152000U) /* UART 波特率 1.152Mbps */
@@ -98,6 +98,8 @@ typedef struct
     uint8 last_ack_status;          /* 最近一次 ACK 的状态码 */
     uint8 last_ack_type;            /* 最近一次 ACK 的消息类型 */
     uint8 last_ack_result;          /* 最近一次 ACK 的结果 */
+    float last_ack_value;           /* 最近一次 ACK 返回的实际值 */
+    char last_ack_name[AIR_COMM_PARAM_NAME_MAX + 1U];
 } air_comm_stats_t;
 
 /**
@@ -163,6 +165,7 @@ uint32 air_comm_car_get_tick(void);
  * 注意：同一时间只能有一个待确认的 ACK 帧
  */
 uint8 air_comm_car_set_param(const char *name, float value);
+uint8 air_comm_car_get_param(const char *name);
 
 /**
  * @brief 执行对端函数（需 ACK）
@@ -171,10 +174,15 @@ uint8 air_comm_car_set_param(const char *name, float value);
  */
 uint8 air_comm_car_exec_func(uint8 func_id);
 
+uint8 air_comm_send_run_data(const float *data, uint8 count);
+void air_comm_set_run_data_callback(air_comm_run_data_fn callback);
+uint8 air_comm_get_last_run_data(float *data, uint8 max_count, uint8 *count);
+
 /**
  * @brief 是否有待确认的 ACK
  * @return 1=有，0=无
  */
+void air_comm_car_cancel_pending_set_param(void);
 uint8 air_comm_car_has_pending_ack(void);
 
 /**
@@ -185,6 +193,8 @@ uint8 air_comm_car_has_pending_ack(void);
  * @return 最近一次 ACK 的 result 值
  */
 uint8 air_comm_car_get_last_ack(uint8 *type, uint8 *result, uint8 *status);
+uint8 air_comm_car_get_last_ack_value(float *value);
+uint8 air_comm_car_get_last_ack_name(char *name, uint8 size);
 
 /**
  * @brief 注册实时数据回调
