@@ -93,10 +93,22 @@ static void car_loop_100HZ(void)
     encoder_update_100HZ();
     odometer_update_100HZ();
     camera_spi_update_100HZ(s_system_time_ms);
+    if((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
+    {
+        menu_air_stop_param_sync();
+    }
     air_comm_car_update_100HZ();
-    menu_air_update_100HZ();
     beacon_detection_update_100HZ();
-    menu_update_100HZ();
+
+    if((car_control_enabled == 0U) || (car_emergency_stop_active != 0U))
+    {
+        menu_air_update_100HZ();
+        menu_update_100HZ();
+    }
+    else
+    {
+        menu_discard_key_events();
+    }
 
     /* 控制使能：执行速度环；否则安全停机 */
     if(0U != car_control_enabled)

@@ -275,6 +275,14 @@ void menu_timer_handler(void)
     key_scanner();  // 按键扫描放在定时器中断中
 }
 
+void menu_discard_key_events(void)
+{
+    key_clear_all_state();
+    memset(key_hold_ticks, 0, sizeof(key_hold_ticks));
+    memset(key_repeat_counters, 0, sizeof(key_repeat_counters));
+    memset(key_press_consumed, 0, sizeof(key_press_consumed));
+}
+
 /**
  * @brief 菜单系统初始化
  */
@@ -908,12 +916,24 @@ void menu_key_handler(menu_key_t key)
                         break;
 
                     case KEY_ENTER:
+                        if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
+                        {
+                            (void)menu_air_commit_param(current_menu[current_index].param_index);
+                            menu_state = MENU_STATE_NORMAL;
+                            break;
+                        }
                         // 确认键：保存参数并退出编辑模式
                         menu_state = MENU_STATE_NORMAL;
                         menu_request_refresh(REFRESH_VALUE);  // 退出编辑模式，只是颜色变化
                         break;
 
                     case KEY_BACK:
+                        if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
+                        {
+                            (void)menu_air_commit_param(current_menu[current_index].param_index);
+                            menu_state = MENU_STATE_NORMAL;
+                            break;
+                        }
                         // 返回键：保存参数并退出编辑模式（与确认键相同）
                         menu_state = MENU_STATE_NORMAL;
                         menu_request_refresh(REFRESH_VALUE);  // 退出编辑模式，只是颜色变化
@@ -1144,12 +1164,13 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
         char param_name[20];
         if(selected && !editing)
         {
-            sprintf(param_name, ">%s", item->name);  // 选中标记
+            snprintf(param_name, sizeof(param_name), ">%s", item->name);  // 选中标记
         }
         else
         {
-            sprintf(param_name, " %s", item->name);  // 普通显示
+            snprintf(param_name, sizeof(param_name), " %s", item->name);  // 普通显示
         }
+        param_name[18] = '\0';
 
         // 参数值 (右对齐，3位小数)
         char param_value[12];
