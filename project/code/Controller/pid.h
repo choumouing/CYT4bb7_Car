@@ -44,6 +44,7 @@ float PositionalPID_Update(PositionalPID* pid, float target, float current);
 
 void IncrementPID_Init(IncrementPID* pid, float kp, float ki, float kd,
                        float output_limit);
+float IncrementPID_Update(IncrementPID *pid, float target, float current);
 float IncreamPID_Update(IncrementPID *pid, float target, float current);
 
 #endif

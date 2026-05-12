@@ -215,14 +215,14 @@ void control_speed_loop_update_100HZ(float left_front_target, float right_front_
     control_speed_pid_apply_params(&wheel_left_rear_pid);
     control_speed_pid_apply_params(&wheel_right_rear_pid);
 
-    float left_front_pwm = IncreamPID_Update(&wheel_left_front_pid, left_front_target,
-                                             encoder_get_left_front_filtered_count());
-    float right_front_pwm = IncreamPID_Update(&wheel_right_front_pid, right_front_target,
-                                              encoder_get_right_front_filtered_count());
-    float left_rear_pwm = IncreamPID_Update(&wheel_left_rear_pid, left_rear_target,
-                                            encoder_get_left_rear_filtered_count());
-    float right_rear_pwm = IncreamPID_Update(&wheel_right_rear_pid, right_rear_target,
-                                             encoder_get_right_rear_filtered_count());
+    float left_front_pwm = IncrementPID_Update(&wheel_left_front_pid, left_front_target,
+                                               encoder_get_left_front_filtered_count());
+    float right_front_pwm = IncrementPID_Update(&wheel_right_front_pid, right_front_target,
+                                                encoder_get_right_front_filtered_count());
+    float left_rear_pwm = IncrementPID_Update(&wheel_left_rear_pid, left_rear_target,
+                                              encoder_get_left_rear_filtered_count());
+    float right_rear_pwm = IncrementPID_Update(&wheel_right_rear_pid, right_rear_target,
+                                               encoder_get_right_rear_filtered_count());
 
     mecanum_motor_set_all((int16_t)left_front_pwm,
                           (int16_t)right_front_pwm,

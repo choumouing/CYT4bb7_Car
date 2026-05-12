@@ -21,13 +21,6 @@
 #define COMM_MAX_RETRY                     (3U)
 #define COMM_HEARTBEAT_MS                  (200U)
 #define COMM_OFFLINE_MS                    (600U)
-#define AIR_COMM_TOTAL_ACK_TIMEOUT_MS      ((COMM_MAX_RETRY + 1U) * COMM_ACK_TIMEOUT_MS + 50U)
-
-#define AIR_COMM_ACK_RESULT_NONE           (0U)
-#define AIR_COMM_ACK_RESULT_OK             (1U)
-#define AIR_COMM_ACK_RESULT_TIMEOUT        (2U)
-#define AIR_COMM_ACK_RESULT_ERROR          (3U)
-
 typedef struct
 {
     uint8 state;
@@ -299,15 +292,18 @@ static void air_comm_match_ack(uint8 ack_type,
 
     s_air_comm_ack.active = 0U;
     s_air_comm_ack.status = status;
+    s_air_comm_stats.last_ack_type = s_air_comm_ack.type;
     s_air_comm_stats.last_ack_status = status;
     if(status == AIR_COMM_STATUS_OK)
     {
         s_air_comm_ack.result = AIR_COMM_ACK_RESULT_OK;
+        s_air_comm_stats.last_ack_result = AIR_COMM_ACK_RESULT_OK;
         s_air_comm_stats.ack_ok_count++;
     }
     else
     {
         s_air_comm_ack.result = AIR_COMM_ACK_RESULT_ERROR;
+        s_air_comm_stats.last_ack_result = AIR_COMM_ACK_RESULT_ERROR;
     }
 }
 
@@ -551,6 +547,8 @@ static void air_comm_task_ack_and_online(void)
                 s_air_comm_ack.active = 0U;
                 s_air_comm_ack.result = AIR_COMM_ACK_RESULT_TIMEOUT;
                 s_air_comm_ack.status = AIR_COMM_STATUS_ERROR;
+                s_air_comm_stats.last_ack_type = s_air_comm_ack.type;
+                s_air_comm_stats.last_ack_result = AIR_COMM_ACK_RESULT_TIMEOUT;
                 s_air_comm_stats.last_ack_status = AIR_COMM_STATUS_ERROR;
                 s_air_comm_stats.ack_timeout_count++;
             }
@@ -664,7 +662,6 @@ uint8 air_comm_car_set_param(const char *name, float value)
     uint8 payload[1U + AIR_COMM_PARAM_NAME_MAX + 4U];
     uint16 name_len;
     uint8 pos = 0U;
-    uint32 start_ms;
 
     if((name == NULL) || (s_air_comm_initialized == 0U))
     {
@@ -683,33 +680,12 @@ uint8 air_comm_car_set_param(const char *name, float value)
     air_comm_write_float(&payload[pos], value);
     pos = (uint8)(pos + 4U);
 
-    if(air_comm_send(AIR_COMM_MSG_SET_PARAM, payload, pos, 1U) == 0U)
-    {
-        return 1U;
-    }
-
-    start_ms = s_air_comm_tick_ms;
-    while(s_air_comm_ack.active != 0U)
-    {
-        air_comm_car_poll();
-        if((s_air_comm_tick_ms - start_ms) >= AIR_COMM_TOTAL_ACK_TIMEOUT_MS)
-        {
-            s_air_comm_ack.active = 0U;
-            s_air_comm_ack.result = AIR_COMM_ACK_RESULT_TIMEOUT;
-            s_air_comm_ack.status = AIR_COMM_STATUS_ERROR;
-            s_air_comm_stats.last_ack_status = AIR_COMM_STATUS_ERROR;
-            return 1U;
-        }
-    }
-
-    return ((s_air_comm_ack.result == AIR_COMM_ACK_RESULT_OK) &&
-            (s_air_comm_ack.status == AIR_COMM_STATUS_OK)) ? 0U : 1U;
+    return (air_comm_send(AIR_COMM_MSG_SET_PARAM, payload, pos, 1U) != 0U) ? 0U : 1U;
 }
 
 uint8 air_comm_car_exec_func(uint8 func_id)
 {
     uint8 payload[2];
-    uint32 start_ms;
 
     if(s_air_comm_initialized == 0U)
     {
@@ -719,27 +695,30 @@ uint8 air_comm_car_exec_func(uint8 func_id)
     payload[0] = func_id;
     payload[1] = 0U;
 
-    if(air_comm_send(AIR_COMM_MSG_EXEC_FUNC, payload, 2U, 1U) == 0U)
+    return (air_comm_send(AIR_COMM_MSG_EXEC_FUNC, payload, 2U, 1U) != 0U) ? 0U : 1U;
+}
+
+uint8 air_comm_car_has_pending_ack(void)
+{
+    return s_air_comm_ack.active;
+}
+
+uint8 air_comm_car_get_last_ack(uint8 *type, uint8 *result, uint8 *status)
+{
+    if(type != NULL)
     {
-        return 1U;
+        *type = s_air_comm_stats.last_ack_type;
+    }
+    if(result != NULL)
+    {
+        *result = s_air_comm_stats.last_ack_result;
+    }
+    if(status != NULL)
+    {
+        *status = s_air_comm_stats.last_ack_status;
     }
 
-    start_ms = s_air_comm_tick_ms;
-    while(s_air_comm_ack.active != 0U)
-    {
-        air_comm_car_poll();
-        if((s_air_comm_tick_ms - start_ms) >= AIR_COMM_TOTAL_ACK_TIMEOUT_MS)
-        {
-            s_air_comm_ack.active = 0U;
-            s_air_comm_ack.result = AIR_COMM_ACK_RESULT_TIMEOUT;
-            s_air_comm_ack.status = AIR_COMM_STATUS_ERROR;
-            s_air_comm_stats.last_ack_status = AIR_COMM_STATUS_ERROR;
-            return 1U;
-        }
-    }
-
-    return ((s_air_comm_ack.result == AIR_COMM_ACK_RESULT_OK) &&
-            (s_air_comm_ack.status == AIR_COMM_STATUS_OK)) ? 0U : 1U;
+    return s_air_comm_stats.last_ack_result;
 }
 
 void air_comm_car_set_run_data_callback(air_comm_run_data_fn callback)
@@ -756,5 +735,6 @@ void air_comm_car_get_stats(air_comm_stats_t *stats)
 
     s_air_comm_stats.tick_ms = s_air_comm_tick_ms;
     s_air_comm_stats.pending_ack = s_air_comm_ack.active;
+    s_air_comm_stats.pending_ack_type = s_air_comm_ack.type;
     *stats = s_air_comm_stats;
 }

@@ -12,6 +12,19 @@ typedef struct
     float max_val;
 } menu_air_param_config_t;
 
+typedef struct
+{
+    uint8 dirty_count;
+    uint8 sending;
+    uint8 active_index;
+    uint8 last_failed_index;
+    uint8 last_result;
+    uint8 last_status;
+    uint32 send_count;
+    uint32 ok_count;
+    uint32 fail_count;
+} menu_air_sync_status_t;
+
 extern float air_min_area;
 extern float air_hold_ms;
 extern float air_x_bias;
@@ -26,6 +39,8 @@ const menu_air_param_config_t *menu_get_air_param_config(uint8 index);
 uint8 menu_is_air_connected(void);
 uint8 menu_can_edit_air_params(void);
 uint8 menu_sync_all_air_params(void);
+void menu_air_update_100HZ(void);
+void menu_get_air_sync_status(menu_air_sync_status_t *status);
 uint8 menu_load_air_slot(uint8 slot);
 uint8 menu_save_air_slot(uint8 slot);
 

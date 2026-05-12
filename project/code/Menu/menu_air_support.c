@@ -6,6 +6,8 @@
 #define MENU_AIR_MAGIC_NUMBER               (0x41495250UL)
 #define MENU_AIR_VERSION                    (1U)
 #define MENU_AIR_MAX_PARAMS                 (16U)
+#define MENU_AIR_SYNC_INVALID_INDEX         (0xFFU)
+#define MENU_AIR_ACK_TYPE_SET_PARAM         (0x01U)
 
 typedef struct
 {
@@ -23,6 +25,48 @@ float air_y_bias = 0.0f;
 
 static menu_air_param_config_t s_air_params[MENU_AIR_MAX_PARAMS];
 static uint8 s_air_param_count;
+static uint8 s_air_param_dirty[MENU_AIR_MAX_PARAMS];
+static menu_air_sync_status_t s_air_sync_status;
+
+static uint8 menu_air_dirty_count(void)
+{
+    uint8 index;
+    uint8 count = 0U;
+
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        if(s_air_param_dirty[index] != 0U)
+        {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+static uint8 menu_air_find_dirty_index(void)
+{
+    uint8 index;
+
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        if(s_air_param_dirty[index] != 0U)
+        {
+            return index;
+        }
+    }
+
+    return MENU_AIR_SYNC_INVALID_INDEX;
+}
+
+static void menu_air_mark_dirty(uint8 index)
+{
+    if(index < s_air_param_count)
+    {
+        s_air_param_dirty[index] = 1U;
+        s_air_sync_status.dirty_count = menu_air_dirty_count();
+    }
+}
 
 static float menu_air_clamp(float value, float min_val, float max_val)
 {
@@ -122,6 +166,11 @@ static uint8 menu_air_slot_valid(uint8 slot, menu_air_slot_header_t *out_header)
 void menu_air_support_init(void)
 {
     s_air_param_count = 0U;
+    memset(s_air_param_dirty, 0, sizeof(s_air_param_dirty));
+    memset(&s_air_sync_status, 0, sizeof(s_air_sync_status));
+    s_air_sync_status.active_index = MENU_AIR_SYNC_INVALID_INDEX;
+    s_air_sync_status.last_failed_index = MENU_AIR_SYNC_INVALID_INDEX;
+
     menu_register_param_air("air_min_area", &air_min_area, 1.0f, 0.0f, 500.0f);
     menu_register_param_air("air_hold_ms", &air_hold_ms, 5.0f, 0.0f, 200.0f);
     menu_register_param_air("air_x_bias", &air_x_bias, 1.0f, -40.0f, 40.0f);
@@ -176,8 +225,6 @@ float menu_get_air_param_by_index(uint8 index)
 
 uint8 menu_set_air_param_by_index(uint8 index, float value)
 {
-    uint8 result;
-
     if((index >= s_air_param_count) || (s_air_params[index].variable == NULL))
     {
         return 1U;
@@ -189,13 +236,10 @@ uint8 menu_set_air_param_by_index(uint8 index, float value)
     }
 
     value = menu_air_clamp(value, s_air_params[index].min_val, s_air_params[index].max_val);
-    result = air_comm_car_set_param(s_air_params[index].name, value);
-    if(result == 0U)
-    {
-        *(s_air_params[index].variable) = value;
-    }
+    *(s_air_params[index].variable) = value;
+    menu_air_mark_dirty(index);
 
-    return result;
+    return 0U;
 }
 
 const menu_air_param_config_t *menu_get_air_param_config(uint8 index)
@@ -227,7 +271,6 @@ uint8 menu_can_edit_air_params(void)
 uint8 menu_sync_all_air_params(void)
 {
     uint8 index;
-    uint8 failed_count = 0U;
 
     if(menu_can_edit_air_params() == 0U)
     {
@@ -238,20 +281,98 @@ uint8 menu_sync_all_air_params(void)
 
     for(index = 0U; index < s_air_param_count; index++)
     {
-        if(air_comm_car_set_param(s_air_params[index].name,
-                                  *(s_air_params[index].variable)) != 0U)
-        {
-            failed_count++;
-        }
+        s_air_param_dirty[index] = 1U;
     }
 
-    if(failed_count > 0U)
-    {
-        menu_show_error("Sync Failed");
-        return 1U;
-    }
+    s_air_sync_status.dirty_count = menu_air_dirty_count();
 
     return 0U;
+}
+
+void menu_air_update_100HZ(void)
+{
+    uint8 ack_type = 0U;
+    uint8 ack_result = AIR_COMM_ACK_RESULT_NONE;
+    uint8 ack_status = AIR_COMM_STATUS_ERROR;
+    uint8 dirty_index;
+
+    if(s_air_sync_status.sending != 0U)
+    {
+        (void)air_comm_car_get_last_ack(&ack_type, &ack_result, &ack_status);
+        if((air_comm_car_has_pending_ack() == 0U) &&
+           (ack_type == MENU_AIR_ACK_TYPE_SET_PARAM) &&
+           (ack_result != AIR_COMM_ACK_RESULT_NONE))
+        {
+            s_air_sync_status.last_result = ack_result;
+            s_air_sync_status.last_status = ack_status;
+            if((ack_result == AIR_COMM_ACK_RESULT_OK) &&
+               (ack_status == AIR_COMM_STATUS_OK) &&
+               (s_air_sync_status.active_index < s_air_param_count))
+            {
+                s_air_param_dirty[s_air_sync_status.active_index] = 0U;
+                s_air_sync_status.ok_count++;
+            }
+            else
+            {
+                if(s_air_sync_status.active_index < s_air_param_count)
+                {
+                    s_air_param_dirty[s_air_sync_status.active_index] = 0U;
+                }
+                s_air_sync_status.last_failed_index = s_air_sync_status.active_index;
+                s_air_sync_status.fail_count++;
+            }
+
+            s_air_sync_status.sending = 0U;
+            s_air_sync_status.active_index = MENU_AIR_SYNC_INVALID_INDEX;
+            s_air_sync_status.dirty_count = menu_air_dirty_count();
+        }
+
+        return;
+    }
+
+    if((menu_can_edit_air_params() == 0U) || (air_comm_car_has_pending_ack() != 0U))
+    {
+        s_air_sync_status.dirty_count = menu_air_dirty_count();
+        return;
+    }
+
+    dirty_index = menu_air_find_dirty_index();
+    if(dirty_index == MENU_AIR_SYNC_INVALID_INDEX)
+    {
+        s_air_sync_status.dirty_count = 0U;
+        return;
+    }
+
+    if(air_comm_car_set_param(s_air_params[dirty_index].name,
+                              *(s_air_params[dirty_index].variable)) == 0U)
+    {
+        s_air_sync_status.sending = 1U;
+        s_air_sync_status.active_index = dirty_index;
+        s_air_sync_status.last_result = AIR_COMM_ACK_RESULT_NONE;
+        s_air_sync_status.last_status = AIR_COMM_STATUS_ERROR;
+        s_air_sync_status.send_count++;
+    }
+    else
+    {
+        s_air_param_dirty[dirty_index] = 0U;
+        s_air_sync_status.last_failed_index = dirty_index;
+        s_air_sync_status.last_result = AIR_COMM_ACK_RESULT_ERROR;
+        s_air_sync_status.last_status = AIR_COMM_STATUS_ERROR;
+        s_air_sync_status.fail_count++;
+    }
+
+    s_air_sync_status.dirty_count = menu_air_dirty_count();
+}
+
+void menu_get_air_sync_status(menu_air_sync_status_t *status)
+{
+    if(status == NULL)
+    {
+        return;
+    }
+
+    s_air_sync_status.dirty_count = menu_air_dirty_count();
+    *status = s_air_sync_status;
 }
 
 uint8 menu_load_air_slot(uint8 slot)

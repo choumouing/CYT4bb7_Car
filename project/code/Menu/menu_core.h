@@ -56,7 +56,8 @@ typedef enum {
     MENU_TYPE_SUBMENU = 0,      // 子菜单项
     MENU_TYPE_FUNCTION,         // 函数项
     MENU_TYPE_PARAMETER,        // 参数项
-    MENU_TYPE_AIR_PARAMETER     // Air远程参数项
+    MENU_TYPE_AIR_PARAMETER,    // Air远程参数项
+    MENU_TYPE_DIAG_VIEW         // 只读诊断页
 } menu_type_t;
 
 // 刷新类型枚举（局部刷新优化）
@@ -107,7 +108,8 @@ typedef struct {
 // 菜单状态
 typedef enum {
     MENU_STATE_NORMAL = 0,      // 普通浏览模式
-    MENU_STATE_EDIT             // 参数编辑模式
+    MENU_STATE_EDIT,            // 参数编辑模式
+    MENU_STATE_DIAG_VIEW        // 只读诊断页模式
 } menu_state_t;
 
 // 按键定义
