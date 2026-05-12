@@ -50,6 +50,11 @@ static void load_air_slot_1_function(void);
 static void save_air_slot_0_function(void);
 static void save_air_slot_1_function(void);
 static void sync_air_function(void);
+static void diag_imu_function(void);
+static void diag_encoder_function(void);
+static void diag_position_function(void);
+static void diag_pid_function(void);
+static void diag_air_function(void);
 
 //====================================================菜单树定义====================================================
 // 轮速PID子菜单（增量式）
@@ -136,12 +141,22 @@ static menu_item_t air_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
+static menu_item_t diag_menu[] = {
+    {"IMU", MENU_TYPE_DIAG_VIEW, .function = diag_imu_function},
+    {"Encoder", MENU_TYPE_DIAG_VIEW, .function = diag_encoder_function},
+    {"Position", MENU_TYPE_DIAG_VIEW, .function = diag_position_function},
+    {"PID", MENU_TYPE_DIAG_VIEW, .function = diag_pid_function},
+    {"Air Ack", MENU_TYPE_DIAG_VIEW, .function = diag_air_function},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
 static menu_item_t main_menu[] = {
     {"Wheel PID", MENU_TYPE_SUBMENU, .submenu = wheel_pid_menu},
     {"YawRate PID", MENU_TYPE_SUBMENU, .submenu = yaw_rate_pid_menu},
     {"YawAng PID", MENU_TYPE_SUBMENU, .submenu = yaw_angle_pid_menu},
     {"UWB PID", MENU_TYPE_SUBMENU, .submenu = uwb_follow_pid_menu},
     {"Air", MENU_TYPE_SUBMENU, .submenu = air_menu},
+    {"Diag", MENU_TYPE_SUBMENU, .submenu = diag_menu},
     {"Load Slot", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
     {"Save Slot", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
@@ -240,6 +255,149 @@ static void sync_air_function(void)
 {
     if(menu_sync_all_air_params() == 0U)
     {
-        menu_show_success("Air Sync OK");
+        menu_show_success("Air Queued");
     }
+}
+
+static void diag_show_line(uint8 line, const char *text)
+{
+    if(line >= MENU_MAX_VISIBLE_LINES)
+    {
+        return;
+    }
+
+    ips114_show_string(0, (uint16)(line * 16U), text);
+}
+
+static void diag_begin(void)
+{
+    ips114_clear();
+    ips114_set_color(UI_COLOR_NORMAL, UI_COLOR_BG);
+    ips114_set_font(UI_FONT_NORMAL);
+}
+
+static void diag_imu_function(void)
+{
+    char text[32];
+
+    diag_begin();
+    sprintf(text, "IMU RPY");
+    diag_show_line(0U, text);
+    sprintf(text, "R:%7.2f", (double)g_euler.roll);
+    diag_show_line(1U, text);
+    sprintf(text, "P:%7.2f Y:%7.2f", (double)g_euler.pitch, (double)g_euler.yaw);
+    diag_show_line(2U, text);
+    sprintf(text, "Gx:%7.2f", (double)g_imufilter_1000hz.gyrox);
+    diag_show_line(3U, text);
+    sprintf(text, "Gy:%7.2f Gz:%7.2f", (double)g_imufilter_1000hz.gyroy, (double)g_imufilter_1000hz.gyroz);
+    diag_show_line(4U, text);
+    sprintf(text, "Ax:%6.3f Ay:%6.3f", (double)g_imufilter_1000hz.accx, (double)g_imufilter_1000hz.accy);
+    diag_show_line(5U, text);
+    sprintf(text, "Az:%6.3f Ready:%u", (double)g_imufilter_1000hz.accz, (unsigned int)g_imu_ready);
+    diag_show_line(6U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+static void diag_encoder_function(void)
+{
+    char text[32];
+
+    diag_begin();
+    diag_show_line(0U, "Encoder filt");
+    sprintf(text, "LF:%7.1f", (double)encoder_get_left_front_filtered_count());
+    diag_show_line(1U, text);
+    sprintf(text, "RF:%7.1f", (double)encoder_get_right_front_filtered_count());
+    diag_show_line(2U, text);
+    sprintf(text, "LR:%7.1f", (double)encoder_get_left_rear_filtered_count());
+    diag_show_line(3U, text);
+    sprintf(text, "RR:%7.1f", (double)encoder_get_right_rear_filtered_count());
+    diag_show_line(4U, text);
+    sprintf(text, "Raw %d %d", (int)encoder_get_left_front_count(), (int)encoder_get_right_front_count());
+    diag_show_line(5U, text);
+    sprintf(text, "Raw %d %d", (int)encoder_get_left_rear_count(), (int)encoder_get_right_rear_count());
+    diag_show_line(6U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+static void diag_position_function(void)
+{
+    char text[32];
+    ALX_AOA_Position_t uwb = {0};
+    float filt_x_cm = 0.0f;
+    float filt_y_cm = 0.0f;
+    uint8 uwb_ok;
+
+    uwb_ok = ALX_AOA_GetLatest(&uwb);
+    (void)ALX_AOA_GetFilteredXY(&filt_x_cm, &filt_y_cm);
+
+    diag_begin();
+    sprintf(text, "Odo F:%7.3f", (double)g_odometer.forward_distance);
+    diag_show_line(0U, text);
+    sprintf(text, "Odo S:%7.3f", (double)g_odometer.strafe_distance);
+    diag_show_line(1U, text);
+    sprintf(text, "Travel:%7.3f", (double)g_odometer.travel_distance);
+    diag_show_line(2U, text);
+    sprintf(text, "UWB ok:%u", (unsigned int)uwb_ok);
+    diag_show_line(3U, text);
+    sprintf(text, "Raw X:%ld", (long)uwb.x_cm);
+    diag_show_line(4U, text);
+    sprintf(text, "Raw Y:%ld", (long)uwb.y_cm);
+    diag_show_line(5U, text);
+    sprintf(text, "Filt:%5.1f %5.1f", (double)filt_x_cm, (double)filt_y_cm);
+    diag_show_line(6U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+static void diag_pid_function(void)
+{
+    char text[32];
+
+    diag_begin();
+    sprintf(text, "YawCur:%6.3f", (double)control_yaw_angle_current);
+    diag_show_line(0U, text);
+    sprintf(text, "YawOut:%6.3f", (double)control_yaw_angle_output);
+    diag_show_line(1U, text);
+    sprintf(text, "RateT:%6.3f", (double)control_yaw_rate_target);
+    diag_show_line(2U, text);
+    sprintf(text, "RateC:%6.3f", (double)control_yaw_rate_current);
+    diag_show_line(3U, text);
+    sprintf(text, "RateO:%7.1f", (double)control_yaw_rate_output);
+    diag_show_line(4U, text);
+    sprintf(text, "M1 P:%6.1f", (double)wheel_left_front_pid.p_term);
+    diag_show_line(5U, text);
+    sprintf(text, "M1 I:%6.1f O:%6.1f", (double)wheel_left_front_pid.i_term,
+            (double)wheel_left_front_pid.output);
+    diag_show_line(6U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+static void diag_air_function(void)
+{
+    char text[32];
+    air_comm_stats_t stats;
+    menu_air_sync_status_t sync_status;
+
+    air_comm_car_get_stats(&stats);
+    menu_get_air_sync_status(&sync_status);
+
+    diag_begin();
+    sprintf(text, "Air online:%u", (unsigned int)stats.online_status);
+    diag_show_line(0U, text);
+    sprintf(text, "Pend:%u Type:%u", (unsigned int)stats.pending_ack,
+            (unsigned int)stats.pending_ack_type);
+    diag_show_line(1U, text);
+    sprintf(text, "Last T:%u R:%u", (unsigned int)stats.last_ack_type,
+            (unsigned int)stats.last_ack_result);
+    diag_show_line(2U, text);
+    sprintf(text, "Status:%u Dirty:%u", (unsigned int)stats.last_ack_status,
+            (unsigned int)sync_status.dirty_count);
+    diag_show_line(3U, text);
+    sprintf(text, "Send:%lu", (unsigned long)sync_status.send_count);
+    diag_show_line(4U, text);
+    sprintf(text, "OK:%lu Fail:%lu", (unsigned long)sync_status.ok_count,
+            (unsigned long)sync_status.fail_count);
+    diag_show_line(5U, text);
+    sprintf(text, "FailIdx:%u", (unsigned int)sync_status.last_failed_index);
+    diag_show_line(6U, text);
+    diag_show_line(7U, "Back/Enter Exit");
 }

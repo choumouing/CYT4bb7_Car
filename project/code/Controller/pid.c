@@ -69,7 +69,7 @@ void IncrementPID_Init (IncrementPID* pid,float kp,float ki,float kd,float outpu
     pid->output_limit = output_limit;
 }
 
-float IncreamPID_Update(IncrementPID *pid, float target, float current) 
+float IncrementPID_Update(IncrementPID *pid, float target, float current)
 {
     float error = target - current;
     
@@ -90,5 +90,10 @@ float IncreamPID_Update(IncrementPID *pid, float target, float current)
     if(pid->output < -pid->output_limit) pid->output = -pid->output_limit;
     
     return pid->output;
+}
+
+float IncreamPID_Update(IncrementPID *pid, float target, float current)
+{
+    return IncrementPID_Update(pid, target, current);
 }
 	

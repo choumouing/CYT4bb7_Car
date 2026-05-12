@@ -193,3 +193,4 @@ temp/gitee_seekfree_cyt4bb7_library/
 
 nul
 *.py
+.spec-workflow

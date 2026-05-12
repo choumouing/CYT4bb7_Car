@@ -28,6 +28,7 @@ static uint8_t current_slot = 0;                       // 当前存档号
 // 显示控制变量
 static uint8_t need_refresh = 1;                       // 需要刷新标志
 static uint8_t display_offset = 0;                     // 显示偏移量（滚动支持）
+static uint8_t diag_refresh_divider = 0;               // 诊断页10Hz刷新分频
 
 // 局部刷新优化变量
 static refresh_type_t refresh_type = REFRESH_FULL;     // 刷新类型
@@ -148,6 +149,107 @@ static uint8_t menu_set_item_param_value(const menu_item_t *item, float value)
     return 1U;
 }
 
+typedef struct
+{
+    uint32_t magic;
+    uint8_t version;
+    uint8_t slot_id;
+    uint16_t param_count;
+    uint32_t data_checksum;
+    uint32_t header_checksum;
+    char slot_name[16];
+} menu_flash_slot_header_t;
+
+static uint32_t menu_get_slot_page(uint8_t slot, uint8_t legacy);
+
+static uint32_t menu_flash_calc_data_checksum(uint16_t count, uint32_t offset)
+{
+    uint16_t index;
+    uint32_t checksum = 0x2468ACE0UL;
+
+    for(index = 0U; index < count; index++)
+    {
+        checksum ^= flash_union_buffer[offset + index].uint32_type;
+        checksum = (checksum << 7) | (checksum >> 25);
+        checksum += (uint32_t)(index + 1U) * 2654435761UL;
+    }
+
+    return checksum;
+}
+
+static uint32_t menu_flash_calc_header_checksum(const menu_flash_slot_header_t *header)
+{
+    uint32_t checksum = 0x13579BDFUL;
+
+    if(header == NULL)
+    {
+        return 0U;
+    }
+
+    checksum ^= header->magic;
+    checksum = (checksum << 5) | (checksum >> 27);
+    checksum ^= ((uint32_t)header->version << 24);
+    checksum ^= ((uint32_t)header->slot_id << 16);
+    checksum ^= (uint32_t)header->param_count;
+    checksum = (checksum << 5) | (checksum >> 27);
+    checksum ^= header->data_checksum;
+
+    return checksum;
+}
+
+static uint8_t menu_flash_slot_valid(uint8_t slot, menu_flash_slot_header_t *out_header)
+{
+    uint32_t page_num;
+    uint32_t offset;
+    menu_flash_slot_header_t *header;
+
+    if((slot >= MENU_SLOT_COUNT) || (param_count == 0U))
+    {
+        return 0U;
+    }
+
+    page_num = menu_get_slot_page(slot, 0U);
+    if((page_num + MENU_SLOT_SIZE - 1U) >= FLASH_PAGE_NUM)
+    {
+        return 0U;
+    }
+
+    if(flash_check(0U, page_num) == 0U)
+    {
+        return 0U;
+    }
+
+    flash_read_page_to_buffer(0U, page_num, FLASH_PAGE_LENGTH);
+    header = (menu_flash_slot_header_t *)flash_union_buffer;
+    offset = (uint32_t)((sizeof(menu_flash_slot_header_t) + 3U) / 4U);
+
+    if((header->magic != MENU_MAGIC_NUMBER) ||
+       (header->version != MENU_VERSION) ||
+       (header->slot_id != slot) ||
+       (header->param_count != param_count) ||
+       ((offset + header->param_count) > FLASH_PAGE_LENGTH))
+    {
+        return 0U;
+    }
+
+    if(header->data_checksum != menu_flash_calc_data_checksum(header->param_count, offset))
+    {
+        return 0U;
+    }
+
+    if(header->header_checksum != menu_flash_calc_header_checksum(header))
+    {
+        return 0U;
+    }
+
+    if(out_header != NULL)
+    {
+        *out_header = *header;
+    }
+
+    return 1U;
+}
+
 static uint32_t menu_get_slot_page(uint8_t slot, uint8_t legacy)
 {
     uint32_t base_page;
@@ -191,6 +293,7 @@ void menu_init(void)
     current_index = 0;
     current_item_count = 0;
     menu_state = MENU_STATE_NORMAL;
+    diag_refresh_divider = 0U;
     param_count = 0;
     current_slot = 0;
     display_offset = 0;
@@ -222,6 +325,22 @@ void menu_update_100HZ(void)
 {
     menu_process_keys();
 
+    if(menu_state == MENU_STATE_DIAG_VIEW)
+    {
+        diag_refresh_divider++;
+        if(diag_refresh_divider >= 10U)
+        {
+            diag_refresh_divider = 0U;
+            if((current_index < current_item_count) &&
+               (current_menu[current_index].type == MENU_TYPE_DIAG_VIEW) &&
+               (current_menu[current_index].function != NULL))
+            {
+                current_menu[current_index].function();
+            }
+        }
+        return;
+    }
+
     // 处理待执行的Flash操作（在主循环中执行，避免在中断中操作Flash）
     if(pending_flash_operation != FLASH_OP_NONE)
     {
@@ -243,7 +362,14 @@ void menu_update_100HZ(void)
 
         case FLASH_OP_SAVE:
             menu_flash_save_params(pending_slot_number);
-            menu_show_success("Save OK");
+            if(menu_flash_check_slot(pending_slot_number) != 0U)
+            {
+                menu_show_success("Save OK");
+            }
+            else
+            {
+                menu_show_error("Save Fail");
+            }
             break;
         }
         pending_flash_operation = FLASH_OP_NONE;
@@ -697,6 +823,15 @@ void menu_key_handler(menu_key_t key)
                             }
                             break;
 
+                        case MENU_TYPE_DIAG_VIEW:
+                            if(current_menu[current_index].function != NULL)
+                            {
+                                menu_state = MENU_STATE_DIAG_VIEW;
+                                diag_refresh_divider = 0U;
+                                current_menu[current_index].function();
+                            }
+                            break;
+
                         case MENU_TYPE_PARAMETER:
                         case MENU_TYPE_AIR_PARAMETER:
                             if(menu_is_param_item(&current_menu[current_index]) != 0U)
@@ -781,6 +916,15 @@ void menu_key_handler(menu_key_t key)
                 }
             }
             break;
+
+        case MENU_STATE_DIAG_VIEW:
+            if((key == KEY_BACK) || (key == KEY_ENTER))
+            {
+                menu_state = MENU_STATE_NORMAL;
+                diag_refresh_divider = 0U;
+                menu_request_refresh(REFRESH_FULL);
+            }
+            break;
     }
 }
 
@@ -791,179 +935,137 @@ void menu_key_handler(menu_key_t key)
  */
 uint8_t menu_flash_check_slot(uint8_t slot)
 {
-    // 参数安全检查
-    if(slot >= MENU_SLOT_COUNT)
-    {
-        return 0;
-    }
-
-    // 计算页面编号（每个存档占MENU_SLOT_SIZE页）
-    uint32_t page_num = menu_get_slot_page(slot, 0U);
-    uint8_t has_data;
-
-    // Flash边界安全检查
-    if(page_num >= FLASH_PAGE_NUM)
-    {
-        return 0;
-    }
-
-    // 简单检查：页面是否有数据
-    has_data = flash_check(0, page_num);
-    if(has_data == 0U)
-    {
-        page_num = menu_get_slot_page(slot, 1U);
-        if(page_num >= FLASH_PAGE_NUM)
-        {
-            return 0;
-        }
-        has_data = flash_check(0, page_num);
-    }
-    return has_data;
+    return menu_flash_slot_valid(slot, NULL);
 }
 
 /**
- * @brief 从Flash加载参数（使用逐飞库安全缓冲区方式）
+ * @brief 从Flash加载参数，只接受带magic/version/checksum的新格式。
  */
 void menu_flash_load_params(uint8_t slot)
 {
-    if(slot >= MENU_SLOT_COUNT || param_count == 0)
+    menu_flash_slot_header_t header;
+    uint32_t offset;
+    uint16_t index;
+    float value;
+
+    if(slot >= MENU_SLOT_COUNT || param_count == 0U)
     {
         menu_show_error("Error");
         return;
     }
 
-    // 计算页面编号（每个存档占MENU_SLOT_SIZE页）
-    uint32_t page_num = menu_get_slot_page(slot, 0U);
-
-    if(page_num >= FLASH_PAGE_NUM)
+    if(menu_flash_slot_valid(slot, &header) == 0U)
     {
-        menu_show_error("Error");
+        menu_show_error("No Data");
         return;
     }
 
-    // 检查是否有保存的数据
-    if(!flash_check(0, page_num))
-    {
-        uint32_t legacy_page = menu_get_slot_page(slot, 1U);
-        if((legacy_page >= FLASH_PAGE_NUM) || (!flash_check(0, legacy_page)))
-        {
-            menu_show_error("No Data");
-            return;
-        }
-        page_num = legacy_page;
-    }
-
-    // 显示加载进度
     menu_show_progress("Loading...");
+    offset = (uint32_t)((sizeof(menu_flash_slot_header_t) + 3U) / 4U);
 
-    // 使用逐飞库安全读取函数读取到缓冲区
-    flash_read_page_to_buffer(0, page_num, param_count);
-
-    // 从逐飞库缓冲区恢复参数
-    for(uint16_t i = 0; i < param_count && i < FLASH_PAGE_LENGTH; i++)
+    for(index = 0U; index < header.param_count; index++)
     {
-        if(param_configs[i].variable != NULL)
+        if(param_configs[index].variable != NULL)
         {
-            // 直接从缓冲区获取float值，并防止旧存档/空白Flash写入异常参数
-            float value = flash_union_buffer[i].float_type;
-            if((value == value) && (value > -1000000.0f) && (value < 1000000.0f))
+            value = flash_union_buffer[offset + index].float_type;
+            if(value < param_configs[index].min_val)
             {
-                if(value < param_configs[i].min_val)
-                {
-                    value = param_configs[i].min_val;
-                }
-                if(value > param_configs[i].max_val)
-                {
-                    value = param_configs[i].max_val;
-                }
-                *(param_configs[i].variable) = value;
+                value = param_configs[index].min_val;
             }
+            if(value > param_configs[index].max_val)
+            {
+                value = param_configs[index].max_val;
+            }
+            *(param_configs[index].variable) = value;
         }
     }
 
     current_slot = slot;
-    // 成功消息将在调用处显示
 }
 
 /**
- * @brief 保存参数到Flash（使用逐飞库安全缓冲区方式）
+ * @brief 保存参数到Flash，写入magic/version/checksum防止垃圾值进控制器。
  */
 void menu_flash_save_params(uint8_t slot)
 {
-    if(slot >= MENU_SLOT_COUNT || param_count == 0)
+    menu_flash_slot_header_t *header;
+    uint32_t page_num;
+    uint32_t offset;
+    uint16_t index;
+
+    if(slot >= MENU_SLOT_COUNT || param_count == 0U)
     {
         menu_show_error("Error");
         return;
     }
 
-    // 计算页面编号（每个存档占MENU_SLOT_SIZE页）
-    uint32_t page_num = menu_get_slot_page(slot, 0U);
-
-    if(page_num >= FLASH_PAGE_NUM)
+    page_num = menu_get_slot_page(slot, 0U);
+    if((page_num + MENU_SLOT_SIZE - 1U) >= FLASH_PAGE_NUM)
     {
         menu_show_error("Error");
         return;
     }
 
-    // 显示保存进度
     menu_show_progress("Saving...");
-
-    // 清空逐飞库的全局缓冲区
     flash_buffer_clear();
 
-    // 将参数数据存入逐飞库缓冲区
-    for(uint16_t i = 0; i < param_count && i < FLASH_PAGE_LENGTH; i++)
+    header = (menu_flash_slot_header_t *)flash_union_buffer;
+    offset = (uint32_t)((sizeof(menu_flash_slot_header_t) + 3U) / 4U);
+    if((offset + param_count) > FLASH_PAGE_LENGTH)
     {
-        if(param_configs[i].variable != NULL)
+        menu_show_error("Error");
+        return;
+    }
+
+    for(index = 0U; index < param_count; index++)
+    {
+        if(param_configs[index].variable != NULL)
         {
-            float value = *(param_configs[i].variable);
-            flash_union_buffer[i].float_type = value;  // 直接存储float类型
+            flash_union_buffer[offset + index].float_type = *(param_configs[index].variable);
         }
     }
 
-    // 使用逐飞库安全写入函数
-    flash_write_page_from_buffer(0, page_num, param_count);
+    header->magic = MENU_MAGIC_NUMBER;
+    header->version = MENU_VERSION;
+    header->slot_id = slot;
+    header->param_count = param_count;
+    header->data_checksum = menu_flash_calc_data_checksum(param_count, offset);
+    header->header_checksum = menu_flash_calc_header_checksum(header);
+    memset(header->slot_name, 0, sizeof(header->slot_name));
+    sprintf(header->slot_name, "Slot%u", (unsigned int)slot);
 
+    (void)flash_write_page_from_buffer(0U, page_num, offset + param_count);
     current_slot = slot;
-    // 成功消息将在调用处显示
 }
 
 /**
- * @brief 格式化存档（安全版本）
+ * @brief 格式化指定存档槽
  */
 void menu_flash_format_slot(uint8_t slot)
 {
-    // 参数安全检查
+    uint32_t page_num;
+    uint8_t index;
+
     if(slot >= MENU_SLOT_COUNT)
     {
         menu_show_message("Invalid slot");
         return;
     }
 
-    // 计算页面编号（每个存档占用2页）
-    uint32_t page_num = menu_get_slot_page(slot, 0U);
-
-    // Flash边界安全检查
-    if(page_num >= FLASH_PAGE_NUM || (page_num + MENU_SLOT_SIZE - 1) >= FLASH_PAGE_NUM)
+    page_num = menu_get_slot_page(slot, 0U);
+    if((page_num + MENU_SLOT_SIZE - 1U) >= FLASH_PAGE_NUM)
     {
         menu_show_message("Page error");
         return;
     }
 
-    // 擦除存档的所有页面
-    for(uint8_t i = 0; i < MENU_SLOT_SIZE; i++)
+    for(index = 0U; index < MENU_SLOT_SIZE; index++)
     {
-        uint32_t current_page = page_num + i;
-        if(current_page < FLASH_PAGE_NUM)
-        {
-            flash_erase_page(0, current_page);
-        }
+        flash_erase_page(0U, page_num + index);
     }
 
     menu_show_message("Formatted");
 }
-
-//====================================================显示实现====================================================
 
 /**
  * @brief 渲染当前菜单 (分页模式，每页8项)

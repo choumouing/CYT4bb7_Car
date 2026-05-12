@@ -71,6 +71,7 @@ static void car_loop_100HZ(void)
     odometer_update_100HZ();
     camera_spi_update_100HZ(s_system_time_ms);
     air_comm_car_update_100HZ();
+    menu_air_update_100HZ();
     beacon_detection_update_100HZ();
     menu_update_100HZ();
 

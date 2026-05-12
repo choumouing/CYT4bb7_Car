@@ -13,6 +13,11 @@
 #define AIR_COMM_STATUS_OUT_OF_RANGE        (2U)
 #define AIR_COMM_STATUS_ERROR               (3U)
 
+#define AIR_COMM_ACK_RESULT_NONE            (0U)
+#define AIR_COMM_ACK_RESULT_OK              (1U)
+#define AIR_COMM_ACK_RESULT_TIMEOUT         (2U)
+#define AIR_COMM_ACK_RESULT_ERROR           (3U)
+
 typedef void (*air_comm_run_data_fn)(const float *data, uint8 count);
 
 typedef struct
@@ -33,7 +38,10 @@ typedef struct
     uint32 heartbeat_rx_count;
     uint8 online_status;
     uint8 pending_ack;
+    uint8 pending_ack_type;
     uint8 last_ack_status;
+    uint8 last_ack_type;
+    uint8 last_ack_result;
 } air_comm_stats_t;
 
 void air_comm_car_init(void);
@@ -46,6 +54,8 @@ uint8 air_comm_car_get_online_status(void);
 uint32 air_comm_car_get_tick(void);
 uint8 air_comm_car_set_param(const char *name, float value);
 uint8 air_comm_car_exec_func(uint8 func_id);
+uint8 air_comm_car_has_pending_ack(void);
+uint8 air_comm_car_get_last_ack(uint8 *type, uint8 *result, uint8 *status);
 void air_comm_car_set_run_data_callback(air_comm_run_data_fn callback);
 void air_comm_car_get_stats(air_comm_stats_t *stats);
 
