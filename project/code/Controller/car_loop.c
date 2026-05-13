@@ -126,6 +126,7 @@ static void car_loop_100HZ(void)
         menu_air_stop_param_sync();
     }
     air_comm_car_update_100HZ();
+    menu_air_command_update_100HZ();
     beacon_detection_update_100HZ();
 
     if ((car_control_enabled == 0U) || (car_emergency_stop_active != 0U))

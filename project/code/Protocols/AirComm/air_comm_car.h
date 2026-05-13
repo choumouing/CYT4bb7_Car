@@ -48,6 +48,8 @@
 
 /* ===== 参数限制 ===== */
 #define AIR_COMM_PARAM_NAME_MAX             (32U)   /* 参数名最大长度（字节） */
+#define AIR_COMM_FUNC_NAME_MAX              (32U)   /* 远程命令函数名最大长度，不含 '\0' */
+#define AIR_COMM_ACK_TEXT_MAX               (96U)   /* 远程命令 ACK 文本最大长度，不含 '\0' */
 #define AIR_COMM_FUNC_PARAMS_MAX            (8U)    /* 函数参数最大个数 */
 #define AIR_COMM_RUN_DATA_MAX_FLOATS        (32U)   /* 实时数据最大 float 个数 */
 #define AIR_COMM_BAUDRATE                   (1152000U) /* UART 波特率 1.152Mbps */
@@ -100,6 +102,7 @@ typedef struct
     uint8 last_ack_result;          /* 最近一次 ACK 的结果 */
     float last_ack_value;           /* 最近一次 ACK 返回的实际值 */
     char last_ack_name[AIR_COMM_PARAM_NAME_MAX + 1U];
+    char last_func_ack_text[AIR_COMM_ACK_TEXT_MAX + 1U];
 } air_comm_stats_t;
 
 /**
@@ -173,6 +176,7 @@ uint8 air_comm_car_get_param(const char *name);
  * @return 0=发送成功，1=失败
  */
 uint8 air_comm_car_exec_func(uint8 func_id);
+uint8 air_comm_car_exec_command(const char *name);
 
 uint8 air_comm_send_run_data(const float *data, uint8 count);
 void air_comm_set_run_data_callback(air_comm_run_data_fn callback);
@@ -183,6 +187,8 @@ uint8 air_comm_get_last_run_data(float *data, uint8 max_count, uint8 *count);
  * @return 1=有，0=无
  */
 void air_comm_car_cancel_pending_set_param(void);
+void air_comm_car_cancel_pending_exec_func(void);
+void air_comm_car_clear_last_ack(void);
 uint8 air_comm_car_has_pending_ack(void);
 
 /**
@@ -195,6 +201,7 @@ uint8 air_comm_car_has_pending_ack(void);
 uint8 air_comm_car_get_last_ack(uint8 *type, uint8 *result, uint8 *status);
 uint8 air_comm_car_get_last_ack_value(float *value);
 uint8 air_comm_car_get_last_ack_name(char *name, uint8 size);
+uint8 air_comm_car_get_last_func_ack_text(char *text, uint8 size);
 
 /**
  * @brief 注册实时数据回调

@@ -25,6 +25,14 @@
 #define MENU_AIR_SYNC_REASON_MANUAL         (3U)
 #define MENU_AIR_SYNC_REASON_COMMIT         (4U)
 
+#define MENU_AIR_CMD_STATE_IDLE             (0U)
+#define MENU_AIR_CMD_STATE_WAIT_START_ACK   (1U)
+#define MENU_AIR_CMD_STATE_POLLING_RUNNING  (2U)
+#define MENU_AIR_CMD_STATE_INSTANT_RUNNING  (3U)
+#define MENU_AIR_CMD_STATE_WAIT_EXIT_ACK    (4U)
+#define MENU_AIR_CMD_INVALID_INDEX          (0xFFU)
+#define MENU_AIR_CMD_ACK_TEXT_MAX           (96U)   /* 菜单层保存远程命令ACK文本的最大长度 */
+
 /* Air参数配置结构体 */
 typedef struct
 {
@@ -52,6 +60,18 @@ typedef struct
     uint32 timeout_count;
 } menu_air_sync_status_t;
 
+typedef struct
+{
+    uint8 state;                // 当前远程命令状态
+    uint8 active_index;         // 当前命令索引
+    uint8 mode;                 // 0=轮询型，1=立即退出型
+    uint8 last_result;          // 最近 ACK 传输结果
+    uint8 last_status;          // 最近 ACK 状态码
+    uint32 send_tick;           // 最近一次发送命令的时间戳
+    uint32 timeout_count;       // 菜单层 1s 超时次数
+    char last_ack_text[MENU_AIR_CMD_ACK_TEXT_MAX + 1U];
+} menu_air_cmd_status_t;
+
 /* Air参数变量（菜单可调） */
 void menu_air_support_init(void);                                                       // 初始化（注册默认参数+加载slot0）
 void menu_register_param_air(const char *name, float *var, float step, float min, float max);  // 注册Air参数
@@ -70,5 +90,14 @@ void menu_air_update_100HZ(void);                                               
 void menu_get_air_sync_status(menu_air_sync_status_t *status);                          // 获取同步状态
 uint8 menu_load_air_slot(uint8 slot);                                                   // 从Flash加载Air参数存档
 uint8 menu_save_air_slot(uint8 slot);                                                   // 保存Air参数到Flash
+
+uint8 menu_air_command_start(uint8 index);
+uint8 menu_air_command_stop(void);
+void menu_air_command_update_100HZ(void);
+uint8 menu_air_command_is_running(uint8 index);
+uint8 menu_air_command_is_active(void);
+uint8 menu_air_command_get_count(void);
+const char *menu_air_command_get_name(uint8 index);
+void menu_get_air_command_status(menu_air_cmd_status_t *status);
 
 #endif

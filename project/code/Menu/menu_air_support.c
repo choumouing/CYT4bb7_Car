@@ -8,7 +8,18 @@
 #define MENU_AIR_MAX_PARAMS                 (100U)
 #define MENU_AIR_SYNC_INVALID_INDEX         (0xFFU)
 #define MENU_AIR_ACK_TYPE_SET_PARAM         (0x01U)
+#define MENU_AIR_ACK_TYPE_EXEC_FUNC         (0x03U)
 #define MENU_AIR_COMMIT_WAIT_MS             (2000U)
+#define MENU_AIR_COMMAND_TIMEOUT_MS         (1000U)
+
+#define MENU_AIR_COMMAND_MODE_POLLING       (0U)
+#define MENU_AIR_COMMAND_MODE_INSTANT       (1U)
+
+typedef struct
+{
+    const char *name;
+    uint8 mode;
+} menu_air_command_config_t;
 
 typedef struct
 {
@@ -28,6 +39,14 @@ static uint8 s_air_sync_next_index;
 static uint8 s_air_last_online;
 static uint8 s_air_boot_sync_done;
 static uint8 s_air_pending_sync_reason;
+static menu_air_cmd_status_t s_air_cmd_status;
+
+static const menu_air_command_config_t s_air_commands[] =
+{
+    {"show_imu_data", MENU_AIR_COMMAND_MODE_POLLING},
+    {"show_optical_flow_data", MENU_AIR_COMMAND_MODE_POLLING},
+    {"test_motors_pwm", MENU_AIR_COMMAND_MODE_INSTANT}
+};
 
 static uint8 menu_air_dirty_count(void)
 {
@@ -49,6 +68,64 @@ static uint8 menu_air_ack_is_success(uint8 result, uint8 status)
 {
     return ((((result == AIR_COMM_ACK_RESULT_OK) && (status == AIR_COMM_STATUS_OK)) ||
              ((result == AIR_COMM_ACK_RESULT_ERROR) && (status == AIR_COMM_STATUS_OUT_OF_RANGE))) ? 1U : 0U);
+}
+
+static uint8 menu_air_cmd_ack_text_is(const char *text, const char *prefix)
+{
+    if((text == NULL) || (prefix == NULL))
+    {
+        return 0U;
+    }
+
+    return (strncmp(text, prefix, strlen(prefix)) == 0) ? 1U : 0U;
+}
+
+static uint8 menu_air_command_count_internal(void)
+{
+    return (uint8)(sizeof(s_air_commands) / sizeof(s_air_commands[0]));
+}
+
+static void menu_air_command_reset(uint8 keep_ack)
+{
+    s_air_cmd_status.state = MENU_AIR_CMD_STATE_IDLE;
+    s_air_cmd_status.active_index = MENU_AIR_CMD_INVALID_INDEX;
+    s_air_cmd_status.mode = MENU_AIR_COMMAND_MODE_POLLING;
+    s_air_cmd_status.send_tick = 0U;
+    if(keep_ack == 0U)
+    {
+        s_air_cmd_status.last_result = AIR_COMM_ACK_RESULT_NONE;
+        s_air_cmd_status.last_status = AIR_COMM_STATUS_ERROR;
+        s_air_cmd_status.last_ack_text[0] = '\0';
+    }
+}
+
+static void menu_air_command_record_ack(uint8 result, uint8 status)
+{
+    s_air_cmd_status.last_result = result;
+    s_air_cmd_status.last_status = status;
+    if(result == AIR_COMM_ACK_RESULT_TIMEOUT)
+    {
+        s_air_cmd_status.timeout_count++;
+        strncpy(s_air_cmd_status.last_ack_text, "Comm Timeout", sizeof(s_air_cmd_status.last_ack_text) - 1U);
+        s_air_cmd_status.last_ack_text[sizeof(s_air_cmd_status.last_ack_text) - 1U] = '\0';
+    }
+    else
+    {
+        (void)air_comm_car_get_last_func_ack_text(s_air_cmd_status.last_ack_text,
+                                                  (uint8)sizeof(s_air_cmd_status.last_ack_text));
+    }
+}
+
+static void menu_air_command_timeout(void)
+{
+    s_air_cmd_status.timeout_count++;
+    s_air_cmd_status.last_result = AIR_COMM_ACK_RESULT_TIMEOUT;
+    s_air_cmd_status.last_status = AIR_COMM_STATUS_ERROR;
+    strncpy(s_air_cmd_status.last_ack_text, "Comm Timeout", sizeof(s_air_cmd_status.last_ack_text) - 1U);
+    s_air_cmd_status.last_ack_text[sizeof(s_air_cmd_status.last_ack_text) - 1U] = '\0';
+    air_comm_car_cancel_pending_exec_func();
+    menu_air_command_reset(1U);
+    menu_request_refresh(REFRESH_FULL);
 }
 
 static void menu_air_sync_reset(uint8 mode)
@@ -378,6 +455,10 @@ void menu_air_support_init(void)
     s_air_last_online = 0U;
     s_air_boot_sync_done = 0U;
     s_air_pending_sync_reason = MENU_AIR_SYNC_REASON_NONE;
+    memset(&s_air_cmd_status, 0, sizeof(s_air_cmd_status));
+    s_air_cmd_status.active_index = MENU_AIR_CMD_INVALID_INDEX;
+    s_air_cmd_status.state = MENU_AIR_CMD_STATE_IDLE;
+    s_air_cmd_status.last_status = AIR_COMM_STATUS_ERROR;
 
     menu_air_register_fc_params();
 
@@ -518,6 +599,7 @@ uint8 menu_air_is_busy(void)
     return ((s_air_sync_status.sending != 0U) ||
             (s_air_sync_status.mode == MENU_AIR_SYNC_MODE_COMMIT) ||
             (s_air_sync_status.mode == MENU_AIR_SYNC_MODE_FULL) ||
+            (s_air_cmd_status.state != MENU_AIR_CMD_STATE_IDLE) ||
             (air_comm_car_has_pending_ack() != 0U)) ? 1U : 0U;
 }
 
@@ -645,6 +727,11 @@ void menu_air_update_100HZ(void)
     uint8 online = menu_is_air_connected();
     uint8 sync_reason = s_air_pending_sync_reason;
 
+    if(s_air_cmd_status.state != MENU_AIR_CMD_STATE_IDLE)
+    {
+        return;
+    }
+
     if((online != 0U) && (s_air_last_online == 0U) && (s_air_boot_sync_done == 0U))
     {
         sync_reason = MENU_AIR_SYNC_REASON_BOOT;
@@ -770,6 +857,188 @@ void menu_get_air_sync_status(menu_air_sync_status_t *status)
         s_air_sync_status.dirty_count = menu_air_dirty_count();
     }
     *status = s_air_sync_status;
+}
+
+uint8 menu_air_command_get_count(void)
+{
+    return menu_air_command_count_internal();
+}
+
+const char *menu_air_command_get_name(uint8 index)
+{
+    if(index >= menu_air_command_count_internal())
+    {
+        return "";
+    }
+
+    return s_air_commands[index].name;
+}
+
+uint8 menu_air_command_is_active(void)
+{
+    return (s_air_cmd_status.state != MENU_AIR_CMD_STATE_IDLE) ? 1U : 0U;
+}
+
+uint8 menu_air_command_is_running(uint8 index)
+{
+    return ((s_air_cmd_status.state != MENU_AIR_CMD_STATE_IDLE) &&
+            (s_air_cmd_status.active_index == index)) ? 1U : 0U;
+}
+
+uint8 menu_air_command_start(uint8 index)
+{
+    if(index >= menu_air_command_count_internal())
+    {
+        menu_show_error("Cmd Err");
+        return 1U;
+    }
+
+    if(menu_is_air_connected() == 0U)
+    {
+        menu_show_error("Air Offline");
+        return 1U;
+    }
+
+    if(menu_air_is_busy() != 0U)
+    {
+        menu_show_error("Air Busy");
+        return 1U;
+    }
+
+    air_comm_car_clear_last_ack();
+    if(air_comm_car_exec_command(s_air_commands[index].name) != 0U)
+    {
+        s_air_cmd_status.last_result = AIR_COMM_ACK_RESULT_ERROR;
+        s_air_cmd_status.last_status = AIR_COMM_STATUS_ERROR;
+        strncpy(s_air_cmd_status.last_ack_text, "Send Fail", sizeof(s_air_cmd_status.last_ack_text) - 1U);
+        s_air_cmd_status.last_ack_text[sizeof(s_air_cmd_status.last_ack_text) - 1U] = '\0';
+        menu_show_error("Send Fail");
+        return 1U;
+    }
+
+    s_air_cmd_status.state = MENU_AIR_CMD_STATE_WAIT_START_ACK;
+    s_air_cmd_status.active_index = index;
+    s_air_cmd_status.mode = s_air_commands[index].mode;
+    s_air_cmd_status.last_result = AIR_COMM_ACK_RESULT_NONE;
+    s_air_cmd_status.last_status = AIR_COMM_STATUS_ERROR;
+    s_air_cmd_status.last_ack_text[0] = '\0';
+    s_air_cmd_status.send_tick = air_comm_car_get_tick();
+    menu_request_refresh(REFRESH_FULL);
+
+    return 0U;
+}
+
+uint8 menu_air_command_stop(void)
+{
+    if(s_air_cmd_status.state == MENU_AIR_CMD_STATE_IDLE)
+    {
+        return 1U;
+    }
+
+    if(air_comm_car_has_pending_ack() != 0U)
+    {
+        return 1U;
+    }
+
+    air_comm_car_clear_last_ack();
+    if(air_comm_car_exec_command("NONE") != 0U)
+    {
+        s_air_cmd_status.last_result = AIR_COMM_ACK_RESULT_ERROR;
+        s_air_cmd_status.last_status = AIR_COMM_STATUS_ERROR;
+        strncpy(s_air_cmd_status.last_ack_text, "Stop Fail", sizeof(s_air_cmd_status.last_ack_text) - 1U);
+        s_air_cmd_status.last_ack_text[sizeof(s_air_cmd_status.last_ack_text) - 1U] = '\0';
+        menu_show_error("Stop Fail");
+        return 1U;
+    }
+
+    s_air_cmd_status.state = MENU_AIR_CMD_STATE_WAIT_EXIT_ACK;
+    s_air_cmd_status.send_tick = air_comm_car_get_tick();
+    menu_request_refresh(REFRESH_FULL);
+
+    return 0U;
+}
+
+void menu_air_command_update_100HZ(void)
+{
+    uint8 ack_type = 0U;
+    uint8 ack_result = AIR_COMM_ACK_RESULT_NONE;
+    uint8 ack_status = AIR_COMM_STATUS_ERROR;
+
+    if(s_air_cmd_status.state == MENU_AIR_CMD_STATE_IDLE)
+    {
+        return;
+    }
+
+    if((air_comm_car_get_tick() - s_air_cmd_status.send_tick) >= MENU_AIR_COMMAND_TIMEOUT_MS)
+    {
+        if((s_air_cmd_status.state == MENU_AIR_CMD_STATE_WAIT_START_ACK) ||
+           (s_air_cmd_status.state == MENU_AIR_CMD_STATE_WAIT_EXIT_ACK) ||
+           ((s_air_cmd_status.state == MENU_AIR_CMD_STATE_INSTANT_RUNNING) &&
+            (s_air_cmd_status.mode == MENU_AIR_COMMAND_MODE_INSTANT)))
+        {
+            menu_air_command_timeout();
+            return;
+        }
+    }
+
+    (void)air_comm_car_get_last_ack(&ack_type, &ack_result, &ack_status);
+    if((ack_type != MENU_AIR_ACK_TYPE_EXEC_FUNC) ||
+       (ack_result == AIR_COMM_ACK_RESULT_NONE))
+    {
+        return;
+    }
+
+    menu_air_command_record_ack(ack_result, ack_status);
+
+    if(s_air_cmd_status.state == MENU_AIR_CMD_STATE_WAIT_START_ACK)
+    {
+        if((ack_result == AIR_COMM_ACK_RESULT_OK) &&
+           (ack_status == AIR_COMM_STATUS_OK) &&
+           (menu_air_cmd_ack_text_is(s_air_cmd_status.last_ack_text, "ACK_OK") != 0U))
+        {
+            s_air_cmd_status.state = (s_air_cmd_status.mode == MENU_AIR_COMMAND_MODE_POLLING) ?
+                                     MENU_AIR_CMD_STATE_POLLING_RUNNING :
+                                     MENU_AIR_CMD_STATE_INSTANT_RUNNING;
+            s_air_cmd_status.send_tick = air_comm_car_get_tick();
+            air_comm_car_clear_last_ack();
+        }
+        else
+        {
+            if(ack_result == AIR_COMM_ACK_RESULT_TIMEOUT)
+            {
+                air_comm_car_cancel_pending_exec_func();
+            }
+            menu_air_command_reset(1U);
+        }
+        menu_request_refresh(REFRESH_FULL);
+        return;
+    }
+
+    if((s_air_cmd_status.state == MENU_AIR_CMD_STATE_WAIT_EXIT_ACK) ||
+       (s_air_cmd_status.state == MENU_AIR_CMD_STATE_INSTANT_RUNNING))
+    {
+        if((ack_result == AIR_COMM_ACK_RESULT_OK) &&
+           (ack_status == AIR_COMM_STATUS_OK) &&
+           (menu_air_cmd_ack_text_is(s_air_cmd_status.last_ack_text, "ACK_EXIT_OK") != 0U))
+        {
+            menu_air_command_reset(1U);
+        }
+        else if(ack_result != AIR_COMM_ACK_RESULT_NONE)
+        {
+            menu_air_command_reset(1U);
+        }
+        menu_request_refresh(REFRESH_FULL);
+    }
+}
+
+void menu_get_air_command_status(menu_air_cmd_status_t *status)
+{
+    if(status == NULL)
+    {
+        return;
+    }
+
+    *status = s_air_cmd_status;
 }
 
 uint8 menu_load_air_slot(uint8 slot)

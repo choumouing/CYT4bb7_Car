@@ -845,6 +845,10 @@ void menu_key_handler(menu_key_t key)
                             }
                             break;
 
+                        case MENU_TYPE_AIR_COMMAND:
+                            (void)menu_air_command_start(current_menu[current_index].param_index);
+                            break;
+
                         case MENU_TYPE_PARAMETER:
                         case MENU_TYPE_AIR_PARAMETER:
                             if(menu_is_param_item(&current_menu[current_index]) != 0U)
@@ -864,7 +868,11 @@ void menu_key_handler(menu_key_t key)
                     break;
 
                 case KEY_BACK:
-                    if(menu_depth > 0)
+                    if(menu_air_command_is_active() != 0U)
+                    {
+                        (void)menu_air_command_stop();
+                    }
+                    else if(menu_depth > 0)
                     {
                         menu_return_to_parent();
                     }
@@ -1120,6 +1128,50 @@ void menu_render_current(void)
 
         menu_render_item(i, &current_menu[item_index], selected, editing);
     }
+
+    /* Air Command 菜单底部显示最近 ACK，避免异步 ACK 丢失可见反馈。 */
+    if(current_menu[0].type == MENU_TYPE_AIR_COMMAND)
+    {
+        menu_air_cmd_status_t cmd_status;
+        const char *state_text = "IDLE";
+
+        menu_get_air_command_status(&cmd_status);
+        switch(cmd_status.state)
+        {
+            case MENU_AIR_CMD_STATE_WAIT_START_ACK:
+                state_text = "WAIT ACK";
+                break;
+
+            case MENU_AIR_CMD_STATE_POLLING_RUNNING:
+                state_text = "POLL RUN";
+                break;
+
+            case MENU_AIR_CMD_STATE_INSTANT_RUNNING:
+                state_text = "INST RUN";
+                break;
+
+            case MENU_AIR_CMD_STATE_WAIT_EXIT_ACK:
+                state_text = "WAIT EXIT";
+                break;
+
+            default:
+                state_text = "IDLE";
+                break;
+        }
+
+        ips114_set_color(UI_COLOR_VALUE, UI_COLOR_BG);
+        ips114_show_string(0, 96, "                              ");
+        ips114_show_string(0, 96, state_text);
+        if(cmd_status.last_ack_text[0] != '\0')
+        {
+            ips114_show_string(0, 112, "                              ");
+            ips114_show_string(0, 112, cmd_status.last_ack_text);
+        }
+        else
+        {
+            ips114_show_string(0, 112, "                              ");
+        }
+    }
 }
 
 /**
@@ -1141,7 +1193,12 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
     if(y > 120) return;  // 留点余量
 
     // 设置颜色
-    if(editing)
+    if((item->type == MENU_TYPE_AIR_COMMAND) &&
+       (menu_air_command_is_running(item->param_index) != 0U))
+    {
+        ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);  // 远程命令运行中用黄色标识
+    }
+    else if(editing)
     {
         ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);  // 黄色编辑状态
     }

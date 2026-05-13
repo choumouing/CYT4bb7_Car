@@ -59,6 +59,7 @@ typedef enum {
     MENU_TYPE_FUNCTION,         // 函数项
     MENU_TYPE_PARAMETER,        // 参数项
     MENU_TYPE_AIR_PARAMETER,    // Air远程参数项
+    MENU_TYPE_AIR_COMMAND,      // Air远程命令项
     MENU_TYPE_DIAG_VIEW         // 只读诊断页
 } menu_type_t;
 

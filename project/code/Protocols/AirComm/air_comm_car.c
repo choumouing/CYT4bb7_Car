@@ -113,6 +113,7 @@ static uint8 s_air_comm_seq;                        /* 下一个发送帧的序�
 static uint8 s_air_comm_initialized;                /* 初始化标志 */
 static float s_air_comm_last_ack_value;
 static char s_air_comm_last_ack_name[AIR_COMM_PARAM_NAME_MAX + 1U];
+static char s_air_comm_last_func_ack_text[AIR_COMM_ACK_TEXT_MAX + 1U];
 
 /* ===== CRC16-CCITT（多项式 0x1021，初始 0xFFFF） ===== */
 
@@ -230,6 +231,9 @@ static uint8 air_comm_expected_ack_type(uint8 request_type)
     return 0U;
 }
 
+static uint8 air_comm_text_starts_with(const char *text, const char *prefix);
+static void air_comm_parse_func_ack_text(const uint8 *payload, uint8 len);
+
 /**
  * @brief 从 ACK payload 解析状态码
  *
@@ -258,7 +262,13 @@ static uint8 air_comm_parse_ack_status(uint8 ack_type,
 
     if(ack_type == AIR_COMM_MSG_ACK_FUNC)
     {
-        return (len >= 6U) ? payload[1] : AIR_COMM_STATUS_ERROR;
+        air_comm_parse_func_ack_text(payload, len);
+        if((air_comm_text_starts_with(s_air_comm_last_func_ack_text, "ACK_OK") != 0U) ||
+           (air_comm_text_starts_with(s_air_comm_last_func_ack_text, "ACK_EXIT_OK") != 0U))
+        {
+            return AIR_COMM_STATUS_OK;
+        }
+        return AIR_COMM_STATUS_ERROR;
     }
 
     return AIR_COMM_STATUS_ERROR;
@@ -286,7 +296,7 @@ static float air_comm_parse_ack_value(uint8 ack_type,
 
     if(ack_type == AIR_COMM_MSG_ACK_FUNC)
     {
-        return (len >= 6U) ? air_comm_read_float(&payload[2]) : 0.0f;
+        return 0.0f;
     }
 
     return 0.0f;
@@ -319,6 +329,31 @@ static void air_comm_parse_ack_name(uint8 ack_type,
         memcpy(s_air_comm_last_ack_name, &payload[2], name_len);
     }
     s_air_comm_last_ack_name[name_len] = '\0';
+}
+
+static uint8 air_comm_text_starts_with(const char *text, const char *prefix)
+{
+    if((text == NULL) || (prefix == NULL))
+    {
+        return 0U;
+    }
+
+    return (strncmp(text, prefix, strlen(prefix)) == 0) ? 1U : 0U;
+}
+
+static void air_comm_parse_func_ack_text(const uint8 *payload, uint8 len)
+{
+    uint8 copy_len;
+
+    s_air_comm_last_func_ack_text[0] = '\0';
+    if((payload == NULL) || (len == 0U))
+    {
+        return;
+    }
+
+    copy_len = (len > AIR_COMM_ACK_TEXT_MAX) ? AIR_COMM_ACK_TEXT_MAX : len;
+    memcpy(s_air_comm_last_func_ack_text, payload, copy_len);
+    s_air_comm_last_func_ack_text[copy_len] = '\0';
 }
 
 /**
@@ -489,6 +524,27 @@ static void air_comm_match_ack(uint8 ack_type,
 
     if(s_air_comm_ack.active == 0U)
     {
+        if(ack_type == AIR_COMM_MSG_ACK_FUNC)
+        {
+            status = air_comm_parse_ack_status(ack_type, payload, len);
+            actual = air_comm_parse_ack_value(ack_type, payload, len);
+            s_air_comm_last_ack_value = actual;
+            s_air_comm_stats.last_ack_type = AIR_COMM_MSG_EXEC_FUNC;
+            s_air_comm_stats.last_ack_status = status;
+            s_air_comm_stats.last_ack_value = actual;
+            memcpy(s_air_comm_stats.last_func_ack_text,
+                   s_air_comm_last_func_ack_text,
+                   sizeof(s_air_comm_stats.last_func_ack_text));
+            if(status == AIR_COMM_STATUS_OK)
+            {
+                s_air_comm_stats.last_ack_result = AIR_COMM_ACK_RESULT_OK;
+                s_air_comm_stats.ack_ok_count++;
+            }
+            else
+            {
+                s_air_comm_stats.last_ack_result = AIR_COMM_ACK_RESULT_ERROR;
+            }
+        }
         return;
     }
 
@@ -501,6 +557,10 @@ static void air_comm_match_ack(uint8 ack_type,
     status = air_comm_parse_ack_status(ack_type, payload, len);
     actual = air_comm_parse_ack_value(ack_type, payload, len);
     air_comm_parse_ack_name(ack_type, payload, len);
+    if(ack_type == AIR_COMM_MSG_ACK_FUNC)
+    {
+        air_comm_parse_func_ack_text(payload, len);
+    }
 
     /* 清除等待状态 */
     s_air_comm_ack.active = 0U;
@@ -512,6 +572,9 @@ static void air_comm_match_ack(uint8 ack_type,
     memcpy(s_air_comm_stats.last_ack_name,
            s_air_comm_last_ack_name,
            sizeof(s_air_comm_stats.last_ack_name));
+    memcpy(s_air_comm_stats.last_func_ack_text,
+           s_air_comm_last_func_ack_text,
+           sizeof(s_air_comm_stats.last_func_ack_text));
     if(status == AIR_COMM_STATUS_OK)
     {
         s_air_comm_ack.result = AIR_COMM_ACK_RESULT_OK;
@@ -898,6 +961,7 @@ void air_comm_car_init(void)
     s_air_comm_initialized = 1U;
     s_air_comm_last_ack_value = 0.0f;
     memset(s_air_comm_last_ack_name, 0, sizeof(s_air_comm_last_ack_name));
+    memset(s_air_comm_last_func_ack_text, 0, sizeof(s_air_comm_last_func_ack_text));
 
     uart_init(UART_3, AIR_COMM_BAUDRATE, UART3_TX_P17_2, UART3_RX_P17_1);
     uart_rx_interrupt(UART_3, 1U);
@@ -1076,6 +1140,30 @@ uint8 air_comm_car_exec_func(uint8 func_id)
     return (air_comm_send(AIR_COMM_MSG_EXEC_FUNC, payload, 2U, 1U) != 0U) ? 0U : 1U;
 }
 
+uint8 air_comm_car_exec_command(const char *name)
+{
+    uint8 payload[1U + AIR_COMM_FUNC_NAME_MAX];
+    uint16 name_len;
+    uint8 pos = 0U;
+
+    if((name == NULL) || (s_air_comm_initialized == 0U))
+    {
+        return 1U;
+    }
+
+    name_len = (uint16)strlen(name);
+    if((name_len == 0U) || (name_len > AIR_COMM_FUNC_NAME_MAX))
+    {
+        return 1U;
+    }
+
+    payload[pos++] = (uint8)name_len;
+    memcpy(&payload[pos], name, name_len);
+    pos = (uint8)(pos + (uint8)name_len);
+
+    return (air_comm_send(AIR_COMM_MSG_EXEC_FUNC, payload, pos, 1U) != 0U) ? 0U : 1U;
+}
+
 uint8 air_comm_send_run_data(const float *data, uint8 count)
 {
     uint8 payload[1U + (AIR_COMM_RUN_DATA_MAX_FLOATS * 4U)];
@@ -1120,6 +1208,36 @@ void air_comm_car_cancel_pending_set_param(void)
     }
 }
 
+void air_comm_car_cancel_pending_exec_func(void)
+{
+    if((s_air_comm_ack.active != 0U) &&
+       (s_air_comm_ack.type == AIR_COMM_MSG_EXEC_FUNC))
+    {
+        s_air_comm_ack.active = 0U;
+        s_air_comm_ack.result = AIR_COMM_ACK_RESULT_TIMEOUT;
+        s_air_comm_ack.status = AIR_COMM_STATUS_ERROR;
+        s_air_comm_stats.last_ack_type = AIR_COMM_MSG_EXEC_FUNC;
+        s_air_comm_stats.last_ack_result = AIR_COMM_ACK_RESULT_TIMEOUT;
+        s_air_comm_stats.last_ack_status = AIR_COMM_STATUS_ERROR;
+        s_air_comm_stats.ack_timeout_count++;
+    }
+}
+
+void air_comm_car_clear_last_ack(void)
+{
+    s_air_comm_ack.result = AIR_COMM_ACK_RESULT_NONE;
+    s_air_comm_ack.status = AIR_COMM_STATUS_ERROR;
+    s_air_comm_stats.last_ack_type = 0U;
+    s_air_comm_stats.last_ack_result = AIR_COMM_ACK_RESULT_NONE;
+    s_air_comm_stats.last_ack_status = AIR_COMM_STATUS_ERROR;
+    s_air_comm_stats.last_ack_value = 0.0f;
+    s_air_comm_last_ack_value = 0.0f;
+    s_air_comm_last_ack_name[0] = '\0';
+    s_air_comm_last_func_ack_text[0] = '\0';
+    s_air_comm_stats.last_ack_name[0] = '\0';
+    s_air_comm_stats.last_func_ack_text[0] = '\0';
+}
+
 uint8 air_comm_car_get_last_ack(uint8 *type, uint8 *result, uint8 *status)
 {
     if(type != NULL)
@@ -1154,6 +1272,17 @@ uint8 air_comm_car_get_last_ack_name(char *name, uint8 size)
     {
         strncpy(name, s_air_comm_last_ack_name, (size_t)(size - 1U));
         name[size - 1U] = '\0';
+    }
+
+    return s_air_comm_stats.last_ack_result;
+}
+
+uint8 air_comm_car_get_last_func_ack_text(char *text, uint8 size)
+{
+    if((text != NULL) && (size > 0U))
+    {
+        strncpy(text, s_air_comm_last_func_ack_text, (size_t)(size - 1U));
+        text[size - 1U] = '\0';
     }
 
     return s_air_comm_stats.last_ack_result;
@@ -1208,5 +1337,8 @@ void air_comm_car_get_stats(air_comm_stats_t *stats)
     memcpy(s_air_comm_stats.last_ack_name,
            s_air_comm_last_ack_name,
            sizeof(s_air_comm_stats.last_ack_name));
+    memcpy(s_air_comm_stats.last_func_ack_text,
+           s_air_comm_last_func_ack_text,
+           sizeof(s_air_comm_stats.last_func_ack_text));
     *stats = s_air_comm_stats;
 }

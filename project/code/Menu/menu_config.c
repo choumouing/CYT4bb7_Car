@@ -250,6 +250,13 @@ static menu_item_t save_air_slot_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
+static menu_item_t air_command_menu[] = {
+    {"show_imu_data", MENU_TYPE_AIR_COMMAND, .param_index = 0},
+    {"show_optical_flow_data", MENU_TYPE_AIR_COMMAND, .param_index = 1},
+    {"test_motors_pwm", MENU_TYPE_AIR_COMMAND, .param_index = 2},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
 static menu_item_t air_menu[] = {
     {"Basic", MENU_TYPE_SUBMENU, .submenu = air_basic_menu},
     {"Gyro PID", MENU_TYPE_SUBMENU, .submenu = air_gyro_menu},
@@ -279,6 +286,7 @@ static menu_item_t main_menu[] = {
     {"YawAng PID", MENU_TYPE_SUBMENU, .submenu = yaw_angle_pid_menu},
     {"UWB PID", MENU_TYPE_SUBMENU, .submenu = uwb_follow_pid_menu},
     {"Air", MENU_TYPE_SUBMENU, .submenu = air_menu},
+    {"Air Command", MENU_TYPE_SUBMENU, .submenu = air_command_menu},
     {"Diag", MENU_TYPE_SUBMENU, .submenu = diag_menu},
     {"Load Slot", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
     {"Save Slot", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
