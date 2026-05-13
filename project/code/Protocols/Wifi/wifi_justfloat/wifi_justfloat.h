@@ -116,7 +116,7 @@ void wifi_justfloat_GetTxStats(wifi_justfloat_tx_stats_t *stats);
  *   1 - 发送失败
  */
 uint8_t wifi_justfloat_Impl(uint8_t declared_num, uint8_t actual_num, ...);
-void wifi_justfloat_update_100HZ(uint32_t system_time_ms);
+
 
 #define WIFI_JUSTFLOAT_CALL_1(a1) \
     wifi_justfloat_Impl(1U, 1U, (double)(a1))

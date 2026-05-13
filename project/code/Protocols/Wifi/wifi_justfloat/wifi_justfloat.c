@@ -6,23 +6,6 @@
  * 发送：wifi_cmd_SendBuffer() 提交 → 后续 poll 触发 UDP 发包
  * 耗时统计：timer 硬件定时器测量 us 级精度
  *
- * wifi_justfloat_update_100HZ() 当前用于 AirComm 串口联调：
- *   ch0: system_time_ms
- *   ch1: online_status，0=初始，1=在线，2=离线
- *   ch2: heartbeat_rx_count
- *   ch3: heartbeat_tx_count
- *   ch4: rx_frame_count
- *   ch5: tx_frame_count
- *   ch6: pending_ack
- *   ch7: last_ack_type，1=SET_PARAM，3=EXEC_FUNC
- *   ch8: last_ack_result，1=OK，2=TIMEOUT，3=ERROR
- *   ch9: last_ack_status，0=OK，1=NOT_FOUND，2=OUT_OF_RANGE，3=ERROR
- *   ch10: ack_ok_count
- *   ch11: ack_retry_count
- *   ch12: ack_timeout_count
- *   ch13: Air 参数 dirty_count
- *   ch14: Air 参数同步 ok_count
- *   ch15: Air 参数同步 fail_count
  */
 
 #include "wifi_justfloat.h"
@@ -236,30 +219,4 @@ uint8_t wifi_justfloat_Impl(uint8_t declared_num, uint8_t actual_num, ...)
     return ret;
 }
 
-void wifi_justfloat_update_100HZ(uint32_t system_time_ms)
-{
-    air_comm_stats_t air_stats;
-    menu_air_sync_status_t sync_status;
 
-    memset(&air_stats, 0, sizeof(air_stats));
-    memset(&sync_status, 0, sizeof(sync_status));
-    air_comm_car_get_stats(&air_stats);
-    menu_get_air_sync_status(&sync_status);
-
-    wifi_justfloat((float)system_time_ms,
-                   (float)air_stats.online_status,
-                   (float)air_stats.heartbeat_rx_count,
-                   (float)air_stats.heartbeat_tx_count,
-                   (float)air_stats.rx_frame_count,
-                   (float)air_stats.tx_frame_count,
-                   (float)air_stats.pending_ack,
-                   (float)air_stats.last_ack_type,
-                   (float)air_stats.last_ack_result,
-                   (float)air_stats.last_ack_status,
-                   (float)air_stats.ack_ok_count,
-                   (float)air_stats.ack_retry_count,
-                   (float)air_stats.ack_timeout_count,
-                   (float)sync_status.dirty_count,
-                   (float)sync_status.ok_count,
-                   (float)sync_status.fail_count);
-}
