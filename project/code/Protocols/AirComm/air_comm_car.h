@@ -3,7 +3,7 @@
  * @brief 车端空中通信模块（UART 串口协议）
  *
  * 功能：车端 MCU 与遥控端（手机/上位机）通过 UART 进行参数下发、
- *       函数调用、心跳保活和实时数据接收
+ *       远程命令、心跳保活和实时数据接收
  *
  * 帧格式（共 9 + payload + 2 = 11~259 字节）：
  *   [0:3]  帧头：0xAA 0xAA 0x55 0x55（四字节定帧头，抗干扰）
@@ -16,13 +16,13 @@
  * 消息类型：
  *   0x01 SET_PARAM  - 下发参数（需 ACK）    payload: [name_len][name...][float(4B)]
  *   0x02 ACK_PARAM  - 参数操作确认           payload: [status]
- *   0x03 EXEC_FUNC  - 执行函数（需 ACK）    payload: [func_id][reserved]
- *   0x04 ACK_FUNC   - 函数执行确认           payload: [func_id][status][result(4B)]
+ *   0x03 EXEC_COMMAND - 执行远程命令（需 ACK）payload: [name_len][name...]
+ *   0x04 ACK_COMMAND  - 远程命令确认         payload: [ACK文本]
  *   0x05 HEARTBEAT  - 心跳（不需 ACK）      payload: [reserved(2B)][tick_ms(4B)]
  *   0x06 RUN_DATA   - 双向实时数据（无 ACK） payload: [count][float0][float1]...
  *
  * ACK/重试策略：
- *   - SET_PARAM / EXEC_FUNC 发送后启动 ACK 等待
+ *   - SET_PARAM / EXEC_COMMAND 发送后启动 ACK 等待
  *   - ACK 超时 = 200ms，超时后重发原帧，最多重试 3 次
  *   - 3 次重试仍无 ACK → ACK_RESULT_TIMEOUT
  *   - 收到 ACK 但 status != OK → ACK_RESULT_ERROR
@@ -48,15 +48,14 @@
 
 /* ===== 参数限制 ===== */
 #define AIR_COMM_PARAM_NAME_MAX             (32U)   /* 参数名最大长度（字节） */
-#define AIR_COMM_FUNC_NAME_MAX              (32U)   /* 远程命令函数名最大长度，不含 '\0' */
+#define AIR_COMM_COMMAND_NAME_MAX           (32U)   /* 远程命令名最大长度，不含 '\0' */
 #define AIR_COMM_ACK_TEXT_MAX               (96U)   /* 远程命令 ACK 文本最大长度，不含 '\0' */
-#define AIR_COMM_FUNC_PARAMS_MAX            (8U)    /* 函数参数最大个数 */
 #define AIR_COMM_RUN_DATA_MAX_FLOATS        (32U)   /* 实时数据最大 float 个数 */
 #define AIR_COMM_BAUDRATE                   (1152000U) /* UART 波特率 1.152Mbps */
 
 /* ===== ACK 状态码（对端返回的操作结果） ===== */
 #define AIR_COMM_STATUS_OK                  (0U)    /* 操作成功 */
-#define AIR_COMM_STATUS_NOT_FOUND           (1U)    /* 参数/函数未找到 */
+#define AIR_COMM_STATUS_NOT_FOUND           (1U)    /* 参数/远程命令未找到 */
 #define AIR_COMM_STATUS_OUT_OF_RANGE        (2U)    /* 值超出范围 */
 #define AIR_COMM_STATUS_ERROR               (3U)    /* 通用错误 */
 
@@ -102,7 +101,7 @@ typedef struct
     uint8 last_ack_result;          /* 最近一次 ACK 的结果 */
     float last_ack_value;           /* 最近一次 ACK 返回的实际值 */
     char last_ack_name[AIR_COMM_PARAM_NAME_MAX + 1U];
-    char last_func_ack_text[AIR_COMM_ACK_TEXT_MAX + 1U];
+    char last_command_ack_text[AIR_COMM_ACK_TEXT_MAX + 1U];
 } air_comm_stats_t;
 
 /**
@@ -171,11 +170,10 @@ uint8 air_comm_car_set_param(const char *name, float value);
 uint8 air_comm_car_get_param(const char *name);
 
 /**
- * @brief 执行对端函数（需 ACK）
- * @param func_id 函数 ID
+ * @brief 执行 Air 端远程命令（需 ACK）
+ * @param name 远程命令名
  * @return 0=发送成功，1=失败
  */
-uint8 air_comm_car_exec_func(uint8 func_id);
 uint8 air_comm_car_exec_command(const char *name);
 
 uint8 air_comm_send_run_data(const float *data, uint8 count);
@@ -187,7 +185,7 @@ uint8 air_comm_get_last_run_data(float *data, uint8 max_count, uint8 *count);
  * @return 1=有，0=无
  */
 void air_comm_car_cancel_pending_set_param(void);
-void air_comm_car_cancel_pending_exec_func(void);
+void air_comm_car_cancel_pending_command(void);
 void air_comm_car_clear_last_ack(void);
 uint8 air_comm_car_has_pending_ack(void);
 
@@ -201,7 +199,7 @@ uint8 air_comm_car_has_pending_ack(void);
 uint8 air_comm_car_get_last_ack(uint8 *type, uint8 *result, uint8 *status);
 uint8 air_comm_car_get_last_ack_value(float *value);
 uint8 air_comm_car_get_last_ack_name(char *name, uint8 size);
-uint8 air_comm_car_get_last_func_ack_text(char *text, uint8 size);
+uint8 air_comm_car_get_last_command_ack_text(char *text, uint8 size);
 
 /**
  * @brief 注册实时数据回调

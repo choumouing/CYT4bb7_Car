@@ -56,7 +56,7 @@ extern volatile uint8_t timer_100HZ_flag;    // 100HZ定时器标志
 // 菜单项类型
 typedef enum {
     MENU_TYPE_SUBMENU = 0,      // 子菜单项
-    MENU_TYPE_FUNCTION,         // 函数项
+    MENU_TYPE_ACTION,           // 本地动作项
     MENU_TYPE_PARAMETER,        // 参数项
     MENU_TYPE_AIR_PARAMETER,    // Air远程参数项
     MENU_TYPE_AIR_COMMAND,      // Air远程命令项
@@ -77,7 +77,7 @@ typedef struct menu_item {
     menu_type_t type;           // 菜单项类型
     union {
         struct menu_item* submenu;      // 子菜单指针
-        void (*function)(void);         // 函数指针
+        void (*action)(void);           // 本地动作回调
         uint8_t param_index;           // 参数索引
     };
 } menu_item_t;

@@ -346,9 +346,9 @@ void menu_update_100HZ(void)
             diag_refresh_divider = 0U;
             if((current_index < current_item_count) &&
                (current_menu[current_index].type == MENU_TYPE_DIAG_VIEW) &&
-               (current_menu[current_index].function != NULL))
+               (current_menu[current_index].action != NULL))
             {
-                current_menu[current_index].function();
+                current_menu[current_index].action();
             }
         }
         return;
@@ -828,20 +828,20 @@ void menu_key_handler(menu_key_t key)
                                 menu_enter_submenu(current_menu[current_index].submenu);
                             break;
 
-                        case MENU_TYPE_FUNCTION:
-                            if(current_menu[current_index].function != NULL)
+                        case MENU_TYPE_ACTION:
+                            if(current_menu[current_index].action != NULL)
                             {
-                                current_menu[current_index].function();
-                                menu_request_refresh(REFRESH_FULL);  // 函数执行后全屏刷新
+                                current_menu[current_index].action();
+                                menu_request_refresh(REFRESH_FULL);  // 本地动作执行后全屏刷新
                             }
                             break;
 
                         case MENU_TYPE_DIAG_VIEW:
-                            if(current_menu[current_index].function != NULL)
+                            if(current_menu[current_index].action != NULL)
                             {
                                 menu_state = MENU_STATE_DIAG_VIEW;
                                 diag_refresh_divider = 0U;
-                                current_menu[current_index].function();
+                                current_menu[current_index].action();
                             }
                             break;
 

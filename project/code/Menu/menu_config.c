@@ -13,7 +13,7 @@ float wheel_ki = 0.27f;                  // 积分系数
 float wheel_kd = 0.0f;                  // 微分系数
 float wheel_output_limit = 5000.0f;     // 输出限幅 (PWM)
 
-//====================================================用户函数声明====================================================
+//====================================================本地动作声明====================================================
 float yaw_angle_kp = 2.10f;
 float yaw_angle_ki = 0.0f;
 float yaw_angle_kd = 0.80f;
@@ -41,20 +41,20 @@ float s_curve_max_iter = 50.0f;
 float s_curve_conv_tol = 0.001f;
 float s_curve_min_dist = 5.0f;
 
-static void load_slot_0_function(void);
-static void load_slot_1_function(void);
-static void save_slot_0_function(void);
-static void save_slot_1_function(void);
-static void load_air_slot_0_function(void);
-static void load_air_slot_1_function(void);
-static void save_air_slot_0_function(void);
-static void save_air_slot_1_function(void);
-static void sync_air_function(void);
-static void diag_imu_function(void);
-static void diag_encoder_function(void);
-static void diag_position_function(void);
-static void diag_pid_function(void);
-static void diag_air_function(void);
+static void load_slot_0_action(void);
+static void load_slot_1_action(void);
+static void save_slot_0_action(void);
+static void save_slot_1_action(void);
+static void load_air_slot_0_action(void);
+static void load_air_slot_1_action(void);
+static void save_air_slot_0_action(void);
+static void save_air_slot_1_action(void);
+static void sync_air_action(void);
+static void diag_imu_action(void);
+static void diag_encoder_action(void);
+static void diag_position_action(void);
+static void diag_pid_action(void);
+static void diag_air_action(void);
 
 //====================================================菜单树定义====================================================
 // 轮速PID子菜单（增量式）
@@ -77,15 +77,15 @@ static menu_item_t yaw_rate_pid_menu[] = {
 
 // 加载存档子菜单
 static menu_item_t load_slot_menu[] = {
-    {"Load Slot0", MENU_TYPE_FUNCTION, .function = load_slot_0_function},
-    {"Load Slot1", MENU_TYPE_FUNCTION, .function = load_slot_1_function},
+    {"Load Slot0", MENU_TYPE_ACTION, .action = load_slot_0_action},
+    {"Load Slot1", MENU_TYPE_ACTION, .action = load_slot_1_action},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
 // 保存存档子菜单
 static menu_item_t save_slot_menu[] = {
-    {"Save Slot0", MENU_TYPE_FUNCTION, .function = save_slot_0_function},
-    {"Save Slot1", MENU_TYPE_FUNCTION, .function = save_slot_1_function},
+    {"Save Slot0", MENU_TYPE_ACTION, .action = save_slot_0_action},
+    {"Save Slot1", MENU_TYPE_ACTION, .action = save_slot_1_action},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -239,14 +239,14 @@ static menu_item_t air_mode8_menu[] = {
 };
 
 static menu_item_t load_air_slot_menu[] = {
-    {"Load Air0", MENU_TYPE_FUNCTION, .function = load_air_slot_0_function},
-    {"Load Air1", MENU_TYPE_FUNCTION, .function = load_air_slot_1_function},
+    {"Load Air0", MENU_TYPE_ACTION, .action = load_air_slot_0_action},
+    {"Load Air1", MENU_TYPE_ACTION, .action = load_air_slot_1_action},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
 static menu_item_t save_air_slot_menu[] = {
-    {"Save Air0", MENU_TYPE_FUNCTION, .function = save_air_slot_0_function},
-    {"Save Air1", MENU_TYPE_FUNCTION, .function = save_air_slot_1_function},
+    {"Save Air0", MENU_TYPE_ACTION, .action = save_air_slot_0_action},
+    {"Save Air1", MENU_TYPE_ACTION, .action = save_air_slot_1_action},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -265,18 +265,19 @@ static menu_item_t air_menu[] = {
     {"Vel PID", MENU_TYPE_SUBMENU, .submenu = air_vel_menu},
     {"Mode1/Est", MENU_TYPE_SUBMENU, .submenu = air_mode_menu},
     {"Mode8", MENU_TYPE_SUBMENU, .submenu = air_mode8_menu},
-    {"Sync Air", MENU_TYPE_FUNCTION, .function = sync_air_function},
+    {"Air Command", MENU_TYPE_SUBMENU, .submenu = air_command_menu},
+    {"Sync Air", MENU_TYPE_ACTION, .action = sync_air_action},
     {"Load Air", MENU_TYPE_SUBMENU, .submenu = load_air_slot_menu},
     {"Save Air", MENU_TYPE_SUBMENU, .submenu = save_air_slot_menu},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
 static menu_item_t diag_menu[] = {
-    {"IMU", MENU_TYPE_DIAG_VIEW, .function = diag_imu_function},
-    {"Encoder", MENU_TYPE_DIAG_VIEW, .function = diag_encoder_function},
-    {"Position", MENU_TYPE_DIAG_VIEW, .function = diag_position_function},
-    {"PID", MENU_TYPE_DIAG_VIEW, .function = diag_pid_function},
-    {"Air Ack", MENU_TYPE_DIAG_VIEW, .function = diag_air_function},
+    {"IMU", MENU_TYPE_DIAG_VIEW, .action = diag_imu_action},
+    {"Encoder", MENU_TYPE_DIAG_VIEW, .action = diag_encoder_action},
+    {"Position", MENU_TYPE_DIAG_VIEW, .action = diag_position_action},
+    {"PID", MENU_TYPE_DIAG_VIEW, .action = diag_pid_action},
+    {"Air Ack", MENU_TYPE_DIAG_VIEW, .action = diag_air_action},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -286,7 +287,6 @@ static menu_item_t main_menu[] = {
     {"YawAng PID", MENU_TYPE_SUBMENU, .submenu = yaw_angle_pid_menu},
     {"UWB PID", MENU_TYPE_SUBMENU, .submenu = uwb_follow_pid_menu},
     {"Air", MENU_TYPE_SUBMENU, .submenu = air_menu},
-    {"Air Command", MENU_TYPE_SUBMENU, .submenu = air_command_menu},
     {"Diag", MENU_TYPE_SUBMENU, .submenu = diag_menu},
     {"Load Slot", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
     {"Save Slot", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
@@ -329,28 +329,28 @@ void menu_config_init(void)
     menu_set_root(main_menu);
 }
 
-//====================================================用户函数实现====================================================
-static void load_slot_0_function(void)
+//====================================================本地动作实现====================================================
+static void load_slot_0_action(void)
 {
     menu_load_slot(0);
 }
 
-static void load_slot_1_function(void)
+static void load_slot_1_action(void)
 {
     menu_load_slot(1);
 }
 
-static void save_slot_0_function(void)
+static void save_slot_0_action(void)
 {
     menu_save_slot(0);
 }
 
-static void save_slot_1_function(void)
+static void save_slot_1_action(void)
 {
     menu_save_slot(1);
 }
 
-static void load_air_slot_0_function(void)
+static void load_air_slot_0_action(void)
 {
     if(menu_load_air_slot(0U) == 0U)
     {
@@ -358,7 +358,7 @@ static void load_air_slot_0_function(void)
     }
 }
 
-static void load_air_slot_1_function(void)
+static void load_air_slot_1_action(void)
 {
     if(menu_load_air_slot(1U) == 0U)
     {
@@ -366,7 +366,7 @@ static void load_air_slot_1_function(void)
     }
 }
 
-static void save_air_slot_0_function(void)
+static void save_air_slot_0_action(void)
 {
     if(menu_save_air_slot(0U) == 0U)
     {
@@ -374,7 +374,7 @@ static void save_air_slot_0_function(void)
     }
 }
 
-static void save_air_slot_1_function(void)
+static void save_air_slot_1_action(void)
 {
     if(menu_save_air_slot(1U) == 0U)
     {
@@ -382,7 +382,7 @@ static void save_air_slot_1_function(void)
     }
 }
 
-static void sync_air_function(void)
+static void sync_air_action(void)
 {
     if(menu_sync_all_air_params() == 0U)
     {
@@ -431,7 +431,7 @@ static void diag_begin(void)
 }
 
 /* 诊断页：IMU数据（欧拉角 + 陀螺仪 + 加速度计） */
-static void diag_imu_function(void)
+static void diag_imu_action(void)
 {
     char text[32];
 
@@ -454,7 +454,7 @@ static void diag_imu_function(void)
 }
 
 /* 诊断页：四轮编码器（滤波值 + 原始值） */
-static void diag_encoder_function(void)
+static void diag_encoder_action(void)
 {
     char text[32];
 
@@ -476,7 +476,7 @@ static void diag_encoder_function(void)
 }
 
 /* 诊断页：位置信息（里程计 + UWB原始/滤波坐标） */
-static void diag_position_function(void)
+static void diag_position_action(void)
 {
     char text[32];
     ALX_AOA_Position_t uwb = {0};
@@ -506,7 +506,7 @@ static void diag_position_function(void)
 }
 
 /* 诊断页：PID中间变量（航向环 + 左前轮P/I/Output） */
-static void diag_pid_function(void)
+static void diag_pid_action(void)
 {
     char text[32];
 
@@ -530,7 +530,7 @@ static void diag_pid_function(void)
 }
 
 /* 诊断页：AirComm通信状态（在线/ACK/同步统计） */
-static void diag_air_function(void)
+static void diag_air_action(void)
 {
     char text[32];
     air_comm_stats_t stats;
