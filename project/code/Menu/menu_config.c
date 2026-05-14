@@ -250,12 +250,7 @@ static menu_item_t save_air_slot_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-static menu_item_t air_command_menu[] = {
-    {"show_imu_data", MENU_TYPE_AIR_COMMAND, .param_index = 0},
-    {"show_optical_flow_data", MENU_TYPE_AIR_COMMAND, .param_index = 1},
-    {"beep", MENU_TYPE_AIR_COMMAND, .param_index = 2},
-    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
-};
+static menu_item_t air_command_menu[MENU_MAX_ITEMS + 1U];
 
 static menu_item_t air_menu[] = {
     {"Basic", MENU_TYPE_SUBMENU, .submenu = air_basic_menu},
@@ -296,6 +291,10 @@ static menu_item_t main_menu[] = {
 //====================================================用户配置初始化====================================================
 void menu_config_init(void)
 {
+    uint8 command_index;
+    uint8 command_count;
+    const char *command_name;
+
     // 注册轮速PID参数（四个电机共用）
     menu_register_param(&wheel_kp, 0.1f, 0.0f, 100.0f);                    // 参数0
     menu_register_param(&wheel_ki, 0.1f, 0.0f, 100.0f);                    // 参数1
@@ -326,6 +325,28 @@ void menu_config_init(void)
     menu_register_param(&uwb_follow_y_kd, 0.1f, 0.0f, 50.0f);
 
     menu_air_support_init();
+    command_count = menu_air_command_get_count();
+    if(command_count > MENU_MAX_ITEMS)
+    {
+        command_count = MENU_MAX_ITEMS;
+    }
+    for(command_index = 0U; command_index < command_count; command_index++)
+    {
+        command_name = menu_air_command_get_name(command_index);
+        if(command_name == NULL)
+        {
+            command_name = "";
+        }
+        strncpy(air_command_menu[command_index].name,
+                command_name,
+                sizeof(air_command_menu[command_index].name) - 1U);
+        air_command_menu[command_index].name[sizeof(air_command_menu[command_index].name) - 1U] = '\0';
+        air_command_menu[command_index].type = MENU_TYPE_AIR_COMMAND;
+        air_command_menu[command_index].param_index = command_index;
+    }
+    air_command_menu[command_count].name[0] = '\0';
+    air_command_menu[command_count].type = MENU_TYPE_SUBMENU;
+    air_command_menu[command_count].submenu = NULL;
     menu_set_root(main_menu);
 }
 

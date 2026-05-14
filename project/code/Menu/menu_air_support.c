@@ -12,9 +12,6 @@
 #define MENU_AIR_COMMIT_WAIT_MS             (2000U)
 #define MENU_AIR_COMMAND_TIMEOUT_MS         (1000U)
 
-#define MENU_AIR_COMMAND_MODE_POLLING       (0U)
-#define MENU_AIR_COMMAND_MODE_INSTANT       (1U)
-
 typedef struct
 {
     const char *name;
@@ -40,14 +37,54 @@ static uint8 s_air_last_online;
 static uint8 s_air_boot_sync_done;
 static uint8 s_air_pending_sync_reason;
 static menu_air_cmd_status_t s_air_cmd_status;
+static menu_air_command_config_t s_air_commands[MENU_AIR_COMMAND_TABLE_MAX];
+static uint8 s_air_command_count;
 static uint8 menu_load_air_slot_internal(uint8 slot, uint8 require_online);
 
-static const menu_air_command_config_t s_air_commands[] =
+static uint8 menu_air_register_command_internal(const char *name, uint8 mode)
 {
-    {"show_imu_data", MENU_AIR_COMMAND_MODE_POLLING},
-    {"show_optical_flow_data", MENU_AIR_COMMAND_MODE_POLLING},
-    {"beep", MENU_AIR_COMMAND_MODE_INSTANT}
-};
+    uint8 index;
+    uint16 name_len;
+
+    if((name == NULL) ||
+       (mode > MENU_AIR_COMMAND_MODE_INSTANT))
+    {
+        return 1U;
+    }
+
+    name_len = (uint16)strlen(name);
+    if((name_len == 0U) || (name_len > AIR_COMM_COMMAND_NAME_MAX))
+    {
+        return 1U;
+    }
+
+    for(index = 0U; index < s_air_command_count; index++)
+    {
+        if(strcmp(s_air_commands[index].name, name) == 0)
+        {
+            s_air_commands[index].mode = mode;
+            return 0U;
+        }
+    }
+
+    if(s_air_command_count >= MENU_AIR_COMMAND_TABLE_MAX)
+    {
+        return 1U;
+    }
+
+    s_air_commands[s_air_command_count].name = name;
+    s_air_commands[s_air_command_count].mode = mode;
+    s_air_command_count++;
+
+    return 0U;
+}
+
+static void menu_air_register_default_commands(void)
+{
+    (void)menu_air_register_polling_command("show_imu_data");
+    (void)menu_air_register_polling_command("show_optical_flow_data");
+    (void)menu_air_register_instant_command("beep");
+}
 
 static uint8 menu_air_dirty_count(void)
 {
@@ -83,7 +120,7 @@ static uint8 menu_air_cmd_ack_text_is(const char *text, const char *prefix)
 
 static uint8 menu_air_command_count_internal(void)
 {
-    return (uint8)(sizeof(s_air_commands) / sizeof(s_air_commands[0]));
+    return s_air_command_count;
 }
 
 static void menu_air_command_reset(uint8 keep_ack)
@@ -460,8 +497,11 @@ void menu_air_support_init(void)
     s_air_cmd_status.active_index = MENU_AIR_CMD_INVALID_INDEX;
     s_air_cmd_status.state = MENU_AIR_CMD_STATE_IDLE;
     s_air_cmd_status.last_status = AIR_COMM_STATUS_ERROR;
+    memset(s_air_commands, 0, sizeof(s_air_commands));
+    s_air_command_count = 0U;
 
     menu_air_register_fc_params();
+    menu_air_register_default_commands();
 
     if(menu_air_slot_valid(0U, NULL) != 0U)
     {
@@ -471,6 +511,16 @@ void menu_air_support_init(void)
         s_air_sync_status.reason = MENU_AIR_SYNC_REASON_NONE;
         s_air_pending_sync_reason = MENU_AIR_SYNC_REASON_NONE;
     }
+}
+
+uint8 menu_air_register_polling_command(const char *name)
+{
+    return menu_air_register_command_internal(name, MENU_AIR_COMMAND_MODE_POLLING);
+}
+
+uint8 menu_air_register_instant_command(const char *name)
+{
+    return menu_air_register_command_internal(name, MENU_AIR_COMMAND_MODE_INSTANT);
 }
 
 void menu_register_param_air(const char *name, float *var, float step, float min, float max)

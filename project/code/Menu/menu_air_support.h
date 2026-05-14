@@ -32,6 +32,9 @@
 #define MENU_AIR_CMD_STATE_WAIT_EXIT_ACK    (4U)
 #define MENU_AIR_CMD_INVALID_INDEX          (0xFFU)
 #define MENU_AIR_CMD_ACK_TEXT_MAX           (96U)   /* 菜单层保存远程命令ACK文本的最大长度 */
+#define MENU_AIR_COMMAND_TABLE_MAX          (16U)
+#define MENU_AIR_COMMAND_MODE_POLLING       (0U)
+#define MENU_AIR_COMMAND_MODE_INSTANT       (1U)
 
 /* Air参数配置结构体 */
 typedef struct
@@ -74,6 +77,8 @@ typedef struct
 
 /* Air参数变量（菜单可调） */
 void menu_air_support_init(void);                                                       // 初始化（注册默认参数+加载slot0）
+uint8 menu_air_register_polling_command(const char *name);
+uint8 menu_air_register_instant_command(const char *name);
 void menu_register_param_air(const char *name, float *var, float step, float min, float max);  // 注册Air参数
 uint8 menu_get_air_param_count(void);                                                   // 获取参数数量
 float menu_get_air_param_by_index(uint8 index);                                         // 按索引读取
