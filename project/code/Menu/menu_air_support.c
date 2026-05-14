@@ -40,12 +40,13 @@ static uint8 s_air_last_online;
 static uint8 s_air_boot_sync_done;
 static uint8 s_air_pending_sync_reason;
 static menu_air_cmd_status_t s_air_cmd_status;
+static uint8 menu_load_air_slot_internal(uint8 slot, uint8 require_online);
 
 static const menu_air_command_config_t s_air_commands[] =
 {
     {"show_imu_data", MENU_AIR_COMMAND_MODE_POLLING},
     {"show_optical_flow_data", MENU_AIR_COMMAND_MODE_POLLING},
-    {"test_motors_pwm", MENU_AIR_COMMAND_MODE_INSTANT}
+    {"beep", MENU_AIR_COMMAND_MODE_INSTANT}
 };
 
 static uint8 menu_air_dirty_count(void)
@@ -464,7 +465,7 @@ void menu_air_support_init(void)
 
     if(menu_air_slot_valid(0U, NULL) != 0U)
     {
-        (void)menu_load_air_slot(0U);
+        (void)menu_load_air_slot_internal(0U, 0U);
         menu_air_clear_dirty();
         menu_air_sync_reset(MENU_AIR_SYNC_MODE_IDLE);
         s_air_sync_status.reason = MENU_AIR_SYNC_REASON_NONE;
@@ -517,6 +518,12 @@ uint8 menu_set_air_param_by_index(uint8 index, float value)
 {
     if((index >= s_air_param_count) || (s_air_params[index].variable == NULL))
     {
+        return 1U;
+    }
+
+    if(menu_can_edit_air_params() == 0U)
+    {
+        /* AIR离线或车端运行时禁止修改AIR参数影子值，避免离线编辑后误同步。 */
         return 1U;
     }
 
@@ -1041,13 +1048,21 @@ void menu_get_air_command_status(menu_air_cmd_status_t *status)
     *status = s_air_cmd_status;
 }
 
-uint8 menu_load_air_slot(uint8 slot)
+static uint8 menu_load_air_slot_internal(uint8 slot, uint8 require_online)
 {
     menu_air_slot_header_t header;
     uint32 offset;
     uint8 index;
     uint8 count;
     float value;
+
+    if((require_online != 0U) && (menu_can_edit_air_params() == 0U))
+    {
+        /* 菜单手动加载会改变AIR参数影子值，AIR离线时直接禁止。 */
+        menu_show_error((menu_is_air_connected() == 0U) ?
+                        "Air Offline" : "Car Active");
+        return 1U;
+    }
 
     if(menu_air_is_busy() != 0U)
     {
@@ -1080,12 +1095,25 @@ uint8 menu_load_air_slot(uint8 slot)
     return 0U;
 }
 
+uint8 menu_load_air_slot(uint8 slot)
+{
+    return menu_load_air_slot_internal(slot, 1U);
+}
+
 uint8 menu_save_air_slot(uint8 slot)
 {
     uint32 page;
     uint32 offset;
     uint8 index;
     menu_air_slot_header_t *header;
+
+    if(menu_can_edit_air_params() == 0U)
+    {
+        /* AIR离线时不允许通过菜单保存AIR参数快照，避免离线参数集继续扩散。 */
+        menu_show_error((menu_is_air_connected() == 0U) ?
+                        "Air Offline" : "Car Active");
+        return 1U;
+    }
 
     if(slot >= MENU_AIR_SLOT_COUNT)
     {

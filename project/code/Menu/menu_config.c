@@ -253,7 +253,7 @@ static menu_item_t save_air_slot_menu[] = {
 static menu_item_t air_command_menu[] = {
     {"show_imu_data", MENU_TYPE_AIR_COMMAND, .param_index = 0},
     {"show_optical_flow_data", MENU_TYPE_AIR_COMMAND, .param_index = 1},
-    {"test_motors_pwm", MENU_TYPE_AIR_COMMAND, .param_index = 2},
+    {"beep", MENU_TYPE_AIR_COMMAND, .param_index = 2},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
