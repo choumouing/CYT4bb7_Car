@@ -19,6 +19,9 @@ static uint8_t menu_depth = 0;                         // 当前菜单深度
 static uint8_t current_index = 0;                      // 当前选中项索引
 static uint8_t current_item_count = 0;                 // 当前菜单项数量
 static menu_state_t menu_state = MENU_STATE_NORMAL;    // 菜单状态
+static uint8_t air_edit_active = 0U;                   // Air参数编辑缓存是否有效
+static uint8_t air_edit_index = 0U;                    // 当前缓存的Air参数索引
+static float air_edit_value = 0.0f;                    // Air参数临时编辑值，ACK成功前不写入影子值
 
 // 参数管理变量
 static param_config_t param_configs[MENU_MAX_PARAMS];  // 参数配置表
@@ -62,6 +65,112 @@ static uint8_t menu_is_param_item(const menu_item_t *item)
             (item->type == MENU_TYPE_AIR_PARAMETER)) ? 1U : 0U;
 }
 
+/* 清除Air参数编辑缓存，离线/失败退出时保证菜单继续显示原影子值。 */
+static void menu_air_edit_reset(void)
+{
+    air_edit_active = 0U;
+    air_edit_index = 0U;
+    air_edit_value = 0.0f;
+}
+
+/* 进入Air参数编辑时只建立临时值，避免上下键提前改写本地影子参数。 */
+static uint8_t menu_air_edit_begin(uint8_t index)
+{
+    if(index >= menu_get_air_param_count())
+    {
+        menu_air_edit_reset();
+        return 1U;
+    }
+
+    air_edit_index = index;
+    air_edit_value = menu_get_air_param_by_index(index);
+    air_edit_active = 1U;
+
+    return 0U;
+}
+
+/* 获取当前显示用Air参数值：编辑中显示缓存值，非编辑显示已确认影子值。 */
+static uint8_t menu_air_get_display_value(uint8_t index, float *value)
+{
+    if((value == NULL) || (index >= menu_get_air_param_count()))
+    {
+        return 0U;
+    }
+
+    if((air_edit_active != 0U) &&
+       (air_edit_index == index) &&
+       (menu_state == MENU_STATE_EDIT))
+    {
+        *value = air_edit_value;
+        return 1U;
+    }
+
+    *value = menu_get_air_param_by_index(index);
+    return 1U;
+}
+
+/* 调整Air参数临时编辑值，不触碰本地影子值，直到确认同步成功。 */
+static uint8_t menu_air_edit_adjust(const menu_item_t *item, float delta)
+{
+    const menu_air_param_config_t *air_config;
+
+    if((item == NULL) || (item->type != MENU_TYPE_AIR_PARAMETER))
+    {
+        return 1U;
+    }
+
+    air_config = menu_get_air_param_config(item->param_index);
+    if(air_config == NULL)
+    {
+        return 1U;
+    }
+
+    if((air_edit_active == 0U) || (air_edit_index != item->param_index))
+    {
+        if(menu_air_edit_begin(item->param_index) != 0U)
+        {
+            return 1U;
+        }
+    }
+
+    air_edit_value += delta;
+    if(air_edit_value < air_config->min_val)
+    {
+        air_edit_value = air_config->min_val;
+    }
+    if(air_edit_value > air_config->max_val)
+    {
+        air_edit_value = air_config->max_val;
+    }
+
+    return 0U;
+}
+
+/* 提交Air临时编辑值；失败时丢弃缓存，本地菜单值保持原值。 */
+static uint8_t menu_air_edit_commit(const menu_item_t *item)
+{
+    uint8_t result;
+
+    if((item == NULL) || (item->type != MENU_TYPE_AIR_PARAMETER))
+    {
+        menu_air_edit_reset();
+        return 1U;
+    }
+
+    if((air_edit_active == 0U) || (air_edit_index != item->param_index))
+    {
+        if(menu_air_edit_begin(item->param_index) != 0U)
+        {
+            return 1U;
+        }
+    }
+
+    result = menu_air_commit_param_value(item->param_index, air_edit_value);
+    menu_air_edit_reset();
+
+    return result;
+}
+
 /* 获取菜单项对应的参数值（统一处理本地/Air参数） */
 static uint8_t menu_get_item_param_value(const menu_item_t *item, float *value)
 {
@@ -82,12 +191,7 @@ static uint8_t menu_get_item_param_value(const menu_item_t *item, float *value)
 
     if(item->type == MENU_TYPE_AIR_PARAMETER)
     {
-        if(item->param_index >= menu_get_air_param_count())
-        {
-            return 0U;
-        }
-        *value = menu_get_air_param_by_index(item->param_index);
-        return 1U;
+        return menu_air_get_display_value(item->param_index, value);
     }
 
     return 0U;
@@ -860,6 +964,12 @@ void menu_key_handler(menu_key_t key)
                                                     "Air Offline" : "Car Active");
                                     break;
                                 }
+                                if((current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER) &&
+                                   (menu_air_edit_begin(current_menu[current_index].param_index) != 0U))
+                                {
+                                    menu_show_error("Set Fail");
+                                    break;
+                                }
                                 menu_state = MENU_STATE_EDIT;
                                 menu_request_refresh(REFRESH_VALUE);  // 进入编辑模式，只是颜色变化
                             }
@@ -896,6 +1006,22 @@ void menu_key_handler(menu_key_t key)
                 switch(key)
                 {
                     case KEY_UP:
+                        if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
+                        {
+                            if((menu_get_item_param_step(&current_menu[current_index], &step) != 0U) &&
+                               (menu_air_edit_adjust(&current_menu[current_index], step) == 0U))
+                            {
+                                menu_request_refresh(REFRESH_VALUE);  // Air参数只刷新临时编辑值
+                            }
+                            else
+                            {
+                                menu_air_edit_reset();
+                                menu_state = MENU_STATE_NORMAL;
+                                menu_show_error("Set Fail");
+                            }
+                            break;
+                        }
+
                         if((menu_get_item_param_value(&current_menu[current_index], &current_val) != 0U) &&
                            (menu_get_item_param_step(&current_menu[current_index], &step) != 0U) &&
                            (menu_set_item_param_value(&current_menu[current_index], current_val + step) == 0U))
@@ -910,6 +1036,22 @@ void menu_key_handler(menu_key_t key)
                         break;
 
                     case KEY_DOWN:
+                        if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
+                        {
+                            if((menu_get_item_param_step(&current_menu[current_index], &step) != 0U) &&
+                               (menu_air_edit_adjust(&current_menu[current_index], -step) == 0U))
+                            {
+                                menu_request_refresh(REFRESH_VALUE);  // Air参数只刷新临时编辑值
+                            }
+                            else
+                            {
+                                menu_air_edit_reset();
+                                menu_state = MENU_STATE_NORMAL;
+                                menu_show_error("Set Fail");
+                            }
+                            break;
+                        }
+
                         if((menu_get_item_param_value(&current_menu[current_index], &current_val) != 0U) &&
                            (menu_get_item_param_step(&current_menu[current_index], &step) != 0U) &&
                            (menu_set_item_param_value(&current_menu[current_index], current_val - step) == 0U))
@@ -926,8 +1068,8 @@ void menu_key_handler(menu_key_t key)
                     case KEY_ENTER:
                         if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
                         {
-                            (void)menu_air_commit_param(current_menu[current_index].param_index);
                             menu_state = MENU_STATE_NORMAL;
+                            (void)menu_air_edit_commit(&current_menu[current_index]);
                             break;
                         }
                         // 确认键：保存参数并退出编辑模式
@@ -938,8 +1080,8 @@ void menu_key_handler(menu_key_t key)
                     case KEY_BACK:
                         if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
                         {
-                            (void)menu_air_commit_param(current_menu[current_index].param_index);
                             menu_state = MENU_STATE_NORMAL;
+                            (void)menu_air_edit_commit(&current_menu[current_index]);
                             break;
                         }
                         // 返回键：保存参数并退出编辑模式（与确认键相同）

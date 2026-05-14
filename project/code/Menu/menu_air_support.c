@@ -627,6 +627,16 @@ void menu_air_stop_param_sync(void)
 
 uint8 menu_air_commit_param(uint8 index)
 {
+    if((index >= s_air_param_count) || (s_air_params[index].variable == NULL))
+    {
+        return 1U;
+    }
+
+    return menu_air_commit_param_value(index, *(s_air_params[index].variable));
+}
+
+uint8 menu_air_commit_param_value(uint8 index, float value)
+{
     uint32 start_ms;
     uint8 ack_type = 0U;
     uint8 ack_result = AIR_COMM_ACK_RESULT_NONE;
@@ -636,6 +646,8 @@ uint8 menu_air_commit_param(uint8 index)
     {
         return 1U;
     }
+
+    value = car_math_clampf(value, s_air_params[index].min_val, s_air_params[index].max_val);
 
     if(menu_can_edit_air_params() == 0U)
     {
@@ -651,8 +663,7 @@ uint8 menu_air_commit_param(uint8 index)
     }
 
     menu_show_progress("Syncing");
-    if(air_comm_car_set_param(s_air_params[index].name,
-                              *(s_air_params[index].variable)) != 0U)
+    if(air_comm_car_set_param(s_air_params[index].name, value) != 0U)
     {
         menu_air_record_failure(index, AIR_COMM_ACK_RESULT_ERROR, AIR_COMM_STATUS_ERROR);
         menu_show_error("Air Send Fail");
@@ -706,6 +717,7 @@ uint8 menu_air_commit_param(uint8 index)
        (menu_air_ack_is_success(ack_result, ack_status) != 0U))
     {
         (void)air_comm_car_get_last_ack_value(s_air_params[index].variable);
+        s_air_param_dirty[index] = 0U;
         s_air_sync_status.ok_count++;
         menu_show_success("Air OK");
         return 0U;

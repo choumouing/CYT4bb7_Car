@@ -83,6 +83,7 @@ uint8 menu_is_air_connected(void);                                              
 uint8 menu_can_edit_air_params(void);                                                   // 是否允许编辑（在线且未运行）
 uint8 menu_sync_all_air_params(void);                                                   // 标记所有参数为dirty（触发全量同步）
 uint8 menu_air_commit_param(uint8 index);
+uint8 menu_air_commit_param_value(uint8 index, float value);
 uint8 menu_air_sync_all_start(uint8 reason);
 uint8 menu_air_is_busy(void);
 void menu_air_stop_param_sync(void);
