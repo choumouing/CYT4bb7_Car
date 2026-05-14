@@ -560,24 +560,7 @@ static void beacon_detection_latch_event(float score,
 /* 从 Camera SPI 更新追踪目标 */
 static void beacon_detection_update_camera_target(void)
 {
-    camera_spi_target_t spi_target;
-
     memset(&g_beacon_camera_target, 0, sizeof(g_beacon_camera_target));
-    if(camera_spi_get_target(&spi_target) == 0U)
-    {
-        return;
-    }
-
-    g_beacon_camera_target.valid = spi_target.valid;
-    g_beacon_camera_target.camera_id = spi_target.camera_id;
-    g_beacon_camera_target.frame_id = spi_target.frame_id;
-    g_beacon_camera_target.spot_count = spi_target.spot_count;
-    g_beacon_camera_target.spot_index = spi_target.spot_index;
-    g_beacon_camera_target.x = spi_target.x;
-    g_beacon_camera_target.y = spi_target.y;
-    g_beacon_camera_target.area = spi_target.area;
-    g_beacon_camera_target.age_ms = spi_target.age_ms;
-    g_beacon_camera_target.last_update_ms = spi_target.last_update_ms;
 }
 
 void beacon_detection_init(void)

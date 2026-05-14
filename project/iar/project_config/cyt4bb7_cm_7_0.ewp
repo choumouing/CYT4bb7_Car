@@ -1371,6 +1371,12 @@
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Protocols\CameraSpi\camera_spi.h</name>
                 </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Protocols\CameraSpi\camera_spi_protocol.h</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Protocols\CameraSpi\camera_spi_types.h</name>
+                </file>
             </group>
             <group>
                 <name>AirComm</name>
