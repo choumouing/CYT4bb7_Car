@@ -32,11 +32,11 @@
 #endif
 
 #ifndef UDP_REMOTE_IP
-#define UDP_REMOTE_IP       "192.168.110.22"    /* 上位机 IP 地址 */// module ip     :192.168.110.240
+#define UDP_REMOTE_IP       "192.168.110.183"    /* 上位机 IP 地址 */
 #endif
 
 #ifndef UDP_REMOTE_PORT
-#define UDP_REMOTE_PORT     "1347"               /* 上位机 UDP 端口 */
+#define UDP_REMOTE_PORT     "1348"               /* 上位机 UDP 端口 */
 #endif
 
 #ifndef UDP_LOCAL_PORT
