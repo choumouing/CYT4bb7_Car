@@ -41,7 +41,6 @@ typedef struct
 typedef struct
 {
     volatile uint32 tx_counter;
-    volatile uint8 next_send_id;
     volatile car_image_spi_board_t board[CAR_IMAGE_SPI_BOARD_COUNT];
 } car_image_spi_state_t;
 

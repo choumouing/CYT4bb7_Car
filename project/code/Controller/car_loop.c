@@ -66,23 +66,19 @@ static void on_air_data(const float *data, uint8 count)
 
 static void car_loop_camera_spi_send_100HZ(void)
 {
-    uint8 id = g_image_spi.next_send_id;
+    uint8 id;
     uint8 tx[CAR_IMAGE_SPI_RAW_SIZE];
 
-    if(id >= CAR_IMAGE_SPI_BOARD_COUNT)
+    for(id = 0U; id < CAR_IMAGE_SPI_BOARD_COUNT; id++)
     {
-        id = 0U;
+        memset(tx, 0, sizeof(tx));
+        tx[0] = 0x5AU;
+        tx[1] = id;
+        car_loop_write_u32_le(&tx[2], g_image_spi.tx_counter);
+
+        CameraSpi_SendRaw((camera_spi_slave_id_t)id, tx, (uint16)sizeof(tx));
+        g_image_spi.tx_counter++;
     }
-
-    memset(tx, 0, sizeof(tx));
-    tx[0] = 0x5AU;
-    tx[1] = id;
-    car_loop_write_u32_le(&tx[2], g_image_spi.tx_counter);
-
-    CameraSpi_SendRaw((camera_spi_slave_id_t)id, tx, (uint16)sizeof(tx));
-
-    g_image_spi.tx_counter++;
-    g_image_spi.next_send_id = (uint8)((id + 1U) % CAR_IMAGE_SPI_BOARD_COUNT);
 }
 
 static void car_loop_camera_spi_read_100HZ(void)
@@ -313,5 +309,6 @@ void car_loop_poll(void)
     }
 
     wifi_core_Poll();
+    CameraSpi_Poll();
     air_comm_car_poll();
 }
