@@ -11,6 +11,13 @@
 # IAR 项目临时文件
 *.dep
 *.ewd
+!project/iar/cyt4bb7.eww
+!project/iar/project_config/cyt4bb7_cm_7_0.ewd
+!project/iar/project_config/cyt4bb7_cm_7_0.ewt
+!project/iar/project_config/cyt4bb7_cm_7_0.eww
+!project/iar/project_config/cyt4bb7_cm_7_1.ewd
+!project/iar/project_config/cyt4bb7_cm_7_1.ewt
+!project/iar/project_config/cyt4bb7_cm_7_1.eww
 
 # IAR 编译输出目录
 Debug/
