@@ -125,6 +125,9 @@ void car_mode1_update_25HZ(uint32 now_ms)
                                     &g_car_mode1_state.filt_y_cm)))
     {
         car_mode1_reset();
+        car_forward_target = 0.0f;
+        car_strafe_target = 0.0f;
+        car_rotate_target = 0.0f;
         return;
     }
 
