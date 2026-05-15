@@ -13,12 +13,14 @@ RequestCommand is at byte offset 8, not 6.
 
 #define ALX_AOA_OFFSET_PACKET_LENGTH        (4)
 #define ALX_AOA_OFFSET_COMMAND              (8)
+#define ALX_AOA_OFFSET_VERSION              (10)
 #define ALX_AOA_OFFSET_ANCHOR_ID            (12)
 #define ALX_AOA_OFFSET_TAG_ID               (16)
 #define ALX_AOA_OFFSET_DISTANCE             (20)
 #define ALX_AOA_OFFSET_AZIMUTH              (24)
 #define ALX_AOA_OFFSET_ELEVATION            (26)
 #define ALX_AOA_COMMAND_FIELD_SIZE          (2)
+#define ALX_AOA_POSITION_VERSION            (0x0102)
 #define ALX_AOA_ANGLE_SCALE                 (1.0f)
 #define ALX_AOA_PI                          (3.14159265358979323846f)
 #define ALX_AOA_DEG_TO_RAD                  (ALX_AOA_PI / 180.0f)
@@ -31,23 +33,48 @@ static uint8  alx_aoa_frame_buffer[ALX_AOA_MAX_FRAME_SIZE];
 static uint16 alx_aoa_frame_length = 0;
 
 static ALX_AOA_Position_t  alx_aoa_latest_position;
-static ALX_AOA_Heartbeat_t alx_aoa_latest_heartbeat;
-static ALX_AOA_Stats_t     alx_aoa_stats;
 
 float alx_aoa_x_cm = 0.0f;
 float alx_aoa_y_cm = 0.0f;
+float alx_aoa_debug_accepted = 0.0f;
+float alx_aoa_debug_jump_cm = 0.0f;
+float alx_aoa_debug_gate_cm = 0.0f;
+uint32 alx_aoa_debug_rx_bytes = 0;
+uint32 alx_aoa_debug_rx_overflow = 0;
+uint32 alx_aoa_debug_frame_headers = 0;
+uint32 alx_aoa_debug_frame_ok = 0;
+uint32 alx_aoa_debug_frame_error = 0;
 
 static float  alx_aoa_filt_x_cm     = 0.0f;
 static float  alx_aoa_filt_y_cm     = 0.0f;
 static float  alx_aoa_filt_vx       = 0.0f;
 static float  alx_aoa_filt_vy       = 0.0f;
-static float  alx_aoa_raw_x_hist[ALX_AOA_MEDIAN_SIZE] = {0.0f};
-static float  alx_aoa_raw_y_hist[ALX_AOA_MEDIAN_SIZE] = {0.0f};
-static uint8  alx_aoa_raw_hist_count = 0;
-static uint8  alx_aoa_raw_hist_index = 0;
 static uint8  alx_aoa_filt_init     = 0;
-static uint8  alx_aoa_outlier_count = 0;
+static uint8  alx_aoa_gate_reject_count = 0;
 static uint32 alx_aoa_last_filt_ms  = 0;
+
+static void alx_aoa_clear_position_state (void)
+{
+    memset(&alx_aoa_latest_position, 0, sizeof(alx_aoa_latest_position));
+
+    alx_aoa_x_cm          = 0.0f;
+    alx_aoa_y_cm          = 0.0f;
+    alx_aoa_debug_accepted = 0.0f;
+    alx_aoa_debug_jump_cm  = 0.0f;
+    alx_aoa_debug_gate_cm  = 0.0f;
+    alx_aoa_debug_rx_bytes = 0;
+    alx_aoa_debug_rx_overflow = 0;
+    alx_aoa_debug_frame_headers = 0;
+    alx_aoa_debug_frame_ok = 0;
+    alx_aoa_debug_frame_error = 0;
+    alx_aoa_filt_x_cm     = 0.0f;
+    alx_aoa_filt_y_cm     = 0.0f;
+    alx_aoa_filt_vx       = 0.0f;
+    alx_aoa_filt_vy       = 0.0f;
+    alx_aoa_filt_init     = 0;
+    alx_aoa_gate_reject_count = 0;
+    alx_aoa_last_filt_ms  = 0;
+}
 
 static uint16 alx_aoa_next_index (uint16 index)
 {
@@ -125,36 +152,19 @@ static float alx_aoa_angle_to_rad (int16 angle)
     return (((float)angle) / ALX_AOA_ANGLE_SCALE) * ALX_AOA_DEG_TO_RAD;
 }
 
-static float alx_aoa_median3 (float a, float b, float c)
-{
-    if(a > b)
-    {
-        float t = a;
-        a = b;
-        b = t;
-    }
-    if(b > c)
-    {
-        float t = b;
-        b = c;
-        c = t;
-    }
-    if(a > b)
-    {
-        b = a;
-    }
-
-    return b;
-}
-
 static void alx_aoa_calculate_xy (ALX_AOA_Position_t *position)
 {
     float azimuth_rad = alx_aoa_angle_to_rad(position->azimuth_deg);
     float elevation_rad = alx_aoa_angle_to_rad(position->elevation_deg);
     float distance = (float)position->distance_cm;
+    float x_uwb;
+    float y_uwb;
 
-    position->x_cm = alx_aoa_float_to_s32(distance * sinf(azimuth_rad));
-    position->y_cm = alx_aoa_float_to_s32(-distance * sinf(elevation_rad));
+    x_uwb = distance * cosf(elevation_rad) * sinf(azimuth_rad);
+    y_uwb = -distance * sinf(elevation_rad) * cosf(azimuth_rad);
+
+    position->x_cm = alx_aoa_float_to_s32(x_uwb);
+    position->y_cm = alx_aoa_float_to_s32(y_uwb);
     position->z_cm = 0;
 }
 
@@ -175,82 +185,12 @@ static uint8 alx_aoa_raw_valid (const ALX_AOA_Position_t *p)
         return 0;
     }
 
-    if(p->distance_cm < ALX_AOA_DIST_MIN_CM || p->distance_cm > ALX_AOA_DIST_MAX_CM)
+    if(p->elevation_deg >= ALX_AOA_EL_GATE_DEG || p->elevation_deg <= -ALX_AOA_EL_GATE_DEG)
     {
         return 0;
     }
 
-    return 1;
-}
-
-static void alx_aoa_raw_history_reset (float raw_x, float raw_y)
-{
-    uint8 i;
-
-    for(i = 0; i < ALX_AOA_MEDIAN_SIZE; i ++)
-    {
-        alx_aoa_raw_x_hist[i] = raw_x;
-        alx_aoa_raw_y_hist[i] = raw_y;
-    }
-
-    alx_aoa_raw_hist_count = ALX_AOA_MEDIAN_SIZE;
-    alx_aoa_raw_hist_index = 0;
-}
-
-static void alx_aoa_raw_history_push (float raw_x, float raw_y)
-{
-    alx_aoa_raw_x_hist[alx_aoa_raw_hist_index] = raw_x;
-    alx_aoa_raw_y_hist[alx_aoa_raw_hist_index] = raw_y;
-
-    alx_aoa_raw_hist_index ++;
-    if(alx_aoa_raw_hist_index >= ALX_AOA_MEDIAN_SIZE)
-    {
-        alx_aoa_raw_hist_index = 0;
-    }
-
-    if(alx_aoa_raw_hist_count < ALX_AOA_MEDIAN_SIZE)
-    {
-        alx_aoa_raw_hist_count ++;
-    }
-}
-
-static void alx_aoa_raw_history_get_median (float *x_cm, float *y_cm)
-{
-    if(alx_aoa_raw_hist_count >= ALX_AOA_MEDIAN_SIZE)
-    {
-        *x_cm = alx_aoa_median3(alx_aoa_raw_x_hist[0],
-                                alx_aoa_raw_x_hist[1],
-                                alx_aoa_raw_x_hist[2]);
-        *y_cm = alx_aoa_median3(alx_aoa_raw_y_hist[0],
-                                alx_aoa_raw_y_hist[1],
-                                alx_aoa_raw_y_hist[2]);
-    }
-    else
-    {
-        uint8 latest;
-
-        if(0 == alx_aoa_raw_hist_count)
-        {
-            *x_cm = 0.0f;
-            *y_cm = 0.0f;
-            return;
-        }
-
-        latest = (0 == alx_aoa_raw_hist_index) ?
-                 (uint8)(ALX_AOA_MEDIAN_SIZE - 1U) :
-                 (uint8)(alx_aoa_raw_hist_index - 1U);
-        *x_cm = alx_aoa_raw_x_hist[latest];
-        *y_cm = alx_aoa_raw_y_hist[latest];
-    }
-}
-
-static uint8 alx_aoa_observation_gate_ok (float rx, float ry)
-{
-    float jump_2d = sqrtf(rx * rx + ry * ry);
-
-    if((fabsf(rx) > ALX_AOA_XY_GATE_X_CM) ||
-       (fabsf(ry) > ALX_AOA_XY_GATE_Y_CM) ||
-       (jump_2d > ALX_AOA_XY_GATE_2D_CM))
+    if(p->distance_cm < ALX_AOA_DIST_MIN_CM || p->distance_cm > ALX_AOA_DIST_MAX_CM)
     {
         return 0;
     }
@@ -262,32 +202,35 @@ static void alx_aoa_filter_xy (const ALX_AOA_Position_t *p, uint32 now_ms)
 {
     float raw_x;
     float raw_y;
-    float obs_x;
-    float obs_y;
     float dt;
     float rx;
     float ry;
     float x_pred;
     float y_pred;
+    float jump_cm;
+    float gate_cm;
     uint8 obs_ok;
 
     raw_x = (float)p->x_cm;
     raw_y = (float)p->y_cm;
 
     obs_ok = alx_aoa_raw_valid(p);
+    alx_aoa_debug_accepted = 0.0f;
+    alx_aoa_debug_jump_cm = 0.0f;
+    alx_aoa_debug_gate_cm = 0.0f;
 
     if(!alx_aoa_filt_init)
     {
         if(obs_ok)
         {
-            alx_aoa_raw_history_reset(raw_x, raw_y);
             alx_aoa_filt_x_cm     = raw_x;
             alx_aoa_filt_y_cm     = raw_y;
             alx_aoa_filt_vx       = 0.0f;
             alx_aoa_filt_vy       = 0.0f;
             alx_aoa_filt_init     = 1;
-            alx_aoa_outlier_count = 0;
+            alx_aoa_gate_reject_count = 0;
             alx_aoa_last_filt_ms  = now_ms;
+            alx_aoa_debug_accepted = 1.0f;
         }
 
         alx_aoa_x_cm = alx_aoa_filt_x_cm;
@@ -298,9 +241,9 @@ static void alx_aoa_filter_xy (const ALX_AOA_Position_t *p, uint32 now_ms)
     if(0 != alx_aoa_last_filt_ms)
     {
         dt = (float)((uint32)(now_ms - alx_aoa_last_filt_ms)) * 0.001f;
-        if(dt < 0.005f)
+        if(dt < 0.015f)
         {
-            dt = 0.005f;
+            dt = 0.015f;
         }
         if(dt > 0.100f)
         {
@@ -314,34 +257,45 @@ static void alx_aoa_filter_xy (const ALX_AOA_Position_t *p, uint32 now_ms)
 
     alx_aoa_last_filt_ms = now_ms;
 
-    if(obs_ok)
-    {
-        alx_aoa_raw_history_push(raw_x, raw_y);
-    }
-
-    alx_aoa_raw_history_get_median(&obs_x, &obs_y);
-
     x_pred = alx_aoa_filt_x_cm + alx_aoa_filt_vx * dt;
     y_pred = alx_aoa_filt_y_cm + alx_aoa_filt_vy * dt;
-    rx = obs_x - x_pred;
-    ry = obs_y - y_pred;
 
-    if((0U != obs_ok) && (0U != alx_aoa_observation_gate_ok(rx, ry)))
-    {
-        alx_aoa_outlier_count = 0;
+    gate_cm = ALX_AOA_GATE_BASE_CM + ALX_AOA_GATE_SPEED_CM_S * dt;
+    alx_aoa_debug_gate_cm = gate_cm;
 
-        alx_aoa_filt_x_cm = x_pred + ALX_AOA_AB_ALPHA * rx;
-        alx_aoa_filt_y_cm = y_pred + ALX_AOA_AB_ALPHA * ry;
-        alx_aoa_filt_vx  += (ALX_AOA_AB_BETA * rx) / dt;
-        alx_aoa_filt_vy  += (ALX_AOA_AB_BETA * ry) / dt;
-    }
-    else if((0U != obs_ok) && (alx_aoa_outlier_count >= (ALX_AOA_REACQUIRE_COUNT - 1U)))
+    if(obs_ok)
     {
-        alx_aoa_filt_x_cm = obs_x;
-        alx_aoa_filt_y_cm = obs_y;
-        alx_aoa_filt_vx = 0.0f;
-        alx_aoa_filt_vy = 0.0f;
-        alx_aoa_outlier_count = 0;
+        rx = raw_x - x_pred;
+        ry = raw_y - y_pred;
+        jump_cm = sqrtf(rx * rx + ry * ry);
+        alx_aoa_debug_jump_cm = jump_cm;
+
+        if(jump_cm <= gate_cm)
+        {
+            alx_aoa_filt_x_cm = x_pred + ALX_AOA_AB_ALPHA * rx;
+            alx_aoa_filt_y_cm = y_pred + ALX_AOA_AB_ALPHA * ry;
+            alx_aoa_filt_vx  += (ALX_AOA_AB_BETA * rx) / dt;
+            alx_aoa_filt_vy  += (ALX_AOA_AB_BETA * ry) / dt;
+            alx_aoa_gate_reject_count = 0;
+            alx_aoa_debug_accepted = 1.0f;
+        }
+        else if(alx_aoa_gate_reject_count >= ALX_AOA_GATE_REACQUIRE_COUNT)
+        {
+            alx_aoa_filt_x_cm = raw_x;
+            alx_aoa_filt_y_cm = raw_y;
+            alx_aoa_filt_vx = 0.0f;
+            alx_aoa_filt_vy = 0.0f;
+            alx_aoa_gate_reject_count = 0;
+            alx_aoa_debug_accepted = 1.0f;
+        }
+        else
+        {
+            alx_aoa_filt_x_cm = x_pred;
+            alx_aoa_filt_y_cm = y_pred;
+            alx_aoa_filt_vx  *= ALX_AOA_VEL_DECAY;
+            alx_aoa_filt_vy  *= ALX_AOA_VEL_DECAY;
+            alx_aoa_gate_reject_count ++;
+        }
     }
     else
     {
@@ -349,11 +303,7 @@ static void alx_aoa_filter_xy (const ALX_AOA_Position_t *p, uint32 now_ms)
         alx_aoa_filt_y_cm = y_pred;
         alx_aoa_filt_vx  *= ALX_AOA_VEL_DECAY;
         alx_aoa_filt_vy  *= ALX_AOA_VEL_DECAY;
-
-        if(0U != obs_ok)
-        {
-            alx_aoa_outlier_count ++;
-        }
+        alx_aoa_gate_reject_count = 0;
     }
 
     alx_aoa_x_cm = alx_aoa_filt_x_cm;
@@ -421,14 +371,12 @@ static uint8 alx_aoa_seek_header (void)
             if(0 != index)
             {
                 alx_aoa_drop_frame_bytes(index);
-                alx_aoa_stats.frame_bad_header ++;
             }
             return 1;
         }
     }
 
     alx_aoa_keep_header_prefix();
-    alx_aoa_stats.frame_bad_header ++;
     return 0;
 }
 
@@ -443,9 +391,6 @@ static void alx_aoa_parse_position (const uint8 *frame, uint32 now_ms)
     alx_aoa_filter_xy(&alx_aoa_latest_position, now_ms);
     alx_aoa_latest_position.last_position_ms = now_ms;
     alx_aoa_latest_position.valid            = 1;
-
-    alx_aoa_stats.position_count ++;
-    alx_aoa_stats.frame_total ++;
 }
 
 static uint8 alx_aoa_parse_stream (uint32 now_ms)
@@ -467,9 +412,8 @@ static uint8 alx_aoa_parse_stream (uint32 now_ms)
         }
 
         packet_length = alx_aoa_read_be16(&alx_aoa_frame_buffer[ALX_AOA_OFFSET_PACKET_LENGTH]);
-        alx_aoa_stats.last_packet_length = packet_length;
         command = alx_aoa_read_be16(&alx_aoa_frame_buffer[ALX_AOA_OFFSET_COMMAND]);
-        alx_aoa_stats.last_command = command;
+        alx_aoa_debug_frame_headers ++;
 
         if(ALX_AOA_CMD_POSITION == command)
         {
@@ -480,16 +424,26 @@ static uint8 alx_aoa_parse_stream (uint32 now_ms)
 
             if(ALX_AOA_POSITION_FRAME_SIZE != packet_length)
             {
-                alx_aoa_stats.frame_bad_length ++;
+                alx_aoa_debug_frame_error ++;
+                alx_aoa_drop_frame_bytes(1);
+                continue;
+            }
+
+            if(ALX_AOA_POSITION_VERSION != alx_aoa_read_be16(&alx_aoa_frame_buffer[ALX_AOA_OFFSET_VERSION]))
+            {
+                alx_aoa_debug_frame_error ++;
+                alx_aoa_drop_frame_bytes(ALX_AOA_POSITION_FRAME_SIZE);
+                continue;
             }
 
             alx_aoa_parse_position(alx_aoa_frame_buffer, now_ms);
+            alx_aoa_debug_frame_ok ++;
             parsed_position = 1;
             alx_aoa_drop_frame_bytes(ALX_AOA_POSITION_FRAME_SIZE);
         }
         else
         {
-            alx_aoa_stats.frame_unknown_cmd ++;
+            alx_aoa_debug_frame_error ++;
             alx_aoa_drop_frame_bytes(1);
         }
     }
@@ -501,13 +455,11 @@ static uint8 alx_aoa_feed_parser (uint8 dat, uint32 now_ms)
 {
     if(ALX_AOA_MAX_FRAME_SIZE <= alx_aoa_frame_length)
     {
-        alx_aoa_stats.frame_bad_length ++;
         alx_aoa_drop_frame_bytes(1);
     }
 
     alx_aoa_frame_buffer[alx_aoa_frame_length] = dat;
     alx_aoa_frame_length ++;
-    alx_aoa_stats.parser_frame_length = alx_aoa_frame_length;
 
     return alx_aoa_parse_stream(now_ms);
 }
@@ -519,23 +471,8 @@ void ALX_AOA_Reset (void)
     alx_aoa_frame_length = 0;
     memset((void *)alx_aoa_rx_buffer, 0, sizeof(alx_aoa_rx_buffer));
     memset(&alx_aoa_frame_buffer[0], 0, sizeof(alx_aoa_frame_buffer));
-    memset(&alx_aoa_latest_position, 0, sizeof(alx_aoa_latest_position));
-    memset(&alx_aoa_latest_heartbeat, 0, sizeof(alx_aoa_latest_heartbeat));
-    memset(&alx_aoa_stats, 0, sizeof(alx_aoa_stats));
 
-    alx_aoa_x_cm          = 0.0f;
-    alx_aoa_y_cm          = 0.0f;
-    alx_aoa_filt_x_cm     = 0.0f;
-    alx_aoa_filt_y_cm     = 0.0f;
-    alx_aoa_filt_vx       = 0.0f;
-    alx_aoa_filt_vy       = 0.0f;
-    memset(&alx_aoa_raw_x_hist[0], 0, sizeof(alx_aoa_raw_x_hist));
-    memset(&alx_aoa_raw_y_hist[0], 0, sizeof(alx_aoa_raw_y_hist));
-    alx_aoa_raw_hist_count = 0;
-    alx_aoa_raw_hist_index = 0;
-    alx_aoa_filt_init     = 0;
-    alx_aoa_outlier_count = 0;
-    alx_aoa_last_filt_ms  = 0;
+    alx_aoa_clear_position_state();
 }
 
 void ALX_AOA_Init (void)
@@ -549,32 +486,15 @@ void ALX_AOA_InputByte (uint8 dat)
 {
     uint16 next = alx_aoa_next_index(alx_aoa_rx_head);
 
-    alx_aoa_stats.rx_bytes ++;
-    alx_aoa_stats.rx_last_byte = dat;
-
     if(next == alx_aoa_rx_tail)
     {
-        alx_aoa_stats.rx_overflow ++;
+        alx_aoa_debug_rx_overflow ++;
         return;
     }
 
     alx_aoa_rx_buffer[alx_aoa_rx_head] = dat;
     alx_aoa_rx_head = next;
-}
-
-void ALX_AOA_InputBytes (const uint8 *dat, uint16 length)
-{
-    uint16 i;
-
-    if(0 == dat)
-    {
-        return;
-    }
-
-    for(i = 0; i < length; i ++)
-    {
-        ALX_AOA_InputByte(dat[i]);
-    }
+    alx_aoa_debug_rx_bytes ++;
 }
 
 uint8 ALX_AOA_Update (uint32 now_ms)
@@ -597,8 +517,6 @@ uint8 ALX_AOA_Update (uint32 now_ms)
 
         pending --;
     }
-
-    alx_aoa_stats.parser_frame_length = alx_aoa_frame_length;
 
     return parsed_position;
 }
@@ -627,17 +545,6 @@ uint8 ALX_AOA_GetFilteredXY (float *x_cm, float *y_cm)
     return alx_aoa_filt_init;
 }
 
-uint8 ALX_AOA_GetHeartbeat (ALX_AOA_Heartbeat_t *data)
-{
-    if((0 == data) || (!alx_aoa_latest_heartbeat.valid))
-    {
-        return 0;
-    }
-
-    *data = alx_aoa_latest_heartbeat;
-    return 1;
-}
-
 uint8 ALX_AOA_IsTagOnline (uint32 now_ms, uint32 timeout_ms)
 {
     if(!alx_aoa_latest_position.valid)
@@ -646,19 +553,4 @@ uint8 ALX_AOA_IsTagOnline (uint32 now_ms, uint32 timeout_ms)
     }
 
     return (((uint32)(now_ms - alx_aoa_latest_position.last_position_ms)) <= timeout_ms);
-}
-
-void ALX_AOA_GetStats (ALX_AOA_Stats_t *stats)
-{
-    if(0 == stats)
-    {
-        return;
-    }
-
-    *stats = alx_aoa_stats;
-}
-
-void ALX_AOA_ResetStats (void)
-{
-    memset(&alx_aoa_stats, 0, sizeof(alx_aoa_stats));
 }
