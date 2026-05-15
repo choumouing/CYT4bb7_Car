@@ -184,10 +184,11 @@ int main(void)
         if(timer_10ms_flag)
         {
             ALX_AOA_Position_t uwb_position;
-            float uwb_raw_x_cm = 0.0f;
-            float uwb_raw_y_cm = 0.0f;
-            float uwb_filt_x_cm = 0.0f;
-            float uwb_filt_y_cm = 0.0f;
+            float uwb_distance_cm = 0.0f;
+            float uwb_azimuth_deg = 0.0f;
+            float uwb_elevation_deg = 0.0f;
+            float uwb_x_cm = 0.0f;
+            float uwb_y_cm = 0.0f;
 
             timer_10ms_flag = 0;
 
@@ -197,10 +198,12 @@ int main(void)
             system_time_ms = telemetry_timestamp_count * 10U;
             if(0U != ALX_AOA_GetLatest(&uwb_position))
             {
-                uwb_raw_x_cm = (float)uwb_position.x_cm;
-                uwb_raw_y_cm = (float)uwb_position.y_cm;
+                uwb_distance_cm = (float)uwb_position.distance_cm;
+                uwb_azimuth_deg = (float)uwb_position.azimuth_deg;
+                uwb_elevation_deg = (float)uwb_position.elevation_deg;
+                uwb_x_cm = (float)uwb_position.x_cm;
+                uwb_y_cm = (float)uwb_position.y_cm;
             }
-            (void)ALX_AOA_GetFilteredXY(&uwb_filt_x_cm, &uwb_filt_y_cm);
 
             if(0U != g_wireless_control_state.control_enabled)
             {
@@ -211,24 +214,13 @@ int main(void)
                 control_cascade_stop();
             }
             wifi_justfloat((float)telemetry_timestamp_count,
-                           uwb_raw_x_cm,
-                           uwb_raw_y_cm,
-                           uwb_filt_x_cm,
-                           uwb_filt_y_cm,
-                           g_uwb_follow_state.x_pid_p_term,
-                           g_uwb_follow_state.x_pid_i_term,
-                           g_uwb_follow_state.x_pid_d_term,
-                           g_uwb_follow_state.y_pid_p_term,
-                           g_uwb_follow_state.y_pid_i_term,
-                           g_uwb_follow_state.y_pid_d_term,
-                           g_euler.yaw,
-                           control_yaw_angle_output,
-                           control_yaw_rate_output,
-                           g_odometer.strafe_distance,
-                           g_odometer.forward_distance);
+                           uwb_distance_cm,
+                           uwb_azimuth_deg,
+                           uwb_elevation_deg,
+                           uwb_x_cm,
+                           uwb_y_cm);
         }
         wifi_core_Poll();
-
         // 此处编写需要循环执行的代码
     }
 }

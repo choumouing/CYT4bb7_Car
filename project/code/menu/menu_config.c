@@ -27,16 +27,16 @@ float yaw_rate_kd = 0.0f;
 float yaw_rate_i_limit = 60.0f;
 float yaw_rate_output_limit = 1000.0f;
 
-float uwb_follow_deadband_x_cm = 4.0f;
-float uwb_follow_deadband_y_cm = 5.0f;
+float uwb_follow_deadband_x_cm = 8.0f;
+float uwb_follow_deadband_y_cm = 10.0f;
 float uwb_follow_output_limit = 500.0f;
 float uwb_follow_i_limit = 0.0f;
-float uwb_follow_x_kp = 2.2f;
+float uwb_follow_x_kp = 1.2f;
 float uwb_follow_x_ki = 0.0f;
-float uwb_follow_x_kd = 1.0f;
-float uwb_follow_y_kp = 1.9f;
+float uwb_follow_x_kd = 0.20f;
+float uwb_follow_y_kp = 1.0f;
 float uwb_follow_y_ki = 0.0f;
-float uwb_follow_y_kd = 0.8f;
+float uwb_follow_y_kd = 0.18f;
 
 static void load_slot_0_function(void);
 static void load_slot_1_function(void);
