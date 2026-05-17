@@ -25,31 +25,27 @@ uint8 car_emergency_stop_active = 1U; // 默认紧急停（上电安全）
 static uint32 s_telemetry_timestamp_count = 0U; // 100HZ滴答计数
 static uint32 s_system_time_ms = 0U;            // 系统时间（ms，10ms递增）
 
-volatile float g_air_tof1_height_mm;
-volatile float g_air_tof2_height_mm;
-volatile float g_air_tof3_height_mm;
-volatile float g_air_tof4_height_mm;
-volatile float g_air_imufilter_1000hz_accx;
-volatile float g_air_imufilter_1000hz_accy;
-volatile float g_air_imufilter_1000hz_accz;
-volatile float g_air_imufilter_1000hz_gyrox;
-volatile float g_air_imufilter_1000hz_gyroy;
-volatile float g_air_imufilter_1000hz_gyroz;
+volatile float g_air_yaw_deg;
+volatile float g_air_vel_x;
+volatile float g_air_vel_y;
+volatile float g_air_acc_x;
+volatile float g_air_acc_y;
+volatile float g_air_acc_z;
+volatile float g_air_tof_fused_height_mm;
+volatile float g_air_state;
 
 static void on_air_data(const float *data, uint8 count)
 {
-    if (count >= 10)
+    if (count >= 8)
     {
-        g_air_tof1_height_mm = data[0];
-        g_air_tof2_height_mm = data[1];
-        g_air_tof3_height_mm = data[2];
-        g_air_tof4_height_mm = data[3];
-        g_air_imufilter_1000hz_accx  = data[4];
-        g_air_imufilter_1000hz_accy  = data[5];
-        g_air_imufilter_1000hz_accz  = data[6];
-        g_air_imufilter_1000hz_gyrox = data[7];
-        g_air_imufilter_1000hz_gyroy = data[8];
-        g_air_imufilter_1000hz_gyroz = data[9];
+        g_air_yaw_deg = data[0];
+        g_air_vel_x = data[1];
+        g_air_vel_y = data[2];
+        g_air_acc_x = data[3];
+        g_air_acc_y = data[4];
+        g_air_acc_z = data[5];
+        g_air_tof_fused_height_mm = data[6];
+        g_air_state = data[7]; 
     }
 }
 
@@ -115,6 +111,9 @@ static void car_loop_1000HZ(void)
  */
 static void car_loop_100HZ(void)
 {
+    float uwb_filt_x_cm = 0.0f;
+    float uwb_filt_y_cm = 0.0f;
+
     s_telemetry_timestamp_count++;
     s_system_time_ms = s_telemetry_timestamp_count * 10U;
 
@@ -166,16 +165,25 @@ static void car_loop_100HZ(void)
     car_data[9] = g_imufilter_1000hz.gyroz;
     air_comm_send_run_data(car_data, 10);
 
-    wifi_justfloat(g_air_tof1_height_mm,
-                   g_air_tof2_height_mm,
-                   g_air_tof3_height_mm,
-                   g_air_tof4_height_mm,
-                   g_air_imufilter_1000hz_accx,
-                   g_air_imufilter_1000hz_accy,
-                   g_air_imufilter_1000hz_accz,
-                   g_air_imufilter_1000hz_gyrox,
-                   g_air_imufilter_1000hz_gyroy,
-                   g_air_imufilter_1000hz_gyroz);
+    (void)ALX_AOA_GetFilteredXY(&uwb_filt_x_cm, &uwb_filt_y_cm);
+
+    wifi_justfloat((float)s_telemetry_timestamp_count,
+                   g_air_yaw_deg,
+                   g_air_vel_x,
+                   g_air_vel_y,
+                   g_air_acc_x,
+                   g_air_acc_y,
+                   g_air_acc_z,
+                   g_air_tof_fused_height_mm,
+                   g_air_state,
+                   uwb_filt_x_cm,
+                   uwb_filt_y_cm,
+                   encoder_get_left_front_filtered_count(),
+                   encoder_get_right_front_filtered_count(),
+                   encoder_get_left_rear_filtered_count(),
+                   encoder_get_right_rear_filtered_count(),
+                   g_euler.yaw
+                );
 }
 
 /* 50HZ任务：角速度环PID更新

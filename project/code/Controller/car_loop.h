@@ -24,6 +24,16 @@ extern float car_rotate_target;             // 旋转输入（rad/s，来自遥�
 extern uint8 car_control_enabled;           // 控制使能标志（遥控器决定）
 extern uint8 car_emergency_stop_active;     // 紧急停车标志（1=紧急停）
 
+/* AIR端下发遥测数据（RUN_DATA，100Hz） */
+extern volatile float g_air_yaw_deg;                  // AIR偏航角，单位 deg
+extern volatile float g_air_vel_x;                    // AIR X方向最终速度，单位 cm/s
+extern volatile float g_air_vel_y;                    // AIR Y方向最终速度，单位 cm/s
+extern volatile float g_air_acc_x;                    // AIR IMU最终加速度X，单位 g
+extern volatile float g_air_acc_y;                    // AIR IMU最终加速度Y，单位 g
+extern volatile float g_air_acc_z;                    // AIR IMU最终加速度Z，单位 g
+extern volatile float g_air_tof_fused_height_mm;      // AIR TOF融合高度，单位 mm
+extern volatile float g_air_state;                    // AIR飞控状态
+
 /* 初始化所有外设和模块，启动1000HZ定时器 */
 void car_loop_init(void);
 
