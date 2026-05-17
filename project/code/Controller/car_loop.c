@@ -34,17 +34,17 @@ volatile float g_air_reserved0;
 volatile float g_air_reserved1;
 volatile float g_air_reserved2;
 
-#define AIR_RUN_DATA_COUNT                  (10U)
-#define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM    (0U)
-#define AIR_RUN_DATA_EULER_ROLL             (1U)
-#define AIR_RUN_DATA_EULER_PITCH            (2U)
-#define AIR_RUN_DATA_EULER_YAW              (3U)
-#define AIR_RUN_DATA_POS_EST_VEL_X          (4U)
-#define AIR_RUN_DATA_POS_EST_VEL_Y          (5U)
-#define AIR_RUN_DATA_STATE                  (6U)
-#define AIR_RUN_DATA_RESERVED0              (7U)
-#define AIR_RUN_DATA_RESERVED1              (8U)
-#define AIR_RUN_DATA_RESERVED2              (9U)
+#define AIR_RUN_DATA_COUNT (10U)
+#define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
+#define AIR_RUN_DATA_EULER_ROLL (1U)
+#define AIR_RUN_DATA_EULER_PITCH (2U)
+#define AIR_RUN_DATA_EULER_YAW (3U)
+#define AIR_RUN_DATA_POS_EST_VEL_X (4U)
+#define AIR_RUN_DATA_POS_EST_VEL_Y (5U)
+#define AIR_RUN_DATA_STATE (6U)
+#define AIR_RUN_DATA_RESERVED0 (7U)
+#define AIR_RUN_DATA_RESERVED1 (8U)
+#define AIR_RUN_DATA_RESERVED2 (9U)
 
 static void car_loop_write_u32_le(uint8 *data, uint32 value)
 {
@@ -64,18 +64,18 @@ static float car_loop_read_float_le(const uint8 *data)
 
 static void on_air_data(const float *data, uint8 count)
 {
-    if(count >= AIR_RUN_DATA_COUNT)
+    if (count >= AIR_RUN_DATA_COUNT)
     {
         g_air_tof_fused_height_mm = data[AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM];
-        g_air_euler_roll          = data[AIR_RUN_DATA_EULER_ROLL];
-        g_air_euler_pitch         = data[AIR_RUN_DATA_EULER_PITCH];
-        g_air_euler_yaw           = data[AIR_RUN_DATA_EULER_YAW];
-        g_air_pos_est_vel_x       = data[AIR_RUN_DATA_POS_EST_VEL_X];
-        g_air_pos_est_vel_y       = data[AIR_RUN_DATA_POS_EST_VEL_Y];
-        g_air_state               = data[AIR_RUN_DATA_STATE];
-        g_air_reserved0           = data[AIR_RUN_DATA_RESERVED0];
-        g_air_reserved1           = data[AIR_RUN_DATA_RESERVED1];
-        g_air_reserved2           = data[AIR_RUN_DATA_RESERVED2];
+        g_air_euler_roll = data[AIR_RUN_DATA_EULER_ROLL];
+        g_air_euler_pitch = data[AIR_RUN_DATA_EULER_PITCH];
+        g_air_euler_yaw = data[AIR_RUN_DATA_EULER_YAW];
+        g_air_pos_est_vel_x = data[AIR_RUN_DATA_POS_EST_VEL_X];
+        g_air_pos_est_vel_y = data[AIR_RUN_DATA_POS_EST_VEL_Y];
+        g_air_state = data[AIR_RUN_DATA_STATE];
+        g_air_reserved0 = data[AIR_RUN_DATA_RESERVED0];
+        g_air_reserved1 = data[AIR_RUN_DATA_RESERVED1];
+        g_air_reserved2 = data[AIR_RUN_DATA_RESERVED2];
     }
 }
 
@@ -84,7 +84,7 @@ static void car_loop_camera_spi_send_100HZ(void)
     uint8 id;
     uint8 tx[CAR_IMAGE_SPI_TX_RAW_SIZE];
 
-    for(id = 0U; id < CAR_IMAGE_SPI_BOARD_COUNT; id++)
+    for (id = 0U; id < CAR_IMAGE_SPI_BOARD_COUNT; id++)
     {
         memset(tx, 0, sizeof(tx));
         tx[0] = 0x5AU;
@@ -100,12 +100,12 @@ static void car_loop_camera_spi_clear_targets(uint8 id)
 {
     uint8 target_index;
 
-    if(id >= CAR_IMAGE_SPI_BOARD_COUNT)
+    if (id >= CAR_IMAGE_SPI_BOARD_COUNT)
     {
         return;
     }
 
-    for(target_index = 0U; target_index < CAMERA_SPI_IMAGE_TARGET_COUNT; target_index++)
+    for (target_index = 0U; target_index < CAMERA_SPI_IMAGE_TARGET_COUNT; target_index++)
     {
         g_image_spi.board[id].target[target_index].valid = 0U;
         g_image_spi.board[id].target[target_index].x = 0.0f;
@@ -119,7 +119,7 @@ static void car_loop_camera_spi_parse_targets(uint8 id, const uint8 *rx)
     uint8 target_index;
 
     car_loop_camera_spi_clear_targets(id);
-    for(target_index = 0U; target_index < CAMERA_SPI_IMAGE_TARGET_COUNT; target_index++)
+    for (target_index = 0U; target_index < CAMERA_SPI_IMAGE_TARGET_COUNT; target_index++)
     {
         const uint8 *slot = &rx[target_index * CAMERA_SPI_IMAGE_TARGET_SLOT_SIZE];
 
@@ -139,10 +139,10 @@ static void car_loop_camera_spi_read_100HZ(void)
     uint16 rx_len;
     uint8 rx[CAR_IMAGE_SPI_RAW_SIZE];
 
-    for(id = 0U; id < CAR_IMAGE_SPI_BOARD_COUNT; id++)
+    for (id = 0U; id < CAR_IMAGE_SPI_BOARD_COUNT; id++)
     {
         rx_len = (uint16)sizeof(rx);
-        if(CameraSpi_ReceiveRaw((camera_spi_slave_id_t)id, rx, &rx_len) == 0U)
+        if (CameraSpi_ReceiveRaw((camera_spi_slave_id_t)id, rx, &rx_len) == 0U)
         {
             g_image_spi.board[id].online = 0U;
             g_image_spi.board[id].rx_len = 0U;
@@ -155,7 +155,7 @@ static void car_loop_camera_spi_read_100HZ(void)
         g_image_spi.board[id].rx_len = (uint8)rx_len;
         g_image_spi.board[id].rx_count++;
 
-        if(rx_len == CAR_IMAGE_SPI_RAW_SIZE)
+        if (rx_len == CAR_IMAGE_SPI_RAW_SIZE)
         {
             car_loop_camera_spi_parse_targets(id, rx);
         }
@@ -164,6 +164,31 @@ static void car_loop_camera_spi_read_100HZ(void)
             car_loop_camera_spi_clear_targets(id);
         }
     }
+}
+
+static void car_loop_beacon_fusion_update_100HZ(void)
+{
+    uint8 board_id;
+    uint8 target_index;
+    beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT];
+
+    memset(camera, 0, sizeof(camera));
+    for (board_id = 0U; board_id < BEACON_FUSION_CAMERA_COUNT; board_id++)
+    {
+        for (target_index = 0U; target_index < BEACON_FUSION_CAMERA_TARGETS; target_index++)
+        {
+            camera[board_id].target[target_index].valid =
+                g_image_spi.board[board_id].target[target_index].valid;
+            camera[board_id].target[target_index].x =
+                g_image_spi.board[board_id].target[target_index].x;
+            camera[board_id].target[target_index].y =
+                g_image_spi.board[board_id].target[target_index].y;
+            camera[board_id].target[target_index].radius =
+                g_image_spi.board[board_id].target[target_index].radius;
+        }
+    }
+
+    beacon_fusion_update_100HZ(camera);
 }
 
 static void car_loop_runtime_reset(void)
@@ -181,6 +206,7 @@ static void car_loop_runtime_reset(void)
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
     memset((void *)&g_image_spi, 0, sizeof(g_image_spi));
+    beacon_fusion_init();
 }
 
 void car_loop_init(void)
@@ -227,17 +253,18 @@ static void car_loop_100HZ(void)
 
     CameraSpi_Poll();
     car_loop_camera_spi_read_100HZ();
+    car_loop_beacon_fusion_update_100HZ();
     car_loop_camera_spi_send_100HZ();
     CameraSpi_Poll();
 
-    if((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
+    if ((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
     {
         menu_air_stop_param_sync();
     }
     air_comm_car_update_100HZ();
     beacon_detection_update_100HZ();
 
-    if((car_control_enabled == 0U) || (car_emergency_stop_active != 0U))
+    if ((car_control_enabled == 0U) || (car_emergency_stop_active != 0U))
     {
         menu_air_update_100HZ();
         menu_update_100HZ();
@@ -247,7 +274,7 @@ static void car_loop_100HZ(void)
         menu_discard_key_events();
     }
 
-    if(car_control_enabled != 0U)
+    if (car_control_enabled != 0U)
     {
         control_cascade_speed_loop_update_100HZ(car_forward_target, car_strafe_target);
     }
@@ -269,41 +296,42 @@ static void car_loop_100HZ(void)
     car_data[9] = g_imufilter_1000hz.gyroz;
     air_comm_send_run_data(car_data, 10);
 
-
     wifi_justfloat(g_image_spi.board[0].target[0].x,
                    g_image_spi.board[0].target[0].y,
                    g_image_spi.board[0].target[0].radius,
                    g_image_spi.board[0].target[1].x,
                    g_image_spi.board[0].target[1].y,
                    g_image_spi.board[0].target[1].radius,
-                   g_image_spi.board[0].target[2].x,
-                   g_image_spi.board[0].target[2].y,
-                   g_image_spi.board[0].target[2].radius,
                    g_image_spi.board[1].target[0].x,
                    g_image_spi.board[1].target[0].y,
                    g_image_spi.board[1].target[0].radius,
                    g_image_spi.board[1].target[1].x,
                    g_image_spi.board[1].target[1].y,
                    g_image_spi.board[1].target[1].radius,
-                   g_image_spi.board[1].target[2].x,
-                   g_image_spi.board[1].target[2].y,
-                   g_image_spi.board[1].target[2].radius,
                    g_image_spi.board[2].target[0].x,
                    g_image_spi.board[2].target[0].y,
                    g_image_spi.board[2].target[0].radius,
                    g_image_spi.board[2].target[1].x,
                    g_image_spi.board[2].target[1].y,
                    g_image_spi.board[2].target[1].radius,
-                   g_image_spi.board[2].target[2].x,
-                   g_image_spi.board[2].target[2].y,
-                   g_image_spi.board[2].target[2].radius);
+                   g_beacon_fusion_result.beacon_count,
+                   g_beacon_fusion_result.beacon[0].bearing_deg,
+                   g_beacon_fusion_result.beacon[0].x_body,
+                   g_beacon_fusion_result.beacon[0].y_body,
+                   g_beacon_fusion_result.beacon[0].range_proxy,
+                   g_beacon_fusion_result.beacon[0].confidence,
+                   g_beacon_fusion_result.beacon[1].bearing_deg,
+                   g_beacon_fusion_result.beacon[1].x_body,
+                   g_beacon_fusion_result.beacon[1].y_body,
+                   g_beacon_fusion_result.beacon[1].range_proxy,
+                   g_beacon_fusion_result.beacon[1].confidence);
 }
 
 static void car_loop_50HZ(void)
 {
-    if(car_control_enabled != 0U)
+    if (car_control_enabled != 0U)
     {
-        if(car_rotate_target != 0.0f)
+        if (car_rotate_target != 0.0f)
         {
             control_yaw_rate_loop_update_50HZ(car_rotate_target);
         }
@@ -326,7 +354,7 @@ static void car_loop_25HZ(void)
     car_start_sbus_update_25HZ();
     car_mode_update_25HZ(s_system_time_ms);
 
-    if(car_control_enabled != 0U)
+    if (car_control_enabled != 0U)
     {
         control_yaw_hold_update_25HZ(car_rotate_target);
     }
@@ -340,26 +368,26 @@ void car_loop_poll(void)
 {
     uint16 imu_tick_guard = 0U;
 
-    while((g_tick_1000HZ > 0U) && (imu_tick_guard < 100U))
+    while ((g_tick_1000HZ > 0U) && (imu_tick_guard < 100U))
     {
         g_tick_1000HZ--;
         car_loop_1000HZ();
         imu_tick_guard++;
     }
 
-    if(timer_25HZ_flag)
+    if (timer_25HZ_flag)
     {
         timer_25HZ_flag = 0U;
         car_loop_25HZ();
     }
 
-    if(timer_50HZ_flag)
+    if (timer_50HZ_flag)
     {
         timer_50HZ_flag = 0U;
         car_loop_50HZ();
     }
 
-    if(timer_100HZ_flag)
+    if (timer_100HZ_flag)
     {
         timer_100HZ_flag = 0U;
         car_loop_100HZ();
