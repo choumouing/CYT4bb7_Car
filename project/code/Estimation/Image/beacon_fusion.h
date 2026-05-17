@@ -1,0 +1,52 @@
+#ifndef BEACON_FUSION_H
+#define BEACON_FUSION_H
+
+#include "zf_common_typedef.h"
+
+#define BEACON_FUSION_CAMERA_COUNT       (3U)
+#define BEACON_FUSION_CAMERA_TARGETS     (3U)
+#define BEACON_FUSION_MAX_OBSERVATIONS   (BEACON_FUSION_CAMERA_COUNT * BEACON_FUSION_CAMERA_TARGETS)
+#define BEACON_FUSION_MAX_BEACONS        (5U)
+
+typedef struct
+{
+    uint8 valid;
+    float x;
+    float y;
+    float radius;
+} beacon_fusion_camera_target_t;
+
+typedef struct
+{
+    beacon_fusion_camera_target_t target[BEACON_FUSION_CAMERA_TARGETS];
+} beacon_fusion_camera_frame_t;
+
+typedef struct
+{
+    uint8 valid;
+    uint8 source_camera_mask;
+    uint8 observation_count;
+    uint8 stable_ticks;
+    float bearing_deg;
+    float range_proxy;
+    float x_body;
+    float y_body;
+    float confidence;
+} beacon_fusion_beacon_t;
+
+typedef struct
+{
+    uint8 beacon_count;
+    uint8 best_index;
+    uint8 observation_count;
+    uint32 update_count;
+    beacon_fusion_beacon_t beacon[BEACON_FUSION_MAX_BEACONS];
+} beacon_fusion_result_t;
+
+extern beacon_fusion_result_t g_beacon_fusion_result;
+
+void beacon_fusion_init(void);
+void beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT]);
+const beacon_fusion_result_t *beacon_fusion_get_result(void);
+
+#endif /* BEACON_FUSION_H */
