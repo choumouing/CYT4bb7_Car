@@ -9,28 +9,23 @@
 
 #include "zf_common_typedef.h"
 
-#ifndef CAMERA_SPI_APP_FIELD_SIZE
-#define CAMERA_SPI_APP_FIELD_SIZE       (4U)
-#endif
-
-#ifndef CAMERA_SPI_APP_FIELD_COUNT
-#define CAMERA_SPI_APP_FIELD_COUNT      (3U)
-#endif
+#define CAMERA_SPI_IMAGE_TARGET_COUNT           (5U)
+#define CAMERA_SPI_IMAGE_TARGET_VALID_OFFSET    (0U)
+#define CAMERA_SPI_IMAGE_TARGET_X_OFFSET        (1U)
+#define CAMERA_SPI_IMAGE_TARGET_Y_OFFSET        (5U)
+#define CAMERA_SPI_IMAGE_TARGET_RADIUS_OFFSET   (9U)
+#define CAMERA_SPI_IMAGE_TARGET_RESERVED_OFFSET (13U)
+#define CAMERA_SPI_IMAGE_TARGET_RESERVED_SIZE   (4U)
+#define CAMERA_SPI_IMAGE_TARGET_SLOT_SIZE       (17U)
+#define CAMERA_SPI_IMAGE_TARGET_PACKET_SIZE \
+    (CAMERA_SPI_IMAGE_TARGET_COUNT * CAMERA_SPI_IMAGE_TARGET_SLOT_SIZE)
 
 #ifndef CAMERA_SPI_APP_DATA_CAPACITY
-#define CAMERA_SPI_APP_DATA_CAPACITY    (CAMERA_SPI_APP_FIELD_SIZE * CAMERA_SPI_APP_FIELD_COUNT)
+#define CAMERA_SPI_APP_DATA_CAPACITY    CAMERA_SPI_IMAGE_TARGET_PACKET_SIZE
 #endif
 
 #define CAMERA_SPI_UPLINK_FLAG_PENDING      (0x01U)
 #define CAMERA_SPI_UPLINK_FLAG_DOWNLINK_NEW (0x02U)
-
-#define CAMERA_SPI_TYPED_KIND_RAW       (0x00U)
-#define CAMERA_SPI_TYPED_KIND_HEARTBEAT (0xA5U)
-#define CAMERA_SPI_TYPED_KIND_TARGET    (0x31U)
-#define CAMERA_SPI_TYPED_KIND_PARAM     (0x32U)
-
-#define CAMERA_SPI_HEARTBEAT_MAGIC      (0x4353U)
-#define CAMERA_SPI_HEARTBEAT_VERSION    (1U)
 
 #ifndef CAMERA_SPI_H
 typedef struct
@@ -56,37 +51,5 @@ typedef struct
     uint8 data[CAMERA_SPI_APP_DATA_CAPACITY];
 } camera_spi_uplink_payload_t;
 #endif
-
-typedef struct
-{
-    uint16 magic;
-    uint8 version;
-    uint8 flags;
-    uint32 counter;
-    uint16 timestamp_ms;
-    uint8 status;
-    uint8 reserved;
-} camera_spi_heartbeat_t;
-
-typedef struct
-{
-    uint16 frame_id;
-    uint16 spot_count;
-    uint16 spot_index;
-    uint16 x;
-    uint16 y;
-    uint16 area;
-} camera_spi_target_payload_t;
-
-typedef struct
-{
-    uint8 kind;
-    union
-    {
-        camera_spi_heartbeat_t heartbeat;
-        camera_spi_target_payload_t target;
-        camera_spi_payload_buffer_t raw;
-    } value;
-} camera_spi_typed_payload_t;
 
 #endif

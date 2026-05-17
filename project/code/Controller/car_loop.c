@@ -23,21 +23,28 @@ static uint32 s_system_time_ms = 0U;
 
 volatile car_image_spi_state_t g_image_spi;
 
-volatile float g_air_tof1_height_mm;
-volatile float g_air_tof2_height_mm;
-volatile float g_air_tof3_height_mm;
-volatile float g_air_tof4_height_mm;
-volatile float g_air_imufilter_1000hz_accx;
-volatile float g_air_imufilter_1000hz_accy;
-volatile float g_air_imufilter_1000hz_accz;
-volatile float g_air_imufilter_1000hz_gyrox;
-volatile float g_air_imufilter_1000hz_gyroy;
-volatile float g_air_imufilter_1000hz_gyroz;
+volatile float g_air_tof_fused_height_mm;
+volatile float g_air_euler_roll;
+volatile float g_air_euler_pitch;
+volatile float g_air_euler_yaw;
+volatile float g_air_pos_est_vel_x;
+volatile float g_air_pos_est_vel_y;
+volatile float g_air_state;
+volatile float g_air_reserved0;
+volatile float g_air_reserved1;
+volatile float g_air_reserved2;
 
-static uint16 car_loop_read_u16_le(const volatile uint8 *data)
-{
-    return (uint16)(((uint16)data[1] << 8) | data[0]);
-}
+#define AIR_RUN_DATA_COUNT                  (10U)
+#define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM    (0U)
+#define AIR_RUN_DATA_EULER_ROLL             (1U)
+#define AIR_RUN_DATA_EULER_PITCH            (2U)
+#define AIR_RUN_DATA_EULER_YAW              (3U)
+#define AIR_RUN_DATA_POS_EST_VEL_X          (4U)
+#define AIR_RUN_DATA_POS_EST_VEL_Y          (5U)
+#define AIR_RUN_DATA_STATE                  (6U)
+#define AIR_RUN_DATA_RESERVED0              (7U)
+#define AIR_RUN_DATA_RESERVED1              (8U)
+#define AIR_RUN_DATA_RESERVED2              (9U)
 
 static void car_loop_write_u32_le(uint8 *data, uint32 value)
 {
@@ -47,27 +54,35 @@ static void car_loop_write_u32_le(uint8 *data, uint32 value)
     data[3] = (uint8)((value >> 24) & 0xFFU);
 }
 
+static float car_loop_read_float_le(const uint8 *data)
+{
+    float value;
+
+    memcpy(&value, data, sizeof(value));
+    return value;
+}
+
 static void on_air_data(const float *data, uint8 count)
 {
-    if(count >= 10U)
+    if(count >= AIR_RUN_DATA_COUNT)
     {
-        g_air_tof1_height_mm = data[0];
-        g_air_tof2_height_mm = data[1];
-        g_air_tof3_height_mm = data[2];
-        g_air_tof4_height_mm = data[3];
-        g_air_imufilter_1000hz_accx  = data[4];
-        g_air_imufilter_1000hz_accy  = data[5];
-        g_air_imufilter_1000hz_accz  = data[6];
-        g_air_imufilter_1000hz_gyrox = data[7];
-        g_air_imufilter_1000hz_gyroy = data[8];
-        g_air_imufilter_1000hz_gyroz = data[9];
+        g_air_tof_fused_height_mm = data[AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM];
+        g_air_euler_roll          = data[AIR_RUN_DATA_EULER_ROLL];
+        g_air_euler_pitch         = data[AIR_RUN_DATA_EULER_PITCH];
+        g_air_euler_yaw           = data[AIR_RUN_DATA_EULER_YAW];
+        g_air_pos_est_vel_x       = data[AIR_RUN_DATA_POS_EST_VEL_X];
+        g_air_pos_est_vel_y       = data[AIR_RUN_DATA_POS_EST_VEL_Y];
+        g_air_state               = data[AIR_RUN_DATA_STATE];
+        g_air_reserved0           = data[AIR_RUN_DATA_RESERVED0];
+        g_air_reserved1           = data[AIR_RUN_DATA_RESERVED1];
+        g_air_reserved2           = data[AIR_RUN_DATA_RESERVED2];
     }
 }
 
 static void car_loop_camera_spi_send_100HZ(void)
 {
     uint8 id;
-    uint8 tx[CAR_IMAGE_SPI_RAW_SIZE];
+    uint8 tx[CAR_IMAGE_SPI_TX_RAW_SIZE];
 
     for(id = 0U; id < CAR_IMAGE_SPI_BOARD_COUNT; id++)
     {
@@ -81,10 +96,46 @@ static void car_loop_camera_spi_send_100HZ(void)
     }
 }
 
+static void car_loop_camera_spi_clear_targets(uint8 id)
+{
+    uint8 target_index;
+
+    if(id >= CAR_IMAGE_SPI_BOARD_COUNT)
+    {
+        return;
+    }
+
+    for(target_index = 0U; target_index < CAMERA_SPI_IMAGE_TARGET_COUNT; target_index++)
+    {
+        g_image_spi.board[id].target[target_index].valid = 0U;
+        g_image_spi.board[id].target[target_index].x = 0.0f;
+        g_image_spi.board[id].target[target_index].y = 0.0f;
+        g_image_spi.board[id].target[target_index].radius = 0.0f;
+    }
+}
+
+static void car_loop_camera_spi_parse_targets(uint8 id, const uint8 *rx)
+{
+    uint8 target_index;
+
+    car_loop_camera_spi_clear_targets(id);
+    for(target_index = 0U; target_index < CAMERA_SPI_IMAGE_TARGET_COUNT; target_index++)
+    {
+        const uint8 *slot = &rx[target_index * CAMERA_SPI_IMAGE_TARGET_SLOT_SIZE];
+
+        g_image_spi.board[id].target[target_index].valid = slot[CAMERA_SPI_IMAGE_TARGET_VALID_OFFSET];
+        g_image_spi.board[id].target[target_index].x =
+            car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_TARGET_X_OFFSET]);
+        g_image_spi.board[id].target[target_index].y =
+            car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_TARGET_Y_OFFSET]);
+        g_image_spi.board[id].target[target_index].radius =
+            car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_TARGET_RADIUS_OFFSET]);
+    }
+}
+
 static void car_loop_camera_spi_read_100HZ(void)
 {
     uint8 id;
-    uint8 len;
     uint16 rx_len;
     uint8 rx[CAR_IMAGE_SPI_RAW_SIZE];
 
@@ -94,29 +145,23 @@ static void car_loop_camera_spi_read_100HZ(void)
         if(CameraSpi_ReceiveRaw((camera_spi_slave_id_t)id, rx, &rx_len) == 0U)
         {
             g_image_spi.board[id].online = 0U;
+            g_image_spi.board[id].rx_len = 0U;
+            car_loop_camera_spi_clear_targets(id);
             g_image_spi.board[id].miss_count++;
             continue;
         }
 
-        len = (uint8)rx_len;
-        if(len > CAR_IMAGE_SPI_RAW_SIZE)
-        {
-            len = CAR_IMAGE_SPI_RAW_SIZE;
-        }
-
-        memset((void *)g_image_spi.board[id].raw, 0, sizeof(g_image_spi.board[id].raw));
-        memcpy((void *)g_image_spi.board[id].raw, rx, len);
         g_image_spi.board[id].online = 1U;
-        g_image_spi.board[id].rx_len = len;
+        g_image_spi.board[id].rx_len = (uint8)rx_len;
         g_image_spi.board[id].rx_count++;
 
-        if(len >= 10U)
+        if(rx_len == CAR_IMAGE_SPI_RAW_SIZE)
         {
-            g_image_spi.board[id].frame_id = car_loop_read_u16_le(&g_image_spi.board[id].raw[0]);
-            g_image_spi.board[id].spot_count = car_loop_read_u16_le(&g_image_spi.board[id].raw[2]);
-            g_image_spi.board[id].x = car_loop_read_u16_le(&g_image_spi.board[id].raw[4]);
-            g_image_spi.board[id].y = car_loop_read_u16_le(&g_image_spi.board[id].raw[6]);
-            g_image_spi.board[id].area = car_loop_read_u16_le(&g_image_spi.board[id].raw[8]);
+            car_loop_camera_spi_parse_targets(id, rx);
+        }
+        else
+        {
+            car_loop_camera_spi_clear_targets(id);
         }
     }
 }
@@ -224,22 +269,34 @@ static void car_loop_100HZ(void)
     car_data[9] = g_imufilter_1000hz.gyroz;
     air_comm_send_run_data(car_data, 10);
 
-    wifi_justfloat((float)g_image_spi.board[0].online,
-                   (float)g_image_spi.board[0].frame_id,
-                   (float)g_image_spi.board[0].x,
-                   (float)g_image_spi.board[0].area,
-                   (float)g_image_spi.board[0].rx_count,
-                   (float)g_image_spi.board[1].online,
-                   (float)g_image_spi.board[1].frame_id,
-                   (float)g_image_spi.board[1].x,
-                   (float)g_image_spi.board[1].area,
-                   (float)g_image_spi.board[1].rx_count,
-                   (float)g_image_spi.board[2].online,
-                   (float)g_image_spi.board[2].frame_id,
-                   (float)g_image_spi.board[2].x,
-                   (float)g_image_spi.board[2].area,
-                   (float)g_image_spi.board[2].rx_count,
-                   (float)g_image_spi.tx_counter);
+
+    wifi_justfloat(g_image_spi.board[0].target[0].x,
+                   g_image_spi.board[0].target[0].y,
+                   g_image_spi.board[0].target[0].radius,
+                   g_image_spi.board[0].target[1].x,
+                   g_image_spi.board[0].target[1].y,
+                   g_image_spi.board[0].target[1].radius,
+                   g_image_spi.board[0].target[2].x,
+                   g_image_spi.board[0].target[2].y,
+                   g_image_spi.board[0].target[2].radius,
+                   g_image_spi.board[1].target[0].x,
+                   g_image_spi.board[1].target[0].y,
+                   g_image_spi.board[1].target[0].radius,
+                   g_image_spi.board[1].target[1].x,
+                   g_image_spi.board[1].target[1].y,
+                   g_image_spi.board[1].target[1].radius,
+                   g_image_spi.board[1].target[2].x,
+                   g_image_spi.board[1].target[2].y,
+                   g_image_spi.board[1].target[2].radius,
+                   g_image_spi.board[2].target[0].x,
+                   g_image_spi.board[2].target[0].y,
+                   g_image_spi.board[2].target[0].radius,
+                   g_image_spi.board[2].target[1].x,
+                   g_image_spi.board[2].target[1].y,
+                   g_image_spi.board[2].target[1].radius,
+                   g_image_spi.board[2].target[2].x,
+                   g_image_spi.board[2].target[2].y,
+                   g_image_spi.board[2].target[2].radius);
 }
 
 static void car_loop_50HZ(void)
