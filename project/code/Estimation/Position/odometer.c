@@ -102,7 +102,7 @@ typedef struct
     uint8_t yaw_ready;                           /* 航向零点已初始化 */
 } odometer_filter_state_t;
 
-odometer_data_t g_odometer = {0.0f, 0.0f, 0.0f};
+odometer_data_t g_odometer = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
 static odometer_filter_state_t g_odometer_filter;
 
@@ -432,6 +432,8 @@ void odometer_reset(void)
     g_odometer.forward_distance = 0.0f;
     g_odometer.strafe_distance = 0.0f;
     g_odometer.travel_distance = 0.0f;
+    g_odometer.forward_velocity_mps = 0.0f;
+    g_odometer.strafe_velocity_mps = 0.0f;
 
     g_odometer_filter.velocity_mps.forward = 0.0f;
     g_odometer_filter.velocity_mps.strafe = 0.0f;
@@ -503,6 +505,8 @@ void odometer_update_100HZ(void)
         g_odometer.forward_distance = 0.0f;
         g_odometer.strafe_distance = 0.0f;
         g_odometer.travel_distance = 0.0f;
+        g_odometer.forward_velocity_mps = 0.0f;
+        g_odometer.strafe_velocity_mps = 0.0f;
         g_odometer_filter.velocity_mps.forward = 0.0f;
         g_odometer_filter.velocity_mps.strafe = 0.0f;
         g_odometer_filter.prev_encoder_velocity_mps = raw_encoder_velocity;
@@ -650,6 +654,8 @@ void odometer_update_100HZ(void)
     g_odometer.forward_distance += distance_delta.forward;
     g_odometer.strafe_distance += distance_delta.strafe;
     g_odometer.travel_distance += odometer_vec_norm(distance_delta);
+    g_odometer.forward_velocity_mps = fused_forward;
+    g_odometer.strafe_velocity_mps = fused_strafe;
 
     g_odometer_filter.velocity_mps.forward = fused_forward;
     g_odometer_filter.velocity_mps.strafe = fused_strafe;

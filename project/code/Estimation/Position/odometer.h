@@ -13,6 +13,8 @@ typedef struct
     float forward_distance;        /* 前后位移，单位 m，前进为正 */
     float strafe_distance;         /* 横向位移，单位 m，左移为正 */
     float travel_distance;         /* 平面累计路程，单位 m */
+    float forward_velocity_mps;    /* 前后速度，单位 m/s，前进为正 */
+    float strafe_velocity_mps;     /* 横向速度，单位 m/s，左移为正 */
 } odometer_data_t;
 
 extern odometer_data_t g_odometer;  /* 全局里程计，其他模块直接读 */
