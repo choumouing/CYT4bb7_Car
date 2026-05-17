@@ -26,6 +26,8 @@ extern float control_yaw_angle_output;    // 角度环输出（rad/s）
 extern float control_yaw_rate_target;     // 角速度目标（rad/s）
 extern float control_yaw_rate_current;    // 当前角速度（rad/s）
 extern float control_yaw_rate_raw;        // 原始角速度（rad/s，未滤波）
+extern float control_yaw_rate_avg_10ms;   // 前10ms角速度均值（rad/s）
+extern float control_yaw_rate_avg_20ms;   // 前20ms角速度均值（rad/s）
 extern float control_yaw_rate_output;     // 角速度环输出（编码器计数）
 
 /* 获取当前航向角（rad，±π）
@@ -33,6 +35,9 @@ extern float control_yaw_rate_output;     // 角速度环输出（编码器计�
  * 用途：角度环反馈、航向保持、坐标变换
  */
 float control_get_current_yaw_angle(void);
+
+/* 1kHz更新角速度滑动均值，供50Hz角速度环使用 */
+void control_yaw_rate_average_update_1000HZ(void);
 
 /* 重置航向保持状态
  * 调用时机：控制关闭时、紧急停机时

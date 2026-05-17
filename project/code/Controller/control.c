@@ -3,6 +3,8 @@
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)  // 度转弧度
 #define CONTROL_PI         (3.14159265358979323846f)
 #define CONTROL_TWO_PI     (6.28318530717958647692f)
+#define CONTROL_YAW_RATE_AVG_10MS_SAMPLES (10U)
+#define CONTROL_YAW_RATE_AVG_20MS_SAMPLES (20U)
 
 /* 四轮PID实例（增量式，轮速控制） */
 IncrementPID wheel_left_front_pid;
@@ -18,14 +20,19 @@ PositionalPID yaw_rate_pid;     // 角速度环（内环）
 float control_yaw_angle_current = 0.0f;   // 当前航向角（rad）
 float control_yaw_angle_output = 0.0f;    // 角度环输出（rad/s目标）
 float control_yaw_rate_target = 0.0f;     // 角速度目标（rad/s）
-float control_yaw_rate_current = 0.0f;    // 滤波后角速度（rad/s）
+float control_yaw_rate_current = 0.0f;    // 角速度环反馈（rad/s）
 float control_yaw_rate_raw = 0.0f;        // 原始角速度（rad/s）
+float control_yaw_rate_avg_10ms = 0.0f;   // 前10ms角速度均值（rad/s）
+float control_yaw_rate_avg_20ms = 0.0f;   // 前20ms角速度均值（rad/s）
 float control_yaw_rate_output = 0.0f;     // 角速度环输出（编码器计数）
 
 /* 航向保持相关（松开旋转摇杆时锁定朝向） */
 static float s_yaw_hold_target = 0.0f;    // 保持的目标航向
 static uint8 s_last_rotate_active = 0U;   // 上次是否有旋转输入
 static uint8 s_yaw_hold_active = 0U;      // 航向保持是否激活
+static float s_yaw_rate_avg_window[CONTROL_YAW_RATE_AVG_20MS_SAMPLES];
+static uint8 s_yaw_rate_avg_write_index = 0U;
+static uint8 s_yaw_rate_avg_sample_count = 0U;
 
 /* 角度归一化到±π */
 static float control_normalize_angle_rad(float angle)
@@ -41,6 +48,77 @@ static float control_normalize_angle_rad(float angle)
     }
 
     return angle;
+}
+
+static void control_yaw_rate_average_reset(void)
+{
+    uint8 i;
+
+    for(i = 0U; i < CONTROL_YAW_RATE_AVG_20MS_SAMPLES; i++)
+    {
+        s_yaw_rate_avg_window[i] = 0.0f;
+    }
+
+    s_yaw_rate_avg_write_index = 0U;
+    s_yaw_rate_avg_sample_count = 0U;
+    control_yaw_rate_avg_10ms = 0.0f;
+    control_yaw_rate_avg_20ms = 0.0f;
+}
+
+void control_yaw_rate_average_update_1000HZ(void)
+{
+    uint8 i;
+    uint8 index;
+    uint8 count_10ms;
+    uint8 count_20ms;
+    float yaw_rate_radps;
+    float sum_10ms;
+    float sum_20ms;
+
+    yaw_rate_radps = -g_imufilter_1000hz.gyroz * CONTROL_DEG_TO_RAD;
+    s_yaw_rate_avg_window[s_yaw_rate_avg_write_index] = yaw_rate_radps;
+    s_yaw_rate_avg_write_index++;
+    if(s_yaw_rate_avg_write_index >= CONTROL_YAW_RATE_AVG_20MS_SAMPLES)
+    {
+        s_yaw_rate_avg_write_index = 0U;
+    }
+
+    if(s_yaw_rate_avg_sample_count < CONTROL_YAW_RATE_AVG_20MS_SAMPLES)
+    {
+        s_yaw_rate_avg_sample_count++;
+    }
+
+    count_20ms = s_yaw_rate_avg_sample_count;
+    count_10ms = (count_20ms > CONTROL_YAW_RATE_AVG_10MS_SAMPLES) ?
+                 CONTROL_YAW_RATE_AVG_10MS_SAMPLES :
+                 count_20ms;
+    sum_10ms = 0.0f;
+    sum_20ms = 0.0f;
+    index = s_yaw_rate_avg_write_index;
+
+    for(i = 0U; i < count_20ms; i++)
+    {
+        if(0U == index)
+        {
+            index = CONTROL_YAW_RATE_AVG_20MS_SAMPLES;
+        }
+        index--;
+
+        sum_20ms += s_yaw_rate_avg_window[index];
+        if(i < count_10ms)
+        {
+            sum_10ms += s_yaw_rate_avg_window[index];
+        }
+    }
+
+    if(count_10ms > 0U)
+    {
+        control_yaw_rate_avg_10ms = sum_10ms / (float)count_10ms;
+    }
+    if(count_20ms > 0U)
+    {
+        control_yaw_rate_avg_20ms = sum_20ms / (float)count_20ms;
+    }
 }
 
 /* 获取当前航向角（rad，±π）
@@ -119,6 +197,7 @@ void control_speed_loop_init(void)
 /* 初始化串级控制：角度环 + 角速度环 + 速度环 */
 void control_cascade_init(void)
 {
+    control_yaw_rate_average_reset();
     control_yaw_angle_pid_init();
     control_yaw_rate_pid_init();
     control_speed_loop_init();
@@ -179,7 +258,7 @@ float control_yaw_angle_loop_update_25HZ(float yaw_angle_target)
 /* 角速度环更新（50HZ）
  * 输入：角速度目标（rad/s，来自角度环或遥控器直接指定）
  * 输出：编码器计数（给速度环作为旋转分量）
- * 数据来源：ICM42688陀螺仪（1000HZ滤波后，转弧度取反）
+ * 数据来源：1kHz更新的前20ms角速度均值
  */
 float control_yaw_rate_loop_update_50HZ(float yaw_rate_target)
 {
@@ -187,7 +266,7 @@ float control_yaw_rate_loop_update_50HZ(float yaw_rate_target)
 
     control_yaw_rate_target = yaw_rate_target;
     control_yaw_rate_raw = -ICM42688.gyro_z * CONTROL_DEG_TO_RAD;
-    control_yaw_rate_current = -g_imufilter_1000hz.gyroz * CONTROL_DEG_TO_RAD;
+    control_yaw_rate_current = control_yaw_rate_avg_20ms;
     control_yaw_rate_output = PositionalPID_Update(&yaw_rate_pid,
                                                    yaw_rate_target,
                                                    control_yaw_rate_current);
