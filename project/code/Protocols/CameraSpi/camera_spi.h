@@ -2,17 +2,16 @@
  * Camera SPI master public interface.
  *
  * The master polls three 2BL3 image boards. Application code only uses raw
- * 12-byte payloads; protocol framing and hardware details stay inside the
- * module.
+ * payloads; protocol framing and hardware details stay inside the module.
  */
 
 #ifndef CAMERA_SPI_H
 #define CAMERA_SPI_H
 
 #include "zf_common_headfile.h"
+#include "camera_spi_types.h"
 
 #define CAMERA_SPI_SLAVE_COUNT       (3U)
-#define CAMERA_SPI_APP_DATA_CAPACITY (12U)
 
 typedef enum
 {
