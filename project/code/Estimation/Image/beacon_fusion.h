@@ -2,9 +2,10 @@
 #define BEACON_FUSION_H
 
 #include "zf_common_typedef.h"
+#include "Protocols/CameraSpi/camera_spi_types.h"
 
 #define BEACON_FUSION_CAMERA_COUNT       (3U)
-#define BEACON_FUSION_CAMERA_TARGETS     (3U)
+#define BEACON_FUSION_CAMERA_TARGETS     (CAMERA_SPI_IMAGE_TARGET_COUNT)
 #define BEACON_FUSION_MAX_OBSERVATIONS   (BEACON_FUSION_CAMERA_COUNT * BEACON_FUSION_CAMERA_TARGETS)
 #define BEACON_FUSION_MAX_BEACONS        (5U)
 

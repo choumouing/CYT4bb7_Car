@@ -193,4 +193,5 @@ temp/gitee_seekfree_cyt4bb7_library/
 
 nul
 *.py
+!project/code/Estimation/Image/beacon_fusion_offline.py
 .spec-workflow
