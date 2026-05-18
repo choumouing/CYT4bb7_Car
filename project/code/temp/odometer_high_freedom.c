@@ -1,331 +1,313 @@
 #include "odometer_high_freedom.h"
 
+#include <math.h>
+#include <stddef.h>
 
-#define ODOMETER_UPDATE_DT_S                (0.01f)
-#define ODOMETER_STARTUP_HOLD_TICKS         (50U)
-#define ODOMETER_FORWARD_COUNT_PER_METER    (11287.0f)
-#define ODOMETER_STRAFE_COUNT_PER_METER_ABS (12100.0f)
+#define ODOM_HF_UPDATE_DT_S                (0.01f)
+#define ODOM_HF_STARTUP_HOLD_TICKS         (50U)
+#define ODOM_HF_FORWARD_COUNT_PER_METER    (11287.0f)
+#define ODOM_HF_STRAFE_COUNT_PER_METER_ABS (12100.0f)
 
-#define ODOMETER_DEG_TO_RAD                 (0.017453292519943295f)
-#define ODOMETER_PI                         (3.14159265358979323846f)
-#define ODOMETER_TWO_PI                     (6.28318530717958647692f)
-#define ODOMETER_EPSILON                    (1.0e-6f)
+#define ODOM_HF_DEG_TO_RAD                 (0.017453292519943295f)
+#define ODOM_HF_PI                         (3.14159265358979323846f)
+#define ODOM_HF_TWO_PI                     (6.28318530717958647692f)
+#define ODOM_HF_EPSILON                    (1.0e-6f)
 
-/*
- * 高自由度离线拟合版本。
- * 说明: 该版本在当前 11 组数据上误差最低，但参数自由度较高，正式使用前需要新增数据交叉验证。
- */
-#define ODOMETER_YAW_INTEGRAL_GAIN          (0.10f)
-#define ODOMETER_AXIS_SPEED_BREAK_MPS       (0.35f)
-#define ODOMETER_AXIS_SPEED_RANGE_MPS       (1.00f)
-#define ODOMETER_DUAL_RATIO_BREAK           (0.15f)
-#define ODOMETER_DUAL_RATIO_RANGE           (0.50f)
-#define ODOMETER_YAW_RATE_REF_DPS           (80.0f)
+#define ODOM_HF_FAST_SPEED_START_MPS       (0.35f)
+#define ODOM_HF_FAST_SPEED_RANGE_MPS       (1.00f)
+#define ODOM_HF_DUAL_RATIO_START           (0.15f)
+#define ODOM_HF_DUAL_RATIO_RANGE           (0.50f)
+#define ODOM_HF_YAW_RATE_REF_DPS           (80.0f)
+#define ODOM_HF_YAW_PROJECTION_GAIN        (-0.30f)
 
-#define ODOMETER_FWD_FP_BASE                (0.87647697f)
-#define ODOMETER_FWD_FN_BASE                (0.90167164f)
-#define ODOMETER_FWD_SP_BASE                (-0.09383003f)
-#define ODOMETER_FWD_SN_BASE                (-0.05782720f)
-#define ODOMETER_FWD_FP_AXIS                (-0.06856631f)
-#define ODOMETER_FWD_FN_AXIS                (-0.00171054f)
-#define ODOMETER_FWD_SP_AXIS                (0.33128398f)
-#define ODOMETER_FWD_SN_AXIS                (0.10364321f)
-#define ODOMETER_FWD_FP_DUAL                (-0.06949153f)
-#define ODOMETER_FWD_FN_DUAL                (0.23064157f)
-#define ODOMETER_FWD_SP_DUAL                (0.09346553f)
-#define ODOMETER_FWD_SN_DUAL                (-0.09552139f)
-#define ODOMETER_FWD_FP_YAWRATE             (1.44317809f)
-#define ODOMETER_FWD_FN_YAWRATE             (-1.01732248f)
-#define ODOMETER_FWD_SP_YAWRATE             (-0.51637106f)
-#define ODOMETER_FWD_SN_YAWRATE             (1.10436543f)
+#define ODOM_HF_CF_FP                      (1.30232242f)
+#define ODOM_HF_CF_FN                      (0.74862410f)
+#define ODOM_HF_CF_SP                      (-0.49652230f)
+#define ODOM_HF_CF_SN                      (0.25794964f)
+#define ODOM_HF_CF_FP_FAST                 (-0.81804909f)
+#define ODOM_HF_CF_FN_FAST                 (0.23802903f)
+#define ODOM_HF_CF_SP_FAST                 (0.78750857f)
+#define ODOM_HF_CF_SN_FAST                 (-0.38733112f)
+#define ODOM_HF_CF_FP_DUAL                 (0.49952085f)
+#define ODOM_HF_CF_FN_DUAL                 (-0.78582360f)
+#define ODOM_HF_CF_SP_DUAL                 (-0.55221557f)
+#define ODOM_HF_CF_SN_DUAL                 (0.59020688f)
+#define ODOM_HF_CF_FP_YAW                  (3.54574689f)
+#define ODOM_HF_CF_FN_YAW                  (1.25208046f)
+#define ODOM_HF_CF_SP_YAW                  (0.26910336f)
+#define ODOM_HF_CF_SN_YAW                  (0.72310716f)
 
-#define ODOMETER_STRAFE_FP_BASE             (0.26635523f)
-#define ODOMETER_STRAFE_FN_BASE             (-0.08793618f)
-#define ODOMETER_STRAFE_SP_BASE             (0.67135251f)
-#define ODOMETER_STRAFE_SN_BASE             (1.16741196f)
-#define ODOMETER_STRAFE_FP_AXIS             (-0.41095207f)
-#define ODOMETER_STRAFE_FN_AXIS             (0.13405844f)
-#define ODOMETER_STRAFE_SP_AXIS             (0.42152586f)
-#define ODOMETER_STRAFE_SN_AXIS             (-0.21177676f)
-#define ODOMETER_STRAFE_FP_DUAL             (0.18528411f)
-#define ODOMETER_STRAFE_FN_DUAL             (-0.47628442f)
-#define ODOMETER_STRAFE_SP_DUAL             (-0.39473401f)
-#define ODOMETER_STRAFE_SN_DUAL             (0.24036549f)
-#define ODOMETER_STRAFE_FP_YAWRATE          (-0.10017021f)
-#define ODOMETER_STRAFE_FN_YAWRATE          (0.23634134f)
-#define ODOMETER_STRAFE_SP_YAWRATE          (-0.86158350f)
-#define ODOMETER_STRAFE_SN_YAWRATE          (-1.64313940f)
+#define ODOM_HF_CS_FP                      (0.12188119f)
+#define ODOM_HF_CS_FN                      (-0.05250789f)
+#define ODOM_HF_CS_SP                      (0.82308289f)
+#define ODOM_HF_CS_SN                      (1.08350193f)
+#define ODOM_HF_CS_FP_FAST                 (-0.13035869f)
+#define ODOM_HF_CS_FN_FAST                 (0.08995032f)
+#define ODOM_HF_CS_SP_FAST                 (0.22171650f)
+#define ODOM_HF_CS_SN_FAST                 (-0.07503716f)
+#define ODOM_HF_CS_FP_DUAL                 (0.07562612f)
+#define ODOM_HF_CS_FN_DUAL                 (-0.25891603f)
+#define ODOM_HF_CS_SP_DUAL                 (-0.20408599f)
+#define ODOM_HF_CS_SN_DUAL                 (0.16322013f)
+#define ODOM_HF_CS_FP_YAW                  (-1.05012010f)
+#define ODOM_HF_CS_FN_YAW                  (-0.40064650f)
+#define ODOM_HF_CS_SP_YAW                  (-1.02145046f)
+#define ODOM_HF_CS_SN_YAW                  (-1.83732820f)
 
-typedef struct
+static float odom_hf_absf(float value)
 {
-    float forward;
-    float strafe;
-} odometer_vec2_t;
-
-typedef struct
-{
-    float yaw_delta_rad;
-    float gyro_sum_dps[3];
-    uint16_t gyro_sample_count;
-    uint16_t startup_hold_ticks;
-} odometer_filter_state_t;
-
-odometer_data_t g_odometer = {0.0f, 0.0f, 0.0f};
-
-static odometer_filter_state_t g_odometer_filter;
-
-static float odometer_vec_norm(odometer_vec2_t value)
-{
-    return sqrtf((value.forward * value.forward) + (value.strafe * value.strafe));
+    return (value >= 0.0f) ? value : -value;
 }
 
-static float odometer_normalize_angle(float angle)
+static float odom_hf_minf(float a, float b)
 {
-    while(angle > ODOMETER_PI)
+    return (a < b) ? a : b;
+}
+
+static float odom_hf_clampf(float value, float min_value, float max_value)
+{
+    if(value < min_value)
     {
-        angle -= ODOMETER_TWO_PI;
+        return min_value;
     }
 
-    while(angle < -ODOMETER_PI)
+    if(value > max_value)
     {
-        angle += ODOMETER_TWO_PI;
+        return max_value;
+    }
+
+    return value;
+}
+
+static float odom_hf_normalize_angle(float angle)
+{
+    while(angle > ODOM_HF_PI)
+    {
+        angle -= ODOM_HF_TWO_PI;
+    }
+
+    while(angle < -ODOM_HF_PI)
+    {
+        angle += ODOM_HF_TWO_PI;
     }
 
     return angle;
 }
 
-static float odometer_positive_part(float value)
+static uint8_t odom_hf_is_finite(float value)
 {
-    return (value > 0.0f) ? value : 0.0f;
+    if(value != value)
+    {
+        return 0U;
+    }
+
+    if((value > 1000000.0f) || (value < -1000000.0f))
+    {
+        return 0U;
+    }
+
+    return 1U;
 }
 
-static float odometer_negative_part(float value)
+static float odom_hf_choose_gyro_z_dps(odometer_high_freedom_t *odometer,
+                                       float fallback_gyro_z_dps)
 {
-    return (value < 0.0f) ? value : 0.0f;
+    float gyro_z_dps;
+
+    if(odometer->gyro_z_sample_count > 0U)
+    {
+        gyro_z_dps = odometer->gyro_z_sum_dps / (float)odometer->gyro_z_sample_count;
+    }
+    else
+    {
+        gyro_z_dps = fallback_gyro_z_dps;
+    }
+
+    odometer->gyro_z_sum_dps = 0.0f;
+    odometer->gyro_z_sample_count = 0U;
+
+    if(0U == odom_hf_is_finite(gyro_z_dps))
+    {
+        gyro_z_dps = odometer->last_gyro_z_dps;
+    }
+
+    odometer->last_gyro_z_dps = gyro_z_dps;
+    return gyro_z_dps;
 }
 
-static float odometer_axis_speed_weight(float speed_abs_mps)
+void odometer_high_freedom_init(odometer_high_freedom_t *odometer)
 {
-    return car_math_clampf((speed_abs_mps - ODOMETER_AXIS_SPEED_BREAK_MPS) /
-                           ODOMETER_AXIS_SPEED_RANGE_MPS,
-                           0.0f,
-                           1.0f);
+    odometer_high_freedom_reset(odometer);
 }
 
-static float odometer_dual_axis_weight(odometer_vec2_t velocity)
+void odometer_high_freedom_reset(odometer_high_freedom_t *odometer)
 {
-    float speed_norm;
-    float dual_ratio;
+    if(odometer == NULL)
+    {
+        return;
+    }
 
-    speed_norm = odometer_vec_norm(velocity);
-    dual_ratio = car_math_minf(car_math_absf(velocity.forward),
-                               car_math_absf(velocity.strafe)) /
-                 (speed_norm + ODOMETER_EPSILON);
-    return car_math_clampf((dual_ratio - ODOMETER_DUAL_RATIO_BREAK) /
-                           ODOMETER_DUAL_RATIO_RANGE,
-                           0.0f,
-                           1.0f);
+    odometer->output.forward_distance_m = 0.0f;
+    odometer->output.strafe_distance_m = 0.0f;
+    odometer->output.travel_distance_m = 0.0f;
+    odometer->yaw_rad = 0.0f;
+    odometer->gyro_z_sum_dps = 0.0f;
+    odometer->last_gyro_z_dps = 0.0f;
+    odometer->gyro_z_sample_count = 0U;
+    odometer->startup_hold_ticks = ODOM_HF_STARTUP_HOLD_TICKS;
 }
 
-static odometer_vec2_t odometer_get_encoder_delta_count(void)
+void odometer_high_freedom_accumulate_gyro_z_1000hz(odometer_high_freedom_t *odometer,
+                                                    float gyro_z_dps)
 {
-    odometer_vec2_t count;
-    float left_front;
-    float right_front;
-    float left_rear;
-    float right_rear;
+    if((odometer == NULL) || (0U == odom_hf_is_finite(gyro_z_dps)))
+    {
+        return;
+    }
 
-    left_front = encoder_get_left_front_filtered_count();
-    right_front = encoder_get_right_front_filtered_count();
-    left_rear = encoder_get_left_rear_filtered_count();
-    right_rear = encoder_get_right_rear_filtered_count();
-
-    count.forward = (left_front + right_front + left_rear + right_rear) * 0.25f;
-    count.strafe = (-left_front + right_front + left_rear - right_rear) * 0.25f;
-    return count;
+    odometer->gyro_z_sum_dps += gyro_z_dps;
+    if(odometer->gyro_z_sample_count < 1000U)
+    {
+        odometer->gyro_z_sample_count++;
+    }
 }
 
-static odometer_vec2_t odometer_get_encoder_velocity(odometer_vec2_t delta_count)
+void odometer_high_freedom_update_100hz(odometer_high_freedom_t *odometer,
+                                        float left_front_count,
+                                        float right_front_count,
+                                        float left_rear_count,
+                                        float right_rear_count,
+                                        float gyro_z_dps)
 {
-    odometer_vec2_t velocity;
-
-    velocity.forward = delta_count.forward / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S;
-    velocity.strafe = delta_count.strafe / ODOMETER_STRAFE_COUNT_PER_METER_ABS / ODOMETER_UPDATE_DT_S;
-    return velocity;
-}
-
-static odometer_vec2_t odometer_compensate_encoder_velocity(odometer_vec2_t velocity,
-                                                           float yaw_rate_abs_dps)
-{
-    odometer_vec2_t compensated;
+    float raw_forward_mps;
+    float raw_strafe_mps;
     float fp;
     float fn;
     float sp;
     float sn;
-    float fw;
-    float sw;
-    float dw;
-    float yw;
-
-    fp = odometer_positive_part(velocity.forward);
-    fn = odometer_negative_part(velocity.forward);
-    sp = odometer_positive_part(velocity.strafe);
-    sn = odometer_negative_part(velocity.strafe);
-    fw = odometer_axis_speed_weight(car_math_absf(velocity.forward));
-    sw = odometer_axis_speed_weight(car_math_absf(velocity.strafe));
-    dw = odometer_dual_axis_weight(velocity);
-    yw = car_math_clampf(yaw_rate_abs_dps / ODOMETER_YAW_RATE_REF_DPS, 0.0f, 1.0f);
-
-    compensated.forward =
-        (ODOMETER_FWD_FP_BASE * fp) +
-        (ODOMETER_FWD_FN_BASE * fn) +
-        (ODOMETER_FWD_SP_BASE * sp) +
-        (ODOMETER_FWD_SN_BASE * sn) +
-        (ODOMETER_FWD_FP_AXIS * fp * fw) +
-        (ODOMETER_FWD_FN_AXIS * fn * fw) +
-        (ODOMETER_FWD_SP_AXIS * sp * sw) +
-        (ODOMETER_FWD_SN_AXIS * sn * sw) +
-        (ODOMETER_FWD_FP_DUAL * fp * dw) +
-        (ODOMETER_FWD_FN_DUAL * fn * dw) +
-        (ODOMETER_FWD_SP_DUAL * sp * dw) +
-        (ODOMETER_FWD_SN_DUAL * sn * dw) +
-        (ODOMETER_FWD_FP_YAWRATE * fp * yw) +
-        (ODOMETER_FWD_FN_YAWRATE * fn * yw) +
-        (ODOMETER_FWD_SP_YAWRATE * sp * yw) +
-        (ODOMETER_FWD_SN_YAWRATE * sn * yw);
-
-    compensated.strafe =
-        (ODOMETER_STRAFE_FP_BASE * fp) +
-        (ODOMETER_STRAFE_FN_BASE * fn) +
-        (ODOMETER_STRAFE_SP_BASE * sp) +
-        (ODOMETER_STRAFE_SN_BASE * sn) +
-        (ODOMETER_STRAFE_FP_AXIS * fp * fw) +
-        (ODOMETER_STRAFE_FN_AXIS * fn * fw) +
-        (ODOMETER_STRAFE_SP_AXIS * sp * sw) +
-        (ODOMETER_STRAFE_SN_AXIS * sn * sw) +
-        (ODOMETER_STRAFE_FP_DUAL * fp * dw) +
-        (ODOMETER_STRAFE_FN_DUAL * fn * dw) +
-        (ODOMETER_STRAFE_SP_DUAL * sp * dw) +
-        (ODOMETER_STRAFE_SN_DUAL * sn * dw) +
-        (ODOMETER_STRAFE_FP_YAWRATE * fp * yw) +
-        (ODOMETER_STRAFE_FN_YAWRATE * fn * yw) +
-        (ODOMETER_STRAFE_SP_YAWRATE * sp * yw) +
-        (ODOMETER_STRAFE_SN_YAWRATE * sn * yw);
-
-    return compensated;
-}
-
-static void odometer_clear_gyro_average(void)
-{
-    g_odometer_filter.gyro_sum_dps[0] = 0.0f;
-    g_odometer_filter.gyro_sum_dps[1] = 0.0f;
-    g_odometer_filter.gyro_sum_dps[2] = 0.0f;
-    g_odometer_filter.gyro_sample_count = 0U;
-}
-
-static void odometer_get_gyro_average_dps(float gyro_avg_dps[3])
-{
-    float inv_count;
-
-    if((gyro_avg_dps == 0) || (0U == g_odometer_filter.gyro_sample_count))
-    {
-        if(gyro_avg_dps != 0)
-        {
-            gyro_avg_dps[0] = 0.0f;
-            gyro_avg_dps[1] = 0.0f;
-            gyro_avg_dps[2] = 0.0f;
-        }
-        return;
-    }
-
-    inv_count = 1.0f / (float)g_odometer_filter.gyro_sample_count;
-    gyro_avg_dps[0] = g_odometer_filter.gyro_sum_dps[0] * inv_count;
-    gyro_avg_dps[1] = g_odometer_filter.gyro_sum_dps[1] * inv_count;
-    gyro_avg_dps[2] = g_odometer_filter.gyro_sum_dps[2] * inv_count;
-}
-
-void odometer_init(void)
-{
-    odometer_reset();
-}
-
-void odometer_reset(void)
-{
-    g_odometer.forward_distance = 0.0f;
-    g_odometer.strafe_distance = 0.0f;
-    g_odometer.travel_distance = 0.0f;
-
-    g_odometer_filter.yaw_delta_rad = 0.0f;
-    g_odometer_filter.startup_hold_ticks = ODOMETER_STARTUP_HOLD_TICKS;
-    odometer_clear_gyro_average();
-}
-
-void odometer_update_1000HZ(void)
-{
-    float gyro_x_dps;
-    float gyro_y_dps;
-    float gyro_z_dps;
-
-    gyro_x_dps = 0.0f;
-    gyro_y_dps = 0.0f;
-    gyro_z_dps = 0.0f;
-    AccelCalibration_GetBodyGyroDps(&gyro_x_dps, &gyro_y_dps, &gyro_z_dps);
-
-    g_odometer_filter.gyro_sum_dps[0] += gyro_x_dps;
-    g_odometer_filter.gyro_sum_dps[1] += gyro_y_dps;
-    g_odometer_filter.gyro_sum_dps[2] += gyro_z_dps;
-    if(g_odometer_filter.gyro_sample_count < 1000U)
-    {
-        g_odometer_filter.gyro_sample_count++;
-    }
-}
-
-void odometer_update_100HZ(void)
-{
-    odometer_vec2_t delta_count;
-    odometer_vec2_t raw_velocity;
-    odometer_vec2_t compensated_velocity;
-    odometer_vec2_t distance_delta;
-    float gyro_avg_dps[3];
-    float yaw_step_rad;
+    float forward_fast_weight;
+    float strafe_fast_weight;
+    float speed_norm;
+    float dual_ratio;
+    float dual_weight;
+    float yawrate_weight;
+    float corrected_forward_mps;
+    float corrected_strafe_mps;
     float yaw_for_projection;
     float cos_yaw;
     float sin_yaw;
+    float forward_delta_m;
+    float strafe_delta_m;
 
-    delta_count = odometer_get_encoder_delta_count();
-    raw_velocity = odometer_get_encoder_velocity(delta_count);
-
-    odometer_get_gyro_average_dps(gyro_avg_dps);
-    odometer_clear_gyro_average();
-
-    compensated_velocity =
-        odometer_compensate_encoder_velocity(raw_velocity, car_math_absf(gyro_avg_dps[2]));
-
-    if(g_odometer_filter.startup_hold_ticks > 0U)
+    if(odometer == NULL)
     {
-        g_odometer.forward_distance = 0.0f;
-        g_odometer.strafe_distance = 0.0f;
-        g_odometer.travel_distance = 0.0f;
-        g_odometer_filter.yaw_delta_rad = 0.0f;
-        g_odometer_filter.startup_hold_ticks--;
         return;
     }
 
-    yaw_step_rad = gyro_avg_dps[2] * ODOMETER_DEG_TO_RAD * ODOMETER_UPDATE_DT_S;
-    g_odometer_filter.yaw_delta_rad =
-        odometer_normalize_angle(g_odometer_filter.yaw_delta_rad + yaw_step_rad);
+    gyro_z_dps = odom_hf_choose_gyro_z_dps(odometer, gyro_z_dps);
 
-    yaw_for_projection = g_odometer_filter.yaw_delta_rad * ODOMETER_YAW_INTEGRAL_GAIN;
+    if(odometer->startup_hold_ticks > 0U)
+    {
+        odometer->output.forward_distance_m = 0.0f;
+        odometer->output.strafe_distance_m = 0.0f;
+        odometer->output.travel_distance_m = 0.0f;
+        odometer->yaw_rad = 0.0f;
+        odometer->startup_hold_ticks--;
+        return;
+    }
+
+    raw_forward_mps = (left_front_count + right_front_count + left_rear_count + right_rear_count) *
+                      0.25f / ODOM_HF_FORWARD_COUNT_PER_METER / ODOM_HF_UPDATE_DT_S;
+    raw_strafe_mps = (-left_front_count + right_front_count + left_rear_count - right_rear_count) *
+                     0.25f / ODOM_HF_STRAFE_COUNT_PER_METER_ABS / ODOM_HF_UPDATE_DT_S;
+
+    odometer->yaw_rad = odom_hf_normalize_angle(odometer->yaw_rad +
+                                                gyro_z_dps * ODOM_HF_DEG_TO_RAD *
+                                                ODOM_HF_UPDATE_DT_S);
+
+    fp = (raw_forward_mps > 0.0f) ? raw_forward_mps : 0.0f;
+    fn = (raw_forward_mps < 0.0f) ? raw_forward_mps : 0.0f;
+    sp = (raw_strafe_mps > 0.0f) ? raw_strafe_mps : 0.0f;
+    sn = (raw_strafe_mps < 0.0f) ? raw_strafe_mps : 0.0f;
+
+    forward_fast_weight = odom_hf_clampf((odom_hf_absf(raw_forward_mps) -
+                                          ODOM_HF_FAST_SPEED_START_MPS) /
+                                             ODOM_HF_FAST_SPEED_RANGE_MPS,
+                                         0.0f,
+                                         1.0f);
+    strafe_fast_weight = odom_hf_clampf((odom_hf_absf(raw_strafe_mps) -
+                                         ODOM_HF_FAST_SPEED_START_MPS) /
+                                            ODOM_HF_FAST_SPEED_RANGE_MPS,
+                                        0.0f,
+                                        1.0f);
+    speed_norm = sqrtf((raw_forward_mps * raw_forward_mps) +
+                       (raw_strafe_mps * raw_strafe_mps));
+    dual_ratio = odom_hf_minf(odom_hf_absf(raw_forward_mps),
+                              odom_hf_absf(raw_strafe_mps)) /
+                 (speed_norm + ODOM_HF_EPSILON);
+    dual_weight = odom_hf_clampf((dual_ratio - ODOM_HF_DUAL_RATIO_START) /
+                                     ODOM_HF_DUAL_RATIO_RANGE,
+                                 0.0f,
+                                 1.0f);
+    yawrate_weight = odom_hf_clampf(odom_hf_absf(gyro_z_dps) / ODOM_HF_YAW_RATE_REF_DPS,
+                                    0.0f,
+                                    1.0f);
+
+    corrected_forward_mps =
+        (ODOM_HF_CF_FP * fp) + (ODOM_HF_CF_FN * fn) +
+        (ODOM_HF_CF_SP * sp) + (ODOM_HF_CF_SN * sn) +
+        (ODOM_HF_CF_FP_FAST * fp * forward_fast_weight) +
+        (ODOM_HF_CF_FN_FAST * fn * forward_fast_weight) +
+        (ODOM_HF_CF_SP_FAST * sp * strafe_fast_weight) +
+        (ODOM_HF_CF_SN_FAST * sn * strafe_fast_weight) +
+        (ODOM_HF_CF_FP_DUAL * fp * dual_weight) +
+        (ODOM_HF_CF_FN_DUAL * fn * dual_weight) +
+        (ODOM_HF_CF_SP_DUAL * sp * dual_weight) +
+        (ODOM_HF_CF_SN_DUAL * sn * dual_weight) +
+        (ODOM_HF_CF_FP_YAW * fp * yawrate_weight) +
+        (ODOM_HF_CF_FN_YAW * fn * yawrate_weight) +
+        (ODOM_HF_CF_SP_YAW * sp * yawrate_weight) +
+        (ODOM_HF_CF_SN_YAW * sn * yawrate_weight);
+
+    corrected_strafe_mps =
+        (ODOM_HF_CS_FP * fp) + (ODOM_HF_CS_FN * fn) +
+        (ODOM_HF_CS_SP * sp) + (ODOM_HF_CS_SN * sn) +
+        (ODOM_HF_CS_FP_FAST * fp * forward_fast_weight) +
+        (ODOM_HF_CS_FN_FAST * fn * forward_fast_weight) +
+        (ODOM_HF_CS_SP_FAST * sp * strafe_fast_weight) +
+        (ODOM_HF_CS_SN_FAST * sn * strafe_fast_weight) +
+        (ODOM_HF_CS_FP_DUAL * fp * dual_weight) +
+        (ODOM_HF_CS_FN_DUAL * fn * dual_weight) +
+        (ODOM_HF_CS_SP_DUAL * sp * dual_weight) +
+        (ODOM_HF_CS_SN_DUAL * sn * dual_weight) +
+        (ODOM_HF_CS_FP_YAW * fp * yawrate_weight) +
+        (ODOM_HF_CS_FN_YAW * fn * yawrate_weight) +
+        (ODOM_HF_CS_SP_YAW * sp * yawrate_weight) +
+        (ODOM_HF_CS_SN_YAW * sn * yawrate_weight);
+
+    yaw_for_projection = odometer->yaw_rad * ODOM_HF_YAW_PROJECTION_GAIN;
     cos_yaw = cosf(yaw_for_projection);
     sin_yaw = sinf(yaw_for_projection);
-    distance_delta.forward = ((cos_yaw * compensated_velocity.forward) -
-                              (sin_yaw * compensated_velocity.strafe)) *
-                             ODOMETER_UPDATE_DT_S;
-    distance_delta.strafe = ((sin_yaw * compensated_velocity.forward) +
-                             (cos_yaw * compensated_velocity.strafe)) *
-                            ODOMETER_UPDATE_DT_S;
+    forward_delta_m = ((cos_yaw * corrected_forward_mps) -
+                       (sin_yaw * corrected_strafe_mps)) *
+                      ODOM_HF_UPDATE_DT_S;
+    strafe_delta_m = ((sin_yaw * corrected_forward_mps) +
+                      (cos_yaw * corrected_strafe_mps)) *
+                     ODOM_HF_UPDATE_DT_S;
 
-    g_odometer.forward_distance += distance_delta.forward;
-    g_odometer.strafe_distance += distance_delta.strafe;
-    g_odometer.travel_distance += odometer_vec_norm(distance_delta);
+    odometer->output.forward_distance_m += forward_delta_m;
+    odometer->output.strafe_distance_m += strafe_delta_m;
+    odometer->output.travel_distance_m += sqrtf((forward_delta_m * forward_delta_m) +
+                                                (strafe_delta_m * strafe_delta_m));
+}
+
+const odometer_high_freedom_output_t *odometer_high_freedom_get_output(
+    const odometer_high_freedom_t *odometer)
+{
+    if(odometer == NULL)
+    {
+        return NULL;
+    }
+
+    return &odometer->output;
 }
