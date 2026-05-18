@@ -33,8 +33,17 @@ volatile float g_air_state;
 volatile float g_air_reserved0;
 volatile float g_air_reserved1;
 volatile float g_air_reserved2;
+volatile float g_air_crsf_std_ch0;
+volatile float g_air_crsf_std_ch1;
+volatile float g_air_crsf_std_ch2;
+volatile float g_air_crsf_std_ch3;
+volatile float g_air_crsf_std_ch4;
+volatile float g_air_crsf_std_ch5;
+volatile float g_air_crsf_std_ch6;
+volatile float g_air_crsf_std_ch7;
 
-#define AIR_RUN_DATA_COUNT (10U)
+#define AIR_RUN_DATA_BASE_COUNT (7U)
+#define AIR_RUN_DATA_CRSF_COUNT (15U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -42,9 +51,14 @@ volatile float g_air_reserved2;
 #define AIR_RUN_DATA_POS_EST_VEL_X (4U)
 #define AIR_RUN_DATA_POS_EST_VEL_Y (5U)
 #define AIR_RUN_DATA_STATE (6U)
-#define AIR_RUN_DATA_RESERVED0 (7U)
-#define AIR_RUN_DATA_RESERVED1 (8U)
-#define AIR_RUN_DATA_RESERVED2 (9U)
+#define AIR_RUN_DATA_CRSF_STD_CH0 (7U)
+#define AIR_RUN_DATA_CRSF_STD_CH1 (8U)
+#define AIR_RUN_DATA_CRSF_STD_CH2 (9U)
+#define AIR_RUN_DATA_CRSF_STD_CH3 (10U)
+#define AIR_RUN_DATA_CRSF_STD_CH4 (11U)
+#define AIR_RUN_DATA_CRSF_STD_CH5 (12U)
+#define AIR_RUN_DATA_CRSF_STD_CH6 (13U)
+#define AIR_RUN_DATA_CRSF_STD_CH7 (14U)
 
 static void car_loop_write_u32_le(uint8 *data, uint32 value)
 {
@@ -64,7 +78,7 @@ static float car_loop_read_float_le(const uint8 *data)
 
 static void on_air_data(const float *data, uint8 count)
 {
-    if (count >= AIR_RUN_DATA_COUNT)
+    if (count >= AIR_RUN_DATA_BASE_COUNT)
     {
         g_air_tof_fused_height_mm = data[AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM];
         g_air_euler_roll = data[AIR_RUN_DATA_EULER_ROLL];
@@ -73,9 +87,18 @@ static void on_air_data(const float *data, uint8 count)
         g_air_pos_est_vel_x = data[AIR_RUN_DATA_POS_EST_VEL_X];
         g_air_pos_est_vel_y = data[AIR_RUN_DATA_POS_EST_VEL_Y];
         g_air_state = data[AIR_RUN_DATA_STATE];
-        g_air_reserved0 = data[AIR_RUN_DATA_RESERVED0];
-        g_air_reserved1 = data[AIR_RUN_DATA_RESERVED1];
-        g_air_reserved2 = data[AIR_RUN_DATA_RESERVED2];
+    }
+
+    if (count >= AIR_RUN_DATA_CRSF_COUNT)
+    {
+        g_air_crsf_std_ch0 = data[AIR_RUN_DATA_CRSF_STD_CH0];
+        g_air_crsf_std_ch1 = data[AIR_RUN_DATA_CRSF_STD_CH1];
+        g_air_crsf_std_ch2 = data[AIR_RUN_DATA_CRSF_STD_CH2];
+        g_air_crsf_std_ch3 = data[AIR_RUN_DATA_CRSF_STD_CH3];
+        g_air_crsf_std_ch4 = data[AIR_RUN_DATA_CRSF_STD_CH4];
+        g_air_crsf_std_ch5 = data[AIR_RUN_DATA_CRSF_STD_CH5];
+        g_air_crsf_std_ch6 = data[AIR_RUN_DATA_CRSF_STD_CH6];
+        g_air_crsf_std_ch7 = data[AIR_RUN_DATA_CRSF_STD_CH7];
     }
 }
 
