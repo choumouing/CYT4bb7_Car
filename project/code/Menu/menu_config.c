@@ -8,8 +8,8 @@
 
 //====================================================参数变量区====================================================
 // 轮速PID参数（四个电机共用）
-float wheel_kp = 2.8f;                  // 比例系数
-float wheel_ki = 0.12f;                  // 积分系数
+float wheel_kp = 2.3f;                  // 比例系数
+float wheel_ki = 0.08f;                  // 积分系数
 float wheel_kd = 0.0f;                  // 微分系数
 float wheel_output_limit = 5000.0f;     // 输出限幅 (PWM)
 float wheel_i_limit = 2500.0f;          // 积分限幅

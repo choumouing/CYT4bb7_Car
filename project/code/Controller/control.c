@@ -3,14 +3,14 @@
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)
 #define CONTROL_PI         (3.14159265358979323846f)
 #define CONTROL_TWO_PI     (6.28318530717958647692f)
-#define CONTROL_WHEEL_FF_KS_LF         (300.0f)
-#define CONTROL_WHEEL_FF_KS_RF         (450.0f)
-#define CONTROL_WHEEL_FF_KS_LR         (500.0f)
-#define CONTROL_WHEEL_FF_KS_RR         (520.0f)
-#define CONTROL_WHEEL_FF_KV_LF         (7.25f)
-#define CONTROL_WHEEL_FF_KV_RF         (6.30f)
-#define CONTROL_WHEEL_FF_KV_LR         (7.05f)
-#define CONTROL_WHEEL_FF_KV_RR         (7.00f)
+#define CONTROL_WHEEL_FF_KS_LF         (320.0f)
+#define CONTROL_WHEEL_FF_KS_RF         (420.0f)
+#define CONTROL_WHEEL_FF_KS_LR         (460.0f)
+#define CONTROL_WHEEL_FF_KS_RR         (500.0f)
+#define CONTROL_WHEEL_FF_KV_LF         (7.35f)
+#define CONTROL_WHEEL_FF_KV_RF         (5.90f)
+#define CONTROL_WHEEL_FF_KV_LR         (6.65f)
+#define CONTROL_WHEEL_FF_KV_RR         (7.45f)
 #define CONTROL_WHEEL_FF_KS_FULL_SPEED (100.0f)
 
 /* PID 实例 */
@@ -53,6 +53,7 @@ static float control_wheel_ff(float target, float ks, float kv)
 
     ks_scale = abs_target / CONTROL_WHEEL_FF_KS_FULL_SPEED;
     if(ks_scale > 1.0f) ks_scale = 1.0f;
+    ks_scale *= ks_scale;
 
     if(target > 0.0f) return kv * target + ks * ks_scale;
     return kv * target - ks * ks_scale;
