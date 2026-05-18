@@ -241,7 +241,7 @@ void car_loop_init(void)
     IMU_Init_All();
     AccelCalibration_Init();
     IMUCalib_Init();
-    control_cascade_init();
+    Control_Init();
     car_mode_init();
     wifi_core_Init();
     ALX_AOA_Init();
@@ -290,12 +290,12 @@ static void car_loop_100HZ(void)
 
     if (car_control_enabled != 0U)
     {
-        control_cascade_speed_loop_update_100HZ(car_forward_target, car_strafe_target);
+        Control_100Hz(car_forward_target, car_strafe_target);
     }
     else
     {
-        control_cascade_stop();
-        control_yaw_hold_reset();
+        Control_Stop();
+        Control_YawHoldReset();
     }
 
     car_data[0] = encoder_left_front.count_raw;
@@ -312,21 +312,21 @@ static void car_loop_100HZ(void)
 
 
 
-    wifi_justfloat(g_air_tof_fused_height_mm,
-                g_air_euler_roll,
-                g_air_euler_pitch,
-                g_air_euler_yaw,
-                g_air_pos_est_vel_x,
-                g_air_pos_est_vel_y,
-                g_air_state,
-                g_air_crsf_std_ch0,
-                g_air_crsf_std_ch1,
-                g_air_crsf_std_ch2,
-                g_air_crsf_std_ch3,
-                g_air_crsf_std_ch4,
-                g_air_crsf_std_ch5,
-                g_air_crsf_std_ch6,
-                g_air_crsf_std_ch7);
+    // wifi_justfloat(g_air_tof_fused_height_mm,
+    //             g_air_euler_roll,
+    //             g_air_euler_pitch,
+    //             g_air_euler_yaw,
+    //             g_air_pos_est_vel_x,
+    //             g_air_pos_est_vel_y,
+    //             g_air_state,
+    //             g_air_crsf_std_ch0,
+    //             g_air_crsf_std_ch1,
+    //             g_air_crsf_std_ch2,
+    //             g_air_crsf_std_ch3,
+    //             g_air_crsf_std_ch4,
+    //             g_air_crsf_std_ch5,
+    //             g_air_crsf_std_ch6,
+    //             g_air_crsf_std_ch7);
 
     // wifi_justfloat(g_image_spi.board[0].target[0].x,
     //                g_image_spi.board[0].target[0].y,
@@ -365,16 +365,16 @@ static void car_loop_50HZ(void)
     {
         if (car_rotate_target != 0.0f)
         {
-            control_yaw_rate_loop_update_50HZ(car_rotate_target);
+            Control_50Hz(car_rotate_target);
         }
         else
         {
-            control_yaw_rate_loop_update_50HZ(control_yaw_rate_target);
+            Control_50Hz(control_yaw_rate_target);
         }
     }
     else
     {
-        control_yaw_rate_loop_update_50HZ(0.0f);
+        Control_50Hz(0.0f);
     }
 }
 
@@ -385,11 +385,11 @@ static void car_loop_25HZ(void)
 
     if (car_control_enabled != 0U)
     {
-        control_yaw_hold_update_25HZ(car_rotate_target);
+        Control_25Hz(car_rotate_target);
     }
     else
     {
-        control_yaw_hold_reset();
+        Control_YawHoldReset();
     }
 }
 

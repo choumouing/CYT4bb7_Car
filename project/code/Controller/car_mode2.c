@@ -210,7 +210,7 @@ static void car_mode2_refresh_tag_position(void)
 
     rel_strafe_m = -rel_x_cm * 0.01f;
     rel_forward_m = rel_y_cm * 0.01f;
-    yaw_rad = control_get_current_yaw_angle();
+    yaw_rad = Control_GetYawAngle();
     cos_yaw = cosf(yaw_rad);
     sin_yaw = sinf(yaw_rad);
 
@@ -271,7 +271,7 @@ static void car_mode2_drive_to_target(uint8 index)
         return;
     }
 
-    yaw_rad = control_get_current_yaw_angle();
+    yaw_rad = Control_GetYawAngle();
     cos_yaw = cosf(yaw_rad);
     sin_yaw = sinf(yaw_rad);
     error_forward_body = (cos_yaw * error_forward_global) + (sin_yaw * error_strafe_global);
