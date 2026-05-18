@@ -3,8 +3,9 @@
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)
 #define CONTROL_PI         (3.14159265358979323846f)
 #define CONTROL_TWO_PI     (6.28318530717958647692f)
-#define CONTROL_WHEEL_FF_KS (220.0f)
-#define CONTROL_WHEEL_FF_KV (5.8f)
+#define CONTROL_WHEEL_FF_KS            (260.0f)
+#define CONTROL_WHEEL_FF_KV            (6.2f)
+#define CONTROL_WHEEL_FF_KS_FULL_SPEED (60.0f)
 
 /* PID 实例 */
 PositionalPID wheel_left_front_pid;
@@ -38,9 +39,17 @@ static float control_normalize_angle_rad(float angle)
 
 static float control_wheel_ff(float target)
 {
-    if(target > 0.0f) return CONTROL_WHEEL_FF_KS + CONTROL_WHEEL_FF_KV * target;
-    if(target < 0.0f) return -CONTROL_WHEEL_FF_KS + CONTROL_WHEEL_FF_KV * target;
-    return 0.0f;
+    float abs_target = target;
+    float ks_scale;
+
+    if(target == 0.0f) return 0.0f;
+    if(abs_target < 0.0f) abs_target = -abs_target;
+
+    ks_scale = abs_target / CONTROL_WHEEL_FF_KS_FULL_SPEED;
+    if(ks_scale > 1.0f) ks_scale = 1.0f;
+
+    if(target > 0.0f) return CONTROL_WHEEL_FF_KV * target + CONTROL_WHEEL_FF_KS * ks_scale;
+    return CONTROL_WHEEL_FF_KV * target - CONTROL_WHEEL_FF_KS * ks_scale;
 }
 
 static void control_pid_init_all(void)
