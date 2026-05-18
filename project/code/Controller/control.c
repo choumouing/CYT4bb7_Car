@@ -3,8 +3,8 @@
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)
 #define CONTROL_PI         (3.14159265358979323846f)
 #define CONTROL_TWO_PI     (6.28318530717958647692f)
-#define CONTROL_WHEEL_FF_KS (400.0f)
-#define CONTROL_WHEEL_FF_KV (6.3f)
+#define CONTROL_WHEEL_FF_KS (220.0f)
+#define CONTROL_WHEEL_FF_KV (5.8f)
 
 /* PID 实例 */
 PositionalPID wheel_left_front_pid;
@@ -183,7 +183,10 @@ void Control_100Hz(float forward, float strafe)
     wifi_justfloat(lf, encoder_get_left_front_filtered_count(), control_wheel_ff(lf), wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
                    rf, encoder_get_right_front_filtered_count(), control_wheel_ff(rf), wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,
                    lr, encoder_get_left_rear_filtered_count(), control_wheel_ff(lr), wheel_left_rear_pid.p_term, wheel_left_rear_pid.i_term,
-                   rr, encoder_get_right_rear_filtered_count(), control_wheel_ff(rr), wheel_right_rear_pid.p_term, wheel_right_rear_pid.i_term);
+                   rr, encoder_get_right_rear_filtered_count(), control_wheel_ff(rr), wheel_right_rear_pid.p_term, wheel_right_rear_pid.i_term,
+                   g_euler.roll, g_euler.pitch, g_euler.yaw,
+                   g_imufilter_1000hz.gyrox, g_imufilter_1000hz.gyroy, g_imufilter_1000hz.gyroz,
+                   g_imufilter_1000hz.accx, g_imufilter_1000hz.accy);
 
 
 
