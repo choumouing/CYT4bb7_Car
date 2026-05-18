@@ -63,6 +63,7 @@ static void car_loop_runtime_reset(void)
     car_emergency_stop_active = 1U;
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
+    velocity_fusion_reset();
 }
 
 void car_loop_init(void)
@@ -76,6 +77,7 @@ void car_loop_init(void)
     odometer_init();
     camera_spi_init();
     beacon_detection_init();
+    velocity_fusion_init();
     IMU_Init_All();
     AccelCalibration_Init();
     IMUCalib_Init();
@@ -113,6 +115,7 @@ static void car_loop_100HZ(void)
 {
     float uwb_filt_x_cm = 0.0f;
     float uwb_filt_y_cm = 0.0f;
+    velocity_fusion_state_t fusion_state;
 
     s_telemetry_timestamp_count++;
     s_system_time_ms = s_telemetry_timestamp_count * 10U;
@@ -127,6 +130,7 @@ static void car_loop_100HZ(void)
     air_comm_car_update_100HZ();
     menu_air_command_update_100HZ();
     beacon_detection_update_100HZ();
+    velocity_fusion_update_100HZ(s_system_time_ms);
 
     if ((car_control_enabled == 0U) || (car_emergency_stop_active != 0U))
     {
@@ -166,14 +170,14 @@ static void car_loop_100HZ(void)
     air_comm_send_run_data(car_data, 10);
 
     (void)ALX_AOA_GetFilteredXY(&uwb_filt_x_cm, &uwb_filt_y_cm);
+    (void)velocity_fusion_get_state(&fusion_state);
 
     wifi_justfloat((float)s_telemetry_timestamp_count,
                    g_air_yaw_deg,
                    g_air_vel_x,
                    g_air_vel_y,
-                   g_air_acc_x,
-                   g_air_acc_y,
-                   g_air_acc_z,
+                   fusion_state.pos_right_cm,
+                   fusion_state.pos_forward_cm,
                    g_air_tof_fused_height_mm,
                    g_air_state,
                    uwb_filt_x_cm,

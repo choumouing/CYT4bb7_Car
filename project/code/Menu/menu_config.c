@@ -30,12 +30,12 @@ float uwb_follow_deadband_x_cm = 4.0f;
 float uwb_follow_deadband_y_cm = 5.0f;
 float uwb_follow_output_limit = 500.0f;
 float uwb_follow_i_limit = 0.0f;
-float uwb_follow_x_kp = 2.2f;
+float uwb_follow_x_kp = 2.6f;
 float uwb_follow_x_ki = 0.0f;
-float uwb_follow_x_kd = 1.0f;
-float uwb_follow_y_kp = 1.9f;
+float uwb_follow_x_kd = 1.15f;
+float uwb_follow_y_kp = 2.25f;
 float uwb_follow_y_ki = 0.0f;
-float uwb_follow_y_kd = 0.8f;
+float uwb_follow_y_kd = 0.95f;
 
 float s_curve_max_iter = 50.0f;
 float s_curve_conv_tol = 0.001f;

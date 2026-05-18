@@ -132,6 +132,7 @@
 #include "Estimation/Attitude/Accel_Calibration.h"
 #include "Estimation/Position/odometer.h"
 #include "Estimation/Beacon_Detection/beacon_detection.h"
+#include "Estimation/uwb/velocity_fusion.h"
 
 #include "Menu/menu_air_support.h"
 #include "Menu/menu_core.h"

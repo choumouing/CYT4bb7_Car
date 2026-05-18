@@ -1228,6 +1228,15 @@
                     <name>$PROJ_DIR$\..\..\code\Estimation\Beacon_Detection\beacon_detection.h</name>
                 </file>
             </group>
+            <group>
+                <name>uwb</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\uwb\velocity_fusion.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\uwb\velocity_fusion.h</name>
+                </file>
+            </group>
         </group>
         <group>
             <name>Controller</name>
