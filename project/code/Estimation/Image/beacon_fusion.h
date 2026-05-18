@@ -25,6 +25,15 @@ typedef struct
 typedef struct
 {
     uint8 valid;
+    float height_mm;
+    float roll_deg;
+    float pitch_deg;
+    float yaw_deg;
+} beacon_fusion_pose_t;
+
+typedef struct
+{
+    uint8 valid;
     uint8 source_camera_mask;
     uint8 observation_count;
     uint8 stable_ticks;
@@ -47,7 +56,8 @@ typedef struct
 extern beacon_fusion_result_t g_beacon_fusion_result;
 
 void beacon_fusion_init(void);
-void beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT]);
+void beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT],
+                                const beacon_fusion_pose_t *pose);
 const beacon_fusion_result_t *beacon_fusion_get_result(void);
 
 #endif /* BEACON_FUSION_H */

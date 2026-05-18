@@ -59,6 +59,8 @@ volatile float g_air_crsf_std_ch7;
 #define AIR_RUN_DATA_CRSF_STD_CH5 (12U)
 #define AIR_RUN_DATA_CRSF_STD_CH6 (13U)
 #define AIR_RUN_DATA_CRSF_STD_CH7 (14U)
+#define AIR_RUN_DATA_HEIGHT_MIN_MM (100.0f)
+#define AIR_RUN_DATA_HEIGHT_MAX_MM (2500.0f)
 
 static void car_loop_write_u32_le(uint8 *data, uint32 value)
 {
@@ -189,6 +191,7 @@ static void car_loop_beacon_fusion_update_100HZ(void)
     uint8 board_id;
     uint8 target_index;
     beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT];
+    beacon_fusion_pose_t pose;
 
     memset(camera, 0, sizeof(camera));
     for (board_id = 0U; board_id < BEACON_FUSION_CAMERA_COUNT; board_id++)
@@ -206,7 +209,14 @@ static void car_loop_beacon_fusion_update_100HZ(void)
         }
     }
 
-    beacon_fusion_update_100HZ(camera);
+    pose.valid = ((g_air_tof_fused_height_mm >= AIR_RUN_DATA_HEIGHT_MIN_MM) &&
+                  (g_air_tof_fused_height_mm <= AIR_RUN_DATA_HEIGHT_MAX_MM)) ? 1U : 0U;
+    pose.height_mm = g_air_tof_fused_height_mm;
+    pose.roll_deg = g_air_euler_roll;
+    pose.pitch_deg = g_air_euler_pitch;
+    pose.yaw_deg = g_air_euler_yaw;
+
+    beacon_fusion_update_100HZ(camera, &pose);
 }
 
 static void car_loop_runtime_reset(void)
