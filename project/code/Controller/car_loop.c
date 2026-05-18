@@ -78,28 +78,23 @@ static float car_loop_read_float_le(const uint8 *data)
 
 static void on_air_data(const float *data, uint8 count)
 {
-    if (count >= AIR_RUN_DATA_BASE_COUNT)
-    {
-        g_air_tof_fused_height_mm = data[AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM];
-        g_air_euler_roll = data[AIR_RUN_DATA_EULER_ROLL];
-        g_air_euler_pitch = data[AIR_RUN_DATA_EULER_PITCH];
-        g_air_euler_yaw = data[AIR_RUN_DATA_EULER_YAW];
-        g_air_pos_est_vel_x = data[AIR_RUN_DATA_POS_EST_VEL_X];
-        g_air_pos_est_vel_y = data[AIR_RUN_DATA_POS_EST_VEL_Y];
-        g_air_state = data[AIR_RUN_DATA_STATE];
-    }
+    (void)count;
 
-    if (count >= AIR_RUN_DATA_CRSF_COUNT)
-    {
-        g_air_crsf_std_ch0 = data[AIR_RUN_DATA_CRSF_STD_CH0];
-        g_air_crsf_std_ch1 = data[AIR_RUN_DATA_CRSF_STD_CH1];
-        g_air_crsf_std_ch2 = data[AIR_RUN_DATA_CRSF_STD_CH2];
-        g_air_crsf_std_ch3 = data[AIR_RUN_DATA_CRSF_STD_CH3];
-        g_air_crsf_std_ch4 = data[AIR_RUN_DATA_CRSF_STD_CH4];
-        g_air_crsf_std_ch5 = data[AIR_RUN_DATA_CRSF_STD_CH5];
-        g_air_crsf_std_ch6 = data[AIR_RUN_DATA_CRSF_STD_CH6];
-        g_air_crsf_std_ch7 = data[AIR_RUN_DATA_CRSF_STD_CH7];
-    }
+    g_air_tof_fused_height_mm = data[0];
+    g_air_euler_roll = data[1];
+    g_air_euler_pitch = data[2];
+    g_air_euler_yaw = data[3];
+    g_air_pos_est_vel_x = data[4];
+    g_air_pos_est_vel_y = data[5];
+    g_air_state = data[6];
+    g_air_crsf_std_ch0 = data[7];
+    g_air_crsf_std_ch1 = data[8];
+    g_air_crsf_std_ch2 = data[9];
+    g_air_crsf_std_ch3 = data[10];
+    g_air_crsf_std_ch4 = data[11];
+    g_air_crsf_std_ch5 = data[12];
+    g_air_crsf_std_ch6 = data[13];
+    g_air_crsf_std_ch7 = data[14];
 }
 
 static void car_loop_camera_spi_send_100HZ(void)
@@ -236,8 +231,8 @@ void car_loop_init(void)
 {
     car_loop_runtime_reset();
 
-    menu_init();
-    menu_config_init();
+    // menu_init();
+    // menu_config_init();
     mecanum_motor_init();
     encoder_control_init();
     odometer_init();
@@ -247,10 +242,6 @@ void car_loop_init(void)
     AccelCalibration_Init();
     IMUCalib_Init();
     control_cascade_init();
-    uart_receiver_init();
-    sbus_init();
-    wireless_control_init();
-    car_start_sbus_init();
     car_mode_init();
     wifi_core_Init();
     ALX_AOA_Init();
@@ -282,19 +273,19 @@ static void car_loop_100HZ(void)
 
     if ((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
     {
-        menu_air_stop_param_sync();
+        // menu_air_stop_param_sync();
     }
     air_comm_car_update_100HZ();
     beacon_detection_update_100HZ();
 
     if ((car_control_enabled == 0U) || (car_emergency_stop_active != 0U))
     {
-        menu_air_update_100HZ();
-        menu_update_100HZ();
+        // menu_air_update_100HZ();
+        // menu_update_100HZ();
     }
     else
     {
-        menu_discard_key_events();
+        // menu_discard_key_events();
     }
 
     if (car_control_enabled != 0U)
@@ -319,35 +310,53 @@ static void car_loop_100HZ(void)
     car_data[9] = g_imufilter_1000hz.gyroz;
     air_comm_send_run_data(car_data, 10);
 
-    wifi_justfloat(g_image_spi.board[0].target[0].x,
-                   g_image_spi.board[0].target[0].y,
-                   g_image_spi.board[0].target[0].radius,
-                   g_image_spi.board[0].target[1].x,
-                   g_image_spi.board[0].target[1].y,
-                   g_image_spi.board[0].target[1].radius,
-                   g_image_spi.board[1].target[0].x,
-                   g_image_spi.board[1].target[0].y,
-                   g_image_spi.board[1].target[0].radius,
-                   g_image_spi.board[1].target[1].x,
-                   g_image_spi.board[1].target[1].y,
-                   g_image_spi.board[1].target[1].radius,
-                   g_image_spi.board[2].target[0].x,
-                   g_image_spi.board[2].target[0].y,
-                   g_image_spi.board[2].target[0].radius,
-                   g_image_spi.board[2].target[1].x,
-                   g_image_spi.board[2].target[1].y,
-                   g_image_spi.board[2].target[1].radius,
-                   g_beacon_fusion_result.beacon_count,
-                   g_beacon_fusion_result.beacon[0].bearing_deg,
-                   g_beacon_fusion_result.beacon[0].x_body,
-                   g_beacon_fusion_result.beacon[0].y_body,
-                   g_beacon_fusion_result.beacon[0].range_proxy,
-                   g_beacon_fusion_result.beacon[0].confidence,
-                   g_beacon_fusion_result.beacon[1].bearing_deg,
-                   g_beacon_fusion_result.beacon[1].x_body,
-                   g_beacon_fusion_result.beacon[1].y_body,
-                   g_beacon_fusion_result.beacon[1].range_proxy,
-                   g_beacon_fusion_result.beacon[1].confidence);
+
+
+    wifi_justfloat(g_air_tof_fused_height_mm,
+                g_air_euler_roll,
+                g_air_euler_pitch,
+                g_air_euler_yaw,
+                g_air_pos_est_vel_x,
+                g_air_pos_est_vel_y,
+                g_air_state,
+                g_air_crsf_std_ch0,
+                g_air_crsf_std_ch1,
+                g_air_crsf_std_ch2,
+                g_air_crsf_std_ch3,
+                g_air_crsf_std_ch4,
+                g_air_crsf_std_ch5,
+                g_air_crsf_std_ch6,
+                g_air_crsf_std_ch7);
+
+    // wifi_justfloat(g_image_spi.board[0].target[0].x,
+    //                g_image_spi.board[0].target[0].y,
+    //                g_image_spi.board[0].target[0].radius,
+    //                g_image_spi.board[0].target[1].x,
+    //                g_image_spi.board[0].target[1].y,
+    //                g_image_spi.board[0].target[1].radius,
+    //                g_image_spi.board[1].target[0].x,
+    //                g_image_spi.board[1].target[0].y,
+    //                g_image_spi.board[1].target[0].radius,
+    //                g_image_spi.board[1].target[1].x,
+    //                g_image_spi.board[1].target[1].y,
+    //                g_image_spi.board[1].target[1].radius,
+    //                g_image_spi.board[2].target[0].x,
+    //                g_image_spi.board[2].target[0].y,
+    //                g_image_spi.board[2].target[0].radius,
+    //                g_image_spi.board[2].target[1].x,
+    //                g_image_spi.board[2].target[1].y,
+    //                g_image_spi.board[2].target[1].radius,
+    //                g_beacon_fusion_result.beacon_count,
+    //                g_beacon_fusion_result.beacon[0].bearing_deg,
+    //                g_beacon_fusion_result.beacon[0].x_body,
+    //                g_beacon_fusion_result.beacon[0].y_body,
+    //                g_beacon_fusion_result.beacon[0].range_proxy,
+    //                g_beacon_fusion_result.beacon[0].confidence,
+    //                g_beacon_fusion_result.beacon[1].bearing_deg,
+    //                g_beacon_fusion_result.beacon[1].x_body,
+    //                g_beacon_fusion_result.beacon[1].y_body,
+    //                g_beacon_fusion_result.beacon[1].range_proxy,
+    //                g_beacon_fusion_result.beacon[1].confidence);
 }
 
 static void car_loop_50HZ(void)
@@ -372,9 +381,6 @@ static void car_loop_50HZ(void)
 static void car_loop_25HZ(void)
 {
     ALX_AOA_Update_25HZ(s_system_time_ms);
-    sbus_update_25HZ();
-    wireless_control_update_25HZ();
-    car_start_sbus_update_25HZ();
     car_mode_update_25HZ(s_system_time_ms);
 
     if (car_control_enabled != 0U)

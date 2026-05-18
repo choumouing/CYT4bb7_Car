@@ -1,33 +1,26 @@
-/* Mode0：手动遥控模式
- * 数据流：遥控器 → wireless_control → car_forward/strafe/rotate_target
- * 输出单位：编码器周期计数（forward/strafe）和rad/s（rotate）
+/* Mode0：飞机遥控器直控模式
+ * 数据流：飞机串口 → g_air_crsf_std_ch → car_forward/strafe_target
+ * ch0(Roll) → 左右平移, ch1(Pitch) → 前后, 旋转固定0
+ * ch4为总开关：1=运行, 0=不运行
  */
 #include "car_mode.h"
+#include "car_loop.h"
 
+#define MODE0_MAX_CONTROL_SPEED (600.0f)
 
 void car_mode0_init(void)
 {
-    car_mode0_reset();
 }
 
 void car_mode0_reset(void)
 {
-    /* Mode0无状态需要重置 */
 }
 
-/* 读取遥控器数据写入全局目标
- * forward_speed/strafe_speed：编码器计数（int转float）
- * rotate_speed：rad/s（float）
- * 注意：遥控器未运行时清零（双重保险）
- */
 void car_mode0_update_25HZ(uint32 now_ms)
 {
-    const wireless_control_state_t *remote;
-
     (void)now_ms;
 
-    remote = wireless_control_get_state();
-    if(0U == car_start_sbus_is_running())
+    if (g_air_crsf_std_ch4 < 0.5f)
     {
         car_forward_target = 0.0f;
         car_strafe_target = 0.0f;
@@ -35,7 +28,7 @@ void car_mode0_update_25HZ(uint32 now_ms)
         return;
     }
 
-    car_forward_target = (float)remote->forward_speed;
-    car_strafe_target = (float)remote->strafe_speed;
-    car_rotate_target = remote->rotate_speed;
+    car_forward_target = g_air_crsf_std_ch1 * (MODE0_MAX_CONTROL_SPEED / 1000.0f);
+    car_strafe_target  = -g_air_crsf_std_ch0 * (MODE0_MAX_CONTROL_SPEED / 1000.0f);
+    car_rotate_target  = 0.0f;
 }

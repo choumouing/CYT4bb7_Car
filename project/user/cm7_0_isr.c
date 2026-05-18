@@ -21,7 +21,7 @@ void pit0_ch0_isr()
     {
         pit_ch0_100HZ_count = 0;
         timer_100HZ_flag = 1;
-        menu_timer_handler();
+        // menu_timer_handler();
     }
 
     pit_ch0_50HZ_count++;
