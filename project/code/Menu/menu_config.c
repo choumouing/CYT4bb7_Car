@@ -12,6 +12,7 @@ float wheel_kp = 3.6f;                  // 比例系数
 float wheel_ki = 0.27f;                  // 积分系数
 float wheel_kd = 0.0f;                  // 微分系数
 float wheel_output_limit = 5000.0f;     // 输出限幅 (PWM)
+float wheel_i_limit = 5000.0f;          // 积分限幅
 
 //====================================================用户函数声明====================================================
 float yaw_angle_kp = 2.10f;
@@ -63,15 +64,16 @@ static menu_item_t wheel_pid_menu[] = {
     {"Ki", MENU_TYPE_PARAMETER, .param_index = 1},
     {"Kd", MENU_TYPE_PARAMETER, .param_index = 2},
     {"OutLimit", MENU_TYPE_PARAMETER, .param_index = 3},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 4},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
 static menu_item_t yaw_rate_pid_menu[] = {
-    {"Kp", MENU_TYPE_PARAMETER, .param_index = 4},
-    {"Ki", MENU_TYPE_PARAMETER, .param_index = 5},
-    {"Kd", MENU_TYPE_PARAMETER, .param_index = 6},
-    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 7},
-    {"OutLimit", MENU_TYPE_PARAMETER, .param_index = 8},
+    {"Kp", MENU_TYPE_PARAMETER, .param_index = 5},
+    {"Ki", MENU_TYPE_PARAMETER, .param_index = 6},
+    {"Kd", MENU_TYPE_PARAMETER, .param_index = 7},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 8},
+    {"OutLimit", MENU_TYPE_PARAMETER, .param_index = 9},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -91,25 +93,25 @@ static menu_item_t save_slot_menu[] = {
 
 // 主菜单
 static menu_item_t yaw_angle_pid_menu[] = {
-    {"Kp", MENU_TYPE_PARAMETER, .param_index = 9},
-    {"Ki", MENU_TYPE_PARAMETER, .param_index = 10},
-    {"Kd", MENU_TYPE_PARAMETER, .param_index = 11},
-    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 12},
-    {"OutLimit", MENU_TYPE_PARAMETER, .param_index = 13},
+    {"Kp", MENU_TYPE_PARAMETER, .param_index = 10},
+    {"Ki", MENU_TYPE_PARAMETER, .param_index = 11},
+    {"Kd", MENU_TYPE_PARAMETER, .param_index = 12},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 13},
+    {"OutLimit", MENU_TYPE_PARAMETER, .param_index = 14},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
 static menu_item_t uwb_follow_pid_menu[] = {
-    {"DeadX", MENU_TYPE_PARAMETER, .param_index = 14},
-    {"DeadY", MENU_TYPE_PARAMETER, .param_index = 15},
-    {"OutLimit", MENU_TYPE_PARAMETER, .param_index = 16},
-    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 17},
-    {"XKp", MENU_TYPE_PARAMETER, .param_index = 18},
-    {"XKi", MENU_TYPE_PARAMETER, .param_index = 19},
-    {"XKd", MENU_TYPE_PARAMETER, .param_index = 20},
-    {"YKp", MENU_TYPE_PARAMETER, .param_index = 21},
-    {"YKi", MENU_TYPE_PARAMETER, .param_index = 22},
-    {"YKd", MENU_TYPE_PARAMETER, .param_index = 23},
+    {"DeadX", MENU_TYPE_PARAMETER, .param_index = 15},
+    {"DeadY", MENU_TYPE_PARAMETER, .param_index = 16},
+    {"OutLimit", MENU_TYPE_PARAMETER, .param_index = 17},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 18},
+    {"XKp", MENU_TYPE_PARAMETER, .param_index = 19},
+    {"XKi", MENU_TYPE_PARAMETER, .param_index = 20},
+    {"XKd", MENU_TYPE_PARAMETER, .param_index = 21},
+    {"YKp", MENU_TYPE_PARAMETER, .param_index = 22},
+    {"YKi", MENU_TYPE_PARAMETER, .param_index = 23},
+    {"YKd", MENU_TYPE_PARAMETER, .param_index = 24},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -293,6 +295,7 @@ void menu_config_init(void)
     menu_register_param(&wheel_ki, 0.1f, 0.0f, 100.0f);                    // 参数1
     menu_register_param(&wheel_kd, 0.1f, 0.0f, 100.0f);                    // 参数2
     menu_register_param(&wheel_output_limit, 100.0f, 1000.0f, 10000.0f);   // 参数3
+    menu_register_param(&wheel_i_limit, 100.0f, 0.0f, 10000.0f);           // 参数4 积分限幅
 
     menu_register_param(&yaw_rate_kp, 0.1f, 0.0f, 500.0f);
     menu_register_param(&yaw_rate_ki, 0.01f, 0.0f, 500.0f);

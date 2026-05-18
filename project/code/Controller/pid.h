@@ -80,7 +80,7 @@ void IncrementPID_Init(IncrementPID* pid, float kp, float ki, float kd,
  * target: 目标编码器计数（周期内的脉冲数）
  * current: 实际编码器计数（周期内的脉冲数）
  * 返回: 累加后的PWM输出（已限幅）
- * 调用频率：100HZ（由control_speed_loop_update_100HZ调用）
+ * 调用频率：100HZ（由Control_100Hz调用）
  */
 float IncrementPID_Update(IncrementPID *pid, float target, float current);
 

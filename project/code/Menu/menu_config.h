@@ -15,6 +15,7 @@ extern float wheel_kp;                 // 轮速环比例系数
 extern float wheel_ki;                 // 轮速环积分系数
 extern float wheel_kd;                 // 轮速环微分系数
 extern float wheel_output_limit;       // 轮速环输出限幅 (PWM)
+extern float wheel_i_limit;            // 轮速环积分限幅
 
 //====================================================用户配置接口====================================================
 void menu_config_init(void);           // 初始化菜单配置（注册参数和设置根菜单）

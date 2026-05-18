@@ -14,7 +14,7 @@ static void car_mode_reset_all(void)
     car_mode0_reset();
     car_mode1_reset();
     car_mode2_reset();
-    control_cascade_reset();
+    Control_Reset();
 }
 
 /* 模式切换处理（25HZ）
