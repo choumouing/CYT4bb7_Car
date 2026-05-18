@@ -3,9 +3,15 @@
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)
 #define CONTROL_PI         (3.14159265358979323846f)
 #define CONTROL_TWO_PI     (6.28318530717958647692f)
-#define CONTROL_WHEEL_FF_KS            (260.0f)
-#define CONTROL_WHEEL_FF_KV            (6.2f)
-#define CONTROL_WHEEL_FF_KS_FULL_SPEED (60.0f)
+#define CONTROL_WHEEL_FF_KS_LF         (300.0f)
+#define CONTROL_WHEEL_FF_KS_RF         (450.0f)
+#define CONTROL_WHEEL_FF_KS_LR         (500.0f)
+#define CONTROL_WHEEL_FF_KS_RR         (520.0f)
+#define CONTROL_WHEEL_FF_KV_LF         (7.25f)
+#define CONTROL_WHEEL_FF_KV_RF         (6.30f)
+#define CONTROL_WHEEL_FF_KV_LR         (7.05f)
+#define CONTROL_WHEEL_FF_KV_RR         (7.00f)
+#define CONTROL_WHEEL_FF_KS_FULL_SPEED (100.0f)
 
 /* PID 实例 */
 PositionalPID wheel_left_front_pid;
@@ -37,7 +43,7 @@ static float control_normalize_angle_rad(float angle)
     return angle;
 }
 
-static float control_wheel_ff(float target)
+static float control_wheel_ff(float target, float ks, float kv)
 {
     float abs_target = target;
     float ks_scale;
@@ -48,8 +54,8 @@ static float control_wheel_ff(float target)
     ks_scale = abs_target / CONTROL_WHEEL_FF_KS_FULL_SPEED;
     if(ks_scale > 1.0f) ks_scale = 1.0f;
 
-    if(target > 0.0f) return CONTROL_WHEEL_FF_KV * target + CONTROL_WHEEL_FF_KS * ks_scale;
-    return CONTROL_WHEEL_FF_KV * target - CONTROL_WHEEL_FF_KS * ks_scale;
+    if(target > 0.0f) return kv * target + ks * ks_scale;
+    return kv * target - ks * ks_scale;
 }
 
 static void control_pid_init_all(void)
@@ -180,19 +186,23 @@ void Control_100Hz(float forward, float strafe)
     float rf = forward + strafe + rot;
     float lr = forward + strafe - rot;
     float rr = forward - strafe + rot;
+    float lf_ff = control_wheel_ff(lf, CONTROL_WHEEL_FF_KS_LF, CONTROL_WHEEL_FF_KV_LF);
+    float rf_ff = control_wheel_ff(rf, CONTROL_WHEEL_FF_KS_RF, CONTROL_WHEEL_FF_KV_RF);
+    float lr_ff = control_wheel_ff(lr, CONTROL_WHEEL_FF_KS_LR, CONTROL_WHEEL_FF_KV_LR);
+    float rr_ff = control_wheel_ff(rr, CONTROL_WHEEL_FF_KS_RR, CONTROL_WHEEL_FF_KV_RR);
 
     control_pid_apply_all();
 
     mecanum_motor_set_all(
-        (int16_t)(control_wheel_ff(lf) + PositionalPID_Update(&wheel_left_front_pid, lf, encoder_get_left_front_filtered_count())),
-        (int16_t)(control_wheel_ff(rf) + PositionalPID_Update(&wheel_right_front_pid, rf, encoder_get_right_front_filtered_count())),
-        (int16_t)(control_wheel_ff(lr) + PositionalPID_Update(&wheel_left_rear_pid, lr, encoder_get_left_rear_filtered_count())),
-        (int16_t)(control_wheel_ff(rr) + PositionalPID_Update(&wheel_right_rear_pid, rr, encoder_get_right_rear_filtered_count())));
+        (int16_t)(lf_ff + PositionalPID_Update(&wheel_left_front_pid, lf, encoder_get_left_front_filtered_count())),
+        (int16_t)(rf_ff + PositionalPID_Update(&wheel_right_front_pid, rf, encoder_get_right_front_filtered_count())),
+        (int16_t)(lr_ff + PositionalPID_Update(&wheel_left_rear_pid, lr, encoder_get_left_rear_filtered_count())),
+        (int16_t)(rr_ff + PositionalPID_Update(&wheel_right_rear_pid, rr, encoder_get_right_rear_filtered_count())));
 
-    wifi_justfloat(lf, encoder_get_left_front_filtered_count(), control_wheel_ff(lf), wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
-                   rf, encoder_get_right_front_filtered_count(), control_wheel_ff(rf), wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,
-                   lr, encoder_get_left_rear_filtered_count(), control_wheel_ff(lr), wheel_left_rear_pid.p_term, wheel_left_rear_pid.i_term,
-                   rr, encoder_get_right_rear_filtered_count(), control_wheel_ff(rr), wheel_right_rear_pid.p_term, wheel_right_rear_pid.i_term,
+    wifi_justfloat(lf, encoder_get_left_front_filtered_count(), lf_ff, wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
+                   rf, encoder_get_right_front_filtered_count(), rf_ff, wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,
+                   lr, encoder_get_left_rear_filtered_count(), lr_ff, wheel_left_rear_pid.p_term, wheel_left_rear_pid.i_term,
+                   rr, encoder_get_right_rear_filtered_count(), rr_ff, wheel_right_rear_pid.p_term, wheel_right_rear_pid.i_term,
                    g_euler.roll, g_euler.pitch, g_euler.yaw,
                    g_imufilter_1000hz.gyrox, g_imufilter_1000hz.gyroy, g_imufilter_1000hz.gyroz,
                    g_imufilter_1000hz.accx, g_imufilter_1000hz.accy);
