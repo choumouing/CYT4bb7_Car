@@ -3,15 +3,22 @@
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)
 #define CONTROL_PI         (3.14159265358979323846f)
 #define CONTROL_TWO_PI     (6.28318530717958647692f)
-#define CONTROL_WHEEL_FF_KS_LF         (320.0f)
-#define CONTROL_WHEEL_FF_KS_RF         (420.0f)
-#define CONTROL_WHEEL_FF_KS_LR         (460.0f)
-#define CONTROL_WHEEL_FF_KS_RR         (500.0f)
-#define CONTROL_WHEEL_FF_KV_LF         (7.35f)
-#define CONTROL_WHEEL_FF_KV_RF         (5.90f)
-#define CONTROL_WHEEL_FF_KV_LR         (6.65f)
-#define CONTROL_WHEEL_FF_KV_RR         (7.45f)
+#define CONTROL_WHEEL_FF_KS_LF         (280.0f)
+#define CONTROL_WHEEL_FF_KS_RF         (380.0f)
+#define CONTROL_WHEEL_FF_KS_LR         (410.0f)
+#define CONTROL_WHEEL_FF_KS_RR         (390.0f)
+#define CONTROL_WHEEL_FF_KV_LF         (8.00f)
+#define CONTROL_WHEEL_FF_KV_RF         (6.40f)
+#define CONTROL_WHEEL_FF_KV_LR         (7.25f)
+#define CONTROL_WHEEL_FF_KV_RR         (8.30f)
+#define CONTROL_WHEEL_FF_KSTART_LF     (260.0f)
+#define CONTROL_WHEEL_FF_KSTART_RF     (310.0f)
+#define CONTROL_WHEEL_FF_KSTART_LR     (350.0f)
+#define CONTROL_WHEEL_FF_KSTART_RR     (320.0f)
 #define CONTROL_WHEEL_FF_KS_FULL_SPEED (100.0f)
+#define CONTROL_WHEEL_FF_START_FULL_SPEED (15.0f)
+#define CONTROL_WHEEL_FF_START_TARGET_MIN (3.0f)
+#define CONTROL_WHEEL_FF_START_FEEDBACK_MAX (2.0f)
 
 /* PID 实例 */
 PositionalPID wheel_left_front_pid;
@@ -43,20 +50,38 @@ static float control_normalize_angle_rad(float angle)
     return angle;
 }
 
-static float control_wheel_ff(float target, float ks, float kv)
+static float control_wheel_ff(float target, float feedback, float ks, float kv, float kstart)
 {
     float abs_target = target;
+    float abs_feedback = feedback;
     float ks_scale;
+    float start_scale;
+    float min_ff;
+    float ff;
 
     if(target == 0.0f) return 0.0f;
     if(abs_target < 0.0f) abs_target = -abs_target;
+    if(abs_feedback < 0.0f) abs_feedback = -abs_feedback;
 
     ks_scale = abs_target / CONTROL_WHEEL_FF_KS_FULL_SPEED;
     if(ks_scale > 1.0f) ks_scale = 1.0f;
     ks_scale *= ks_scale;
 
-    if(target > 0.0f) return kv * target + ks * ks_scale;
-    return kv * target - ks * ks_scale;
+    if(target > 0.0f) ff = kv * target + ks * ks_scale;
+    else ff = kv * target - ks * ks_scale;
+
+    if((abs_target > CONTROL_WHEEL_FF_START_TARGET_MIN) &&
+       (abs_feedback < CONTROL_WHEEL_FF_START_FEEDBACK_MAX))
+    {
+        start_scale = abs_target / CONTROL_WHEEL_FF_START_FULL_SPEED;
+        if(start_scale > 1.0f) start_scale = 1.0f;
+
+        min_ff = kstart * start_scale;
+        if((target > 0.0f) && (ff < min_ff)) ff = min_ff;
+        else if((target < 0.0f) && (ff > -min_ff)) ff = -min_ff;
+    }
+
+    return ff;
 }
 
 static void control_pid_init_all(void)
@@ -187,23 +212,27 @@ void Control_100Hz(float forward, float strafe)
     float rf = forward + strafe + rot;
     float lr = forward + strafe - rot;
     float rr = forward - strafe + rot;
-    float lf_ff = control_wheel_ff(lf, CONTROL_WHEEL_FF_KS_LF, CONTROL_WHEEL_FF_KV_LF);
-    float rf_ff = control_wheel_ff(rf, CONTROL_WHEEL_FF_KS_RF, CONTROL_WHEEL_FF_KV_RF);
-    float lr_ff = control_wheel_ff(lr, CONTROL_WHEEL_FF_KS_LR, CONTROL_WHEEL_FF_KV_LR);
-    float rr_ff = control_wheel_ff(rr, CONTROL_WHEEL_FF_KS_RR, CONTROL_WHEEL_FF_KV_RR);
+    float lf_feedback = encoder_get_left_front_filtered_count();
+    float rf_feedback = encoder_get_right_front_filtered_count();
+    float lr_feedback = encoder_get_left_rear_filtered_count();
+    float rr_feedback = encoder_get_right_rear_filtered_count();
+    float lf_ff = control_wheel_ff(lf, lf_feedback, CONTROL_WHEEL_FF_KS_LF, CONTROL_WHEEL_FF_KV_LF, CONTROL_WHEEL_FF_KSTART_LF);
+    float rf_ff = control_wheel_ff(rf, rf_feedback, CONTROL_WHEEL_FF_KS_RF, CONTROL_WHEEL_FF_KV_RF, CONTROL_WHEEL_FF_KSTART_RF);
+    float lr_ff = control_wheel_ff(lr, lr_feedback, CONTROL_WHEEL_FF_KS_LR, CONTROL_WHEEL_FF_KV_LR, CONTROL_WHEEL_FF_KSTART_LR);
+    float rr_ff = control_wheel_ff(rr, rr_feedback, CONTROL_WHEEL_FF_KS_RR, CONTROL_WHEEL_FF_KV_RR, CONTROL_WHEEL_FF_KSTART_RR);
 
     control_pid_apply_all();
 
     mecanum_motor_set_all(
-        (int16_t)(lf_ff + PositionalPID_Update(&wheel_left_front_pid, lf, encoder_get_left_front_filtered_count())),
-        (int16_t)(rf_ff + PositionalPID_Update(&wheel_right_front_pid, rf, encoder_get_right_front_filtered_count())),
-        (int16_t)(lr_ff + PositionalPID_Update(&wheel_left_rear_pid, lr, encoder_get_left_rear_filtered_count())),
-        (int16_t)(rr_ff + PositionalPID_Update(&wheel_right_rear_pid, rr, encoder_get_right_rear_filtered_count())));
+        (int16_t)(lf_ff + PositionalPID_Update(&wheel_left_front_pid, lf, lf_feedback)),
+        (int16_t)(rf_ff + PositionalPID_Update(&wheel_right_front_pid, rf, rf_feedback)),
+        (int16_t)(lr_ff + PositionalPID_Update(&wheel_left_rear_pid, lr, lr_feedback)),
+        (int16_t)(rr_ff + PositionalPID_Update(&wheel_right_rear_pid, rr, rr_feedback)));
 
-    wifi_justfloat(lf, encoder_get_left_front_filtered_count(), lf_ff, wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
-                   rf, encoder_get_right_front_filtered_count(), rf_ff, wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,
-                   lr, encoder_get_left_rear_filtered_count(), lr_ff, wheel_left_rear_pid.p_term, wheel_left_rear_pid.i_term,
-                   rr, encoder_get_right_rear_filtered_count(), rr_ff, wheel_right_rear_pid.p_term, wheel_right_rear_pid.i_term,
+    wifi_justfloat(lf, lf_feedback, lf_ff, wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
+                   rf, rf_feedback, rf_ff, wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,
+                   lr, lr_feedback, lr_ff, wheel_left_rear_pid.p_term, wheel_left_rear_pid.i_term,
+                   rr, rr_feedback, rr_ff, wheel_right_rear_pid.p_term, wheel_right_rear_pid.i_term,
                    g_euler.roll, g_euler.pitch, g_euler.yaw,
                    g_imufilter_1000hz.gyrox, g_imufilter_1000hz.gyroy, g_imufilter_1000hz.gyroz,
                    g_imufilter_1000hz.accx, g_imufilter_1000hz.accy);
