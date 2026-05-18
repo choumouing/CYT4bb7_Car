@@ -3,6 +3,8 @@
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)
 #define CONTROL_PI         (3.14159265358979323846f)
 #define CONTROL_TWO_PI     (6.28318530717958647692f)
+#define CONTROL_WHEEL_FF_KS (400.0f)
+#define CONTROL_WHEEL_FF_KV (6.3f)
 
 /* PID 实例 */
 PositionalPID wheel_left_front_pid;
@@ -32,6 +34,13 @@ static float control_normalize_angle_rad(float angle)
     while (angle < -CONTROL_PI)
         angle += CONTROL_TWO_PI;
     return angle;
+}
+
+static float control_wheel_ff(float target)
+{
+    if(target > 0.0f) return CONTROL_WHEEL_FF_KS + CONTROL_WHEEL_FF_KV * target;
+    if(target < 0.0f) return -CONTROL_WHEEL_FF_KS + CONTROL_WHEEL_FF_KV * target;
+    return 0.0f;
 }
 
 static void control_pid_init_all(void)
@@ -166,15 +175,15 @@ void Control_100Hz(float forward, float strafe)
     control_pid_apply_all();
 
     mecanum_motor_set_all(
-        (int16_t)PositionalPID_Update(&wheel_left_front_pid, lf, encoder_get_left_front_filtered_count()),
-        (int16_t)PositionalPID_Update(&wheel_right_front_pid, rf, encoder_get_right_front_filtered_count()),
-        (int16_t)PositionalPID_Update(&wheel_left_rear_pid, lr, encoder_get_left_rear_filtered_count()),
-        (int16_t)PositionalPID_Update(&wheel_right_rear_pid, rr, encoder_get_right_rear_filtered_count()));
+        (int16_t)(control_wheel_ff(lf) + PositionalPID_Update(&wheel_left_front_pid, lf, encoder_get_left_front_filtered_count())),
+        (int16_t)(control_wheel_ff(rf) + PositionalPID_Update(&wheel_right_front_pid, rf, encoder_get_right_front_filtered_count())),
+        (int16_t)(control_wheel_ff(lr) + PositionalPID_Update(&wheel_left_rear_pid, lr, encoder_get_left_rear_filtered_count())),
+        (int16_t)(control_wheel_ff(rr) + PositionalPID_Update(&wheel_right_rear_pid, rr, encoder_get_right_rear_filtered_count())));
 
-    wifi_justfloat(lf,encoder_get_left_front_filtered_count(),wheel_left_front_pid.p_term,wheel_left_front_pid.i_term,wheel_left_front_pid.d_term,
-                    rf,encoder_get_right_front_filtered_count(),wheel_right_front_pid.p_term,wheel_right_front_pid.i_term,wheel_right_front_pid.d_term,
-                    lr,encoder_get_left_rear_filtered_count(),wheel_left_rear_pid.p_term,wheel_left_rear_pid.i_term,wheel_left_rear_pid.d_term,
-                    rr,encoder_get_right_rear_filtered_count(),wheel_right_rear_pid.p_term,wheel_right_rear_pid.i_term,wheel_right_rear_pid.d_term);
+    wifi_justfloat(lf, encoder_get_left_front_filtered_count(), control_wheel_ff(lf), wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
+                   rf, encoder_get_right_front_filtered_count(), control_wheel_ff(rf), wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,
+                   lr, encoder_get_left_rear_filtered_count(), control_wheel_ff(lr), wheel_left_rear_pid.p_term, wheel_left_rear_pid.i_term,
+                   rr, encoder_get_right_rear_filtered_count(), control_wheel_ff(rr), wheel_right_rear_pid.p_term, wheel_right_rear_pid.i_term);
 
 
 
