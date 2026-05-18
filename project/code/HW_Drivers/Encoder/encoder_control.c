@@ -1,7 +1,7 @@
 /*********************************************************************************************************************
 * CYT4BB 编码器控制模块 - 实现文件
 *
-* 文件功能：封装四路正交编码器的初始化、周期读取、卡尔曼滤波
+* 文件功能：封装四路正交编码器的初始化、周期读取、一阶低通滤波
 * 轮子到编码器映射：左前->M3, 右前->M4, 左后->M2, 右后->M1
 ********************************************************************************************************************/
 
@@ -17,7 +17,6 @@ encoder_data_t encoder_left_front = {
     .count_raw = 0,
     .count_filtered = 0.0f,
     .count_total = 0,
-    .kalman_p = ENCODER_KALMAN_ERROR_INIT,
     .invert = 1                     //是否反转编码器正负
 };
 
@@ -30,7 +29,6 @@ encoder_data_t encoder_right_front = {
     .count_raw = 0,
     .count_filtered = 0.0f,
     .count_total = 0,
-    .kalman_p = ENCODER_KALMAN_ERROR_INIT,
     .invert = 0
 };
 
@@ -41,7 +39,6 @@ encoder_data_t encoder_left_rear = {
     .count_raw = 0,
     .count_filtered = 0.0f,
     .count_total = 0,
-    .kalman_p = ENCODER_KALMAN_ERROR_INIT,
     .invert = 1
 };
 
@@ -52,30 +49,25 @@ encoder_data_t encoder_right_rear = {
     .count_raw = 0,
     .count_filtered = 0.0f,
     .count_total = 0,
-    .kalman_p = ENCODER_KALMAN_ERROR_INIT,
     .invert = 0
 };
 
 
 /*
- * 一阶标量卡尔曼滤波
+ * 一阶低通滤波
  * 输入：原始脉冲计数（float）
- * 输出：平滑后的估计值，同时更新 encoder->count_filtered 和 kalman_p
+ * 输出：平滑后的估计值，同时更新 encoder->count_filtered
  */
-static float encoder_kalman_filter(encoder_data_t *encoder, float measurement)
+static float encoder_lowpass_filter(encoder_data_t *encoder, float measurement)
 {
-    float p_predict = encoder->kalman_p + ENCODER_KALMAN_PROCESS_NOISE;
-    float kalman_gain = p_predict / (p_predict + ENCODER_KALMAN_MEASURE_NOISE);
-
-    encoder->count_filtered += kalman_gain * (measurement - encoder->count_filtered);
-    encoder->kalman_p = (1.0f - kalman_gain) * p_predict;
+    encoder->count_filtered += ENCODER_LPF_ALPHA * (measurement - encoder->count_filtered);
 
     return encoder->count_filtered;
 }
 
 
 /*
- * 更新单个编码器：读取硬件计数 -> 清零 -> invert 取反 -> 卡尔曼滤波 -> 累加里程
+ * 更新单个编码器：读取硬件计数 -> 清零 -> invert 取反 -> 一阶低通滤波 -> 累加里程
  * 每个编码器在 100Hz 中断中被调用一次
  */
 static void encoder_update_single(encoder_data_t *encoder)
@@ -87,7 +79,7 @@ static void encoder_update_single(encoder_data_t *encoder)
         count = -count;             // 接线反了？invert=1 自动取反
 
     encoder->count_raw = count;
-    encoder_kalman_filter(encoder, (float)encoder->count_raw);
+    encoder_lowpass_filter(encoder, (float)encoder->count_raw);
     encoder->count_total += encoder->count_raw;     // 里程累计
 }
 
@@ -126,7 +118,7 @@ int16_t encoder_get_right_rear_count(void)
     return encoder_right_rear.count_raw;
 }
 
-/* 各轮卡尔曼滤波后速度 */
+/* 各轮一阶低通滤波后速度 */
 float encoder_get_left_front_filtered_count(void)
 {
     return encoder_left_front.count_filtered;

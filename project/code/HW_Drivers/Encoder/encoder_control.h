@@ -1,12 +1,12 @@
 /*********************************************************************************************************************
 * CYT4BB 编码器控制模块 - 头文件
 *
-* 文件功能：封装四路正交编码器的初始化、周期读取、卡尔曼滤波
+* 文件功能：封装四路正交编码器的初始化、周期读取、一阶低通滤波
 * 模块说明：
 *   1. 支持最多 4 个正交编码器，对应四轮麦轮
 *   2. encoder_update_100HZ() 在 10ms 定时中断中调用，读取并清零硬件计数
 *   3. count_raw = 速度（单周期脉冲数），count_total = 里程（累计脉冲数）
-*   4. 卡尔曼滤波器对 count_raw 做一阶平滑，减少脉冲噪声
+*   4. 一阶低通滤波器对 count_raw 做平滑，减少脉冲噪声
 *   5. 轮子到编码器映射：左前->M3, 右前->M4, 左后->M2, 右后->M1
 ********************************************************************************************************************/
 
@@ -18,14 +18,11 @@
 // ========================== 配置参数 ==========================
 
 /*
- * 一阶卡尔曼滤波参数
- * PROCESS_NOISE：过程噪声，越大越信任测量值（响应快但抖动大）
- * MEASURE_NOISE：测量噪声，越大越信任预测值（更平滑但延迟大）
- * ERROR_INIT：初始估计误差协方差，一般设 1.0 即可
+ * 一阶低通滤波参数
+ * alpha=0.386 在 100Hz 采样下截止频率约 7.92Hz。
+ * 旧 Q=0.25/R=4.0 一阶卡尔曼稳态增益约 0.2207，等效截止频率约 3.99Hz。
  */
-#define ENCODER_KALMAN_PROCESS_NOISE       (0.25f)
-#define ENCODER_KALMAN_MEASURE_NOISE       (4.0f)
-#define ENCODER_KALMAN_ERROR_INIT          (1.0f)
+#define ENCODER_LPF_ALPHA                  (0.386f)
 
 
 // ========================== 引脚定义 ==========================
@@ -51,7 +48,7 @@
 
 // ========================== 数据结构 ==========================
 
-/* 单个编码器的数据，包含硬件引脚、原始/滤波计数、累计里程、卡尔曼状态 */
+/* 单个编码器的数据，包含硬件引脚、原始/滤波计数、累计里程 */
 typedef struct
 {
     encoder_index_enum index;                   // 编码器硬件索引（TC 通道号）
@@ -59,9 +56,8 @@ typedef struct
     encoder_channel2_enum ch2_pin;              // B 相引脚
 
     int16_t count_raw;                          // 本周期原始计数（速度，脉冲/周期）
-    float count_filtered;                       // 卡尔曼滤波后的计数
+    float count_filtered;                       // 一阶低通滤波后的计数
     int32_t count_total;                        // 累计计数（用于里程计算）
-    float kalman_p;                             // 卡尔曼估计误差协方差（内部状态）
 
     int8_t invert;                              // 1=取反计数方向，用于校正接线
 } encoder_data_t;
@@ -80,7 +76,7 @@ extern encoder_data_t encoder_right_rear;       // 右后编码器（对应 M1 �
 void encoder_control_init(void);
 
 /*
- * 周期更新：读取并清零四路编码器计数、更新卡尔曼滤波和累计里程
+ * 周期更新：读取并清零四路编码器计数、更新一阶低通滤波和累计里程
  * 调用者：10ms 定时中断（100Hz）
  */
 void encoder_update_100HZ(void);
@@ -91,7 +87,7 @@ int16_t encoder_get_right_front_count(void);
 int16_t encoder_get_left_rear_count(void);
 int16_t encoder_get_right_rear_count(void);
 
-/* 卡尔曼滤波后的计数，比 raw 更平滑，适合上层路径规划 */
+/* 一阶低通滤波后的计数，比 raw 更平滑，适合上层路径规划 */
 float encoder_get_left_front_filtered_count(void);
 float encoder_get_right_front_filtered_count(void);
 float encoder_get_left_rear_filtered_count(void);
