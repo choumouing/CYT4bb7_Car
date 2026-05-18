@@ -1,4 +1,5 @@
 #include "car_mode.h"
+#include "car_loop.h"
 
 /* 模式切换检测 */
 static car_mode_e s_car_mode = CAR_MODE_0;           // 当前模式
@@ -85,14 +86,12 @@ car_mode_e car_mode_get(void)
  */
 void car_mode_update_25HZ(uint32 now_ms)
 {
-    /* 读取遥控器状态 */
-    s_car_mode = car_start_sbus_get_mode();
-
-    car_control_enabled = car_start_sbus_is_running();
-    car_emergency_stop_active = car_start_sbus_emergency_stop_active();
+    /* 飞机遥控器ch4作为总开关 */
+    s_car_mode = CAR_MODE_0;
+    car_control_enabled = (g_air_crsf_std_ch4 >= 0.5f) ? 1U : 0U;
+    car_emergency_stop_active = (car_control_enabled == 0U) ? 1U : 0U;
     car_mode_handle_transition_25HZ(s_car_mode, car_control_enabled);
 
-    /* 控制未使能：清零输出（安全状态） */
     if(0U == car_control_enabled)
     {
         car_forward_target = 0.0f;
@@ -101,29 +100,5 @@ void car_mode_update_25HZ(uint32 now_ms)
         return;
     }
 
-    /* 按模式分发 */
-    switch(s_car_mode)
-    {
-    case CAR_MODE_0:
-        car_mode0_update_25HZ(now_ms);
-        break;
-
-    case CAR_MODE_1:
-        car_mode1_update_25HZ(now_ms);
-        break;
-
-    case CAR_MODE_2:
-        car_mode2_update_25HZ(now_ms);
-        break;
-
-    case CAR_MODE_3:   // 保留
-    case CAR_MODE_4:
-    case CAR_MODE_5:
-    case CAR_MODE_6:
-    case CAR_MODE_7:
-    case CAR_MODE_8:
-    default:
-        car_mode0_update_25HZ(now_ms);  // 未实现的模式走手动
-        break;
-    }
+    car_mode0_update_25HZ(now_ms);
 }

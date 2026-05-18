@@ -26,6 +26,15 @@ extern float car_rotate_target;
 extern uint8 car_control_enabled;
 extern uint8 car_emergency_stop_active;
 
+extern volatile float g_air_crsf_std_ch0;
+extern volatile float g_air_crsf_std_ch1;
+extern volatile float g_air_crsf_std_ch2;
+extern volatile float g_air_crsf_std_ch3;
+extern volatile float g_air_crsf_std_ch4;
+extern volatile float g_air_crsf_std_ch5;
+extern volatile float g_air_crsf_std_ch6;
+extern volatile float g_air_crsf_std_ch7;
+
 typedef struct
 {
     volatile uint8 valid;
