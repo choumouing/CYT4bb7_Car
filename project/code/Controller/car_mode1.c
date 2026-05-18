@@ -115,13 +115,16 @@ void car_mode1_update_25HZ(uint32 now_ms)
 {
     ALX_AOA_Position_t position;
     velocity_fusion_state_t fusion_state;
+    uint8 fusion_valid;
 
     g_car_mode1_state.output_valid = 0U;
     g_car_mode1_state.tag_online = ALX_AOA_IsTagOnline(now_ms, UWB_FOLLOW_TIMEOUT_MS);
 
     /* 标签不在线或数据无效：清零输出（安全） */
     if((0U == g_car_mode1_state.tag_online) ||
-       (0U == velocity_fusion_get_state(&fusion_state)))
+       (0U == ALX_AOA_GetLatest(&position)) ||
+       (0U == ALX_AOA_GetFilteredXY(&g_car_mode1_state.filt_x_cm,
+                                    &g_car_mode1_state.filt_y_cm)))
     {
         car_mode1_reset();
         car_forward_target = 0.0f;
@@ -131,18 +134,8 @@ void car_mode1_update_25HZ(uint32 now_ms)
     }
 
     car_mode1_pid_apply_params();
-    if(0U != ALX_AOA_GetLatest(&position))
-    {
-        g_car_mode1_state.raw_x_cm = (float)position.x_cm;
-        g_car_mode1_state.raw_y_cm = (float)position.y_cm;
-    }
-    else
-    {
-        g_car_mode1_state.raw_x_cm = 0.0f;
-        g_car_mode1_state.raw_y_cm = 0.0f;
-    }
-    g_car_mode1_state.filt_x_cm = fusion_state.pos_right_cm;
-    g_car_mode1_state.filt_y_cm = fusion_state.pos_forward_cm;
+    g_car_mode1_state.raw_x_cm = (float)position.x_cm;
+    g_car_mode1_state.raw_y_cm = (float)position.y_cm;
 
     /* 死区处理 */
     g_car_mode1_state.error_x_cm =

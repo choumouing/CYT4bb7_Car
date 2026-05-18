@@ -178,15 +178,16 @@ static void car_loop_100HZ(void)
                    g_air_vel_y,
                    fusion_state.pos_right_cm,
                    fusion_state.pos_forward_cm,
-                   g_air_tof_fused_height_mm,
-                   g_air_state,
+                   fusion_state.vel_right_cmps,
+                   fusion_state.vel_forward_cmps,
                    uwb_filt_x_cm,
                    uwb_filt_y_cm,
-                   encoder_get_left_front_filtered_count(),
-                   encoder_get_right_front_filtered_count(),
-                   encoder_get_left_rear_filtered_count(),
-                   encoder_get_right_rear_filtered_count(),
-                   g_euler.yaw
+                   fusion_state.residual_right_cm,
+                   fusion_state.residual_forward_cm,
+                   fusion_state.car_right_cmps,
+                   fusion_state.car_forward_cmps,
+                   g_euler.yaw,
+                   g_air_tof_fused_height_mm
                 );
 }
 

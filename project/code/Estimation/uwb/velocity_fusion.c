@@ -15,6 +15,8 @@
 #define VELOCITY_FUSION_UWB_DT_DEFAULT_S        (0.04f)
 #define VELOCITY_FUSION_UWB_DT_MIN_S            (0.02f)
 #define VELOCITY_FUSION_UWB_DT_MAX_S            (0.20f)
+#define VELOCITY_FUSION_POS_LEAD_TIME_S         (0.18f)
+#define VELOCITY_FUSION_POS_LEAD_LIMIT_CM       (12.0f)
 
 #define VELOCITY_FUSION_DEG_TO_RAD              (0.017453292519943295f)
 
@@ -60,6 +62,32 @@ static void velocity_fusion_rotate_yaw(float right_in,
     *forward_out = (-sin_yaw * right_in) + (cos_yaw * forward_in);
 }
 
+static void velocity_fusion_apply_position_lead(float vel_right_cmps,
+                                                float vel_forward_cmps,
+                                                float *pos_right_cm,
+                                                float *pos_forward_cm)
+{
+    float lead_right_cm;
+    float lead_forward_cm;
+    float lead_norm_cm;
+    float scale;
+
+    lead_right_cm = vel_right_cmps * VELOCITY_FUSION_POS_LEAD_TIME_S;
+    lead_forward_cm = vel_forward_cmps * VELOCITY_FUSION_POS_LEAD_TIME_S;
+    lead_norm_cm = sqrtf((lead_right_cm * lead_right_cm) +
+                         (lead_forward_cm * lead_forward_cm));
+
+    if(lead_norm_cm > VELOCITY_FUSION_POS_LEAD_LIMIT_CM)
+    {
+        scale = VELOCITY_FUSION_POS_LEAD_LIMIT_CM / lead_norm_cm;
+        lead_right_cm *= scale;
+        lead_forward_cm *= scale;
+    }
+
+    *pos_right_cm += lead_right_cm;
+    *pos_forward_cm += lead_forward_cm;
+}
+
 static uint8 velocity_fusion_is_air_valid(void)
 {
     if(0U == air_comm_car_is_online())
@@ -77,16 +105,29 @@ static uint8 velocity_fusion_is_air_valid(void)
 
 static void velocity_fusion_publish_body_state(void)
 {
+    float pos_right_cm;
+    float pos_forward_cm;
+    float vel_right_cmps;
+    float vel_forward_cmps;
+
     velocity_fusion_rotate_yaw(s_pos_world_right_cm,
                                s_pos_world_forward_cm,
                                -g_euler.yaw,
-                               &s_velocity_fusion_state.pos_right_cm,
-                               &s_velocity_fusion_state.pos_forward_cm);
+                               &pos_right_cm,
+                               &pos_forward_cm);
     velocity_fusion_rotate_yaw(s_vel_world_right_cmps,
                                s_vel_world_forward_cmps,
                                -g_euler.yaw,
-                               &s_velocity_fusion_state.vel_right_cmps,
-                               &s_velocity_fusion_state.vel_forward_cmps);
+                               &vel_right_cmps,
+                               &vel_forward_cmps);
+    velocity_fusion_apply_position_lead(vel_right_cmps,
+                                        vel_forward_cmps,
+                                        &pos_right_cm,
+                                        &pos_forward_cm);
+    s_velocity_fusion_state.pos_right_cm = pos_right_cm;
+    s_velocity_fusion_state.pos_forward_cm = pos_forward_cm;
+    s_velocity_fusion_state.vel_right_cmps = vel_right_cmps;
+    s_velocity_fusion_state.vel_forward_cmps = vel_forward_cmps;
     velocity_fusion_rotate_yaw(s_residual_world_right_cm,
                                s_residual_world_forward_cm,
                                -g_euler.yaw,
