@@ -32,4 +32,6 @@ void odometer_reset(void);
 /* 100Hz 周期调用：编码器速度经 yaw 解耦后积分成水平系速度和位移。 */
 void odometer_update_100HZ(void);
 
+/* 1000HZ 周期调用: 用于IMU预测*/
+void odometer_update_1000HZ(void);
 #endif

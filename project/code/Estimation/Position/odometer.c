@@ -1,8 +1,8 @@
 #include "odometer.h"
 
 #define ODOMETER_DEG_TO_RAD (0.017453292519943295f)
-#define ODOMETER_PI         (3.14159265358979323846f)
-#define ODOMETER_TWO_PI     (6.28318530717958647692f)
+#define ODOMETER_PI (3.14159265358979323846f)
+#define ODOMETER_TWO_PI (6.28318530717958647692f)
 
 typedef struct
 {
@@ -17,17 +17,18 @@ typedef struct
 } odometer_state_t;
 
 odometer_data_t g_odometer = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-
+odometer_vec2_t body_velocity;
+odometer_vec2_t horizontal_velocity;
 static odometer_state_t s_odometer_state = {0.0f, 0U};
 
 static float odometer_normalize_angle(float angle)
 {
-    while(angle > ODOMETER_PI)
+    while (angle > ODOMETER_PI)
     {
         angle -= ODOMETER_TWO_PI;
     }
 
-    while(angle < -ODOMETER_PI)
+    while (angle < -ODOMETER_PI)
     {
         angle += ODOMETER_TWO_PI;
     }
@@ -70,7 +71,7 @@ static odometer_vec2_t odometer_body_to_horizontal(odometer_vec2_t body_velocity
     float cos_yaw;
     float sin_yaw;
 
-    if(0U == s_odometer_state.yaw_ready)
+    if (0U == s_odometer_state.yaw_ready)
     {
         s_odometer_state.yaw_zero_rad = yaw_now_rad;
         s_odometer_state.yaw_ready = 1U;
@@ -103,8 +104,6 @@ void odometer_reset(void)
 
 void odometer_update_100HZ(void)
 {
-    odometer_vec2_t body_velocity;
-    odometer_vec2_t horizontal_velocity;
     odometer_vec2_t distance_delta;
 
     body_velocity = odometer_count_to_body_velocity(odometer_get_encoder_count());
@@ -118,4 +117,16 @@ void odometer_update_100HZ(void)
     g_odometer.forward_distance += distance_delta.forward;
     g_odometer.strafe_distance += distance_delta.strafe;
     g_odometer.travel_distance += odometer_vec_norm(distance_delta);
+}
+
+void odometer_update_1000HZ(void)
+{
+
+    // 首先g_imufilter_1000hz.acc 为车体坐标系下面的加速度
+    // 首先要根据欧拉角转换为水平坐标系下面的加速度(也要和yaw解耦,与车头无关)
+    // 然后积分得到速度，积分得到位移
+    wifi_justfloat(tick_1000us_cnt, g_imufilter_1000hz.accx, g_imufilter_1000hz.accy, g_imufilter_1000hz.accz,
+                   g_euler.roll, g_euler.pitch, g_euler.yaw,
+                   horizontal_velocity.forward, horizontal_velocity.strafe,
+                   g_odometer.forward_distance, g_odometer.strafe_distance);
 }

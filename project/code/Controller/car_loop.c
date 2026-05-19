@@ -251,6 +251,7 @@ void car_loop_init(void)
 static void car_loop_1000HZ(void)
 {
     IMU_Update_1000HZ();
+    odometer_update_1000HZ();
 }
 
 static void car_loop_100HZ(void)
