@@ -16,13 +16,11 @@
 #define CAR_IMAGE_SPI_RAW_SIZE    CAMERA_SPI_IMAGE_TARGET_PACKET_SIZE
 
 extern volatile uint8_t timer_100HZ_flag;
-extern volatile uint8_t timer_50HZ_flag;
 extern volatile uint8_t timer_25HZ_flag;
 extern volatile uint16 g_tick_1000HZ;
 
 extern float car_forward_target;
 extern float car_strafe_target;
-extern float car_rotate_target;
 extern uint8 car_control_enabled;
 extern uint8 car_emergency_stop_active;
 

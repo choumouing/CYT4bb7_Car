@@ -2,7 +2,7 @@
  * 功能：跟随UWB标签移动
  * 数据流：UWB → 滤波 → 死区 → PID → 输出（编码器计数）
  * 调用频率：25HZ
- * 注意：不控制旋转，rotate_target始终为0
+ * 注意：模式层不输出旋转目标，yaw由控制层锁0
  */
 #include "car_mode.h"
 
@@ -164,5 +164,4 @@ void car_mode1_update_25HZ(uint32 now_ms)
     /* 写入全局目标 */
     car_forward_target = g_car_mode1_state.forward_target;
     car_strafe_target = g_car_mode1_state.strafe_target;
-    car_rotate_target = 0.0f;  // 跟随模式不控制旋转
 }

@@ -3,7 +3,7 @@
 
 /* 小车运行模式枚举
  * 切换来源：遥控器mode_request
- * Mode0: 手动遥控（前后左右+旋转）
+ * Mode0: 手动遥控（前后左右，yaw由控制层锁0）
  * Mode1: UWB跟随模式（跟踪一个标签）
  * Mode2: 目标点导航模式（UWB+里程计多点巡航）
  * Mode3-8: 保留（当前走Mode0）
@@ -126,7 +126,7 @@ void car_mode_update_25HZ(uint32 now_ms);         // 25HZ更新入口（模式�
 /* Mode0：手动遥控 */
 void car_mode0_init(void);
 void car_mode0_reset(void);
-void car_mode0_update_25HZ(uint32 now_ms);        // 读取遥控器→写car_forward/strafe/rotate_target
+void car_mode0_update_25HZ(uint32 now_ms);        // 读取遥控器→写car_forward/strafe_target
 
 /* Mode1：UWB跟随 */
 void car_mode1_init(void);

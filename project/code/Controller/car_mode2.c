@@ -5,7 +5,7 @@
  * 切换逻辑：标签在线且车在保护半径内 → 找候选目标 → 前往 → 到达标记 → 找下一个
  *          标签不在线或车超出保护半径 → 退回FOLLOW_TAG（Mode1跟随）
  * 数据来源：里程计g_odometer + UWB ALX_AOA + IMU航向角
- * 输出：car_forward/strafe_target（编码器计数），rotate始终为0
+ * 输出：car_forward/strafe_target（编码器计数），yaw由控制层锁0
  */
 #include "car_mode.h"
 
@@ -373,7 +373,7 @@ uint8 car_mode2_set_target(uint8 index, float strafe_m, float forward_m)
  *   4. 车不在标签保护半径内 → 降级到跟随模式
  *   5. 找候选目标 → 无合格目标 → 降级到跟随
  *   6. 有候选目标 → 前往目标 → 写输出
- * 最终输出：car_forward/strafe_target，rotate始终为0
+ * 最终输出：car_forward/strafe_target，yaw由控制层锁0
  */
 void car_mode2_update_25HZ(uint32 now_ms)
 {
@@ -402,7 +402,6 @@ void car_mode2_update_25HZ(uint32 now_ms)
         g_car_mode2_state.mode = TARGET_FOLLOW_MODE_IDLE;
         car_forward_target = 0.0f;
         car_strafe_target = 0.0f;
-        car_rotate_target = 0.0f;
         return;
     }
 
@@ -414,7 +413,6 @@ void car_mode2_update_25HZ(uint32 now_ms)
         car_mode2_copy_tag_follow_output();
         car_forward_target = g_car_mode2_state.forward_target;
         car_strafe_target = g_car_mode2_state.strafe_target;
-        car_rotate_target = 0.0f;
         return;
     }
 
@@ -429,7 +427,6 @@ void car_mode2_update_25HZ(uint32 now_ms)
         car_mode2_copy_tag_follow_output();
         car_forward_target = g_car_mode2_state.forward_target;
         car_strafe_target = g_car_mode2_state.strafe_target;
-        car_rotate_target = 0.0f;
         return;
     }
 
@@ -443,5 +440,4 @@ void car_mode2_update_25HZ(uint32 now_ms)
     car_mode2_drive_to_target(candidate);
     car_forward_target = (0U != g_car_mode2_state.output_valid) ? g_car_mode2_state.forward_target : 0.0f;
     car_strafe_target = (0U != g_car_mode2_state.output_valid) ? g_car_mode2_state.strafe_target : 0.0f;
-    car_rotate_target = 0.0f;
 }

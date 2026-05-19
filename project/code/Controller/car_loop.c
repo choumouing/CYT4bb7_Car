@@ -8,13 +8,11 @@
 #include "Protocols/CameraSpi/camera_spi.h"
 
 volatile uint8_t timer_100HZ_flag = 0U;
-volatile uint8_t timer_50HZ_flag = 0U;
 volatile uint8_t timer_25HZ_flag = 0U;
 volatile uint16 g_tick_1000HZ = 0U;
 
 float car_forward_target = 0.0f;
 float car_strafe_target = 0.0f;
-float car_rotate_target = 0.0f;
 uint8 car_control_enabled = 0U;
 uint8 car_emergency_stop_active = 1U;
 
@@ -212,13 +210,11 @@ static void car_loop_beacon_fusion_update_100HZ(void)
 static void car_loop_runtime_reset(void)
 {
     timer_100HZ_flag = 0U;
-    timer_50HZ_flag = 0U;
     timer_25HZ_flag = 0U;
     g_tick_1000HZ = 0U;
 
     car_forward_target = 0.0f;
     car_strafe_target = 0.0f;
-    car_rotate_target = 0.0f;
     car_control_enabled = 0U;
     car_emergency_stop_active = 1U;
     s_telemetry_timestamp_count = 0U;
@@ -295,7 +291,6 @@ static void car_loop_100HZ(void)
     else
     {
         Control_Stop();
-        Control_YawHoldReset();
     }
 
     car_data[0] = encoder_left_front.count_raw;
@@ -359,38 +354,10 @@ static void car_loop_100HZ(void)
     //                g_beacon_fusion_result.beacon[1].confidence);
 }
 
-static void car_loop_50HZ(void)
-{
-    if (car_control_enabled != 0U)
-    {
-        if (car_rotate_target != 0.0f)
-        {
-            Control_50Hz(car_rotate_target);
-        }
-        else
-        {
-            Control_50Hz(control_yaw_rate_target);
-        }
-    }
-    else
-    {
-        Control_50Hz(0.0f);
-    }
-}
-
 static void car_loop_25HZ(void)
 {
     ALX_AOA_Update_25HZ(s_system_time_ms);
     car_mode_update_25HZ(s_system_time_ms);
-
-    if (car_control_enabled != 0U)
-    {
-        Control_25Hz(car_rotate_target);
-    }
-    else
-    {
-        Control_YawHoldReset();
-    }
 }
 
 void car_loop_poll(void)
@@ -408,12 +375,6 @@ void car_loop_poll(void)
     {
         timer_25HZ_flag = 0U;
         car_loop_25HZ();
-    }
-
-    if (timer_50HZ_flag)
-    {
-        timer_50HZ_flag = 0U;
-        car_loop_50HZ();
     }
 
     if (timer_100HZ_flag)
