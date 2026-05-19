@@ -1,76 +1,74 @@
-/* Mode1：UWB跟随模式
- * 功能：跟随UWB标签移动
- * 数据流：UWB → 滤波 → 死区 → PID → 输出（编码器计数）
- * 调用频率：25HZ
- * 注意：模式层不输出旋转目标，yaw由控制层锁0
+/* Mode1: remote horizontal velocity closed loop.
+ * Remote gives horizontal forward/strafe velocity targets in m/s.
+ * Odometer gives horizontal velocity feedback in m/s.
+ * Output is still encoder-count target for Control_100Hz().
  */
 #include "car_mode.h"
+#include "car_loop.h"
 
+#define MODE1_MAX_VELOCITY_MPS       (2.5f)
+#define MODE1_STICK_DEADBAND         (50.0f)
+#define MODE1_STICK_MAX              (1000.0f)
+#define MODE1_STICK_ACTIVE_RANGE     (MODE1_STICK_MAX - MODE1_STICK_DEADBAND)
+#define MODE1_MIN_OUTPUT_LIMIT       (0.0f)
 
-car_mode1_state_t g_car_mode1_state = {0};  // 运行状态（供诊断页读取）
+car_mode1_state_t g_car_mode1_state = {0};
 
-static PositionalPID s_car_mode1_x_pid;     // X轴位置环PID
-static PositionalPID s_car_mode1_y_pid;     // Y轴位置环PID
+static PositionalPID s_mode1_forward_pid;
+static PositionalPID s_mode1_strafe_pid;
 
-/* 向量限幅：等比例缩小使最大分量不超过limit
- * 防止单轴过大导致麦克纳姆轮解算异常
- */
-static void car_mode1_apply_vector_limit(void)
-{
-    float abs_forward;
-    float abs_strafe;
-    float max_value;
-    float scale;
-
-    abs_forward = car_math_absf(g_car_mode1_state.forward_target);
-    abs_strafe = car_math_absf(g_car_mode1_state.strafe_target);
-    max_value = (abs_forward > abs_strafe) ? abs_forward : abs_strafe;
-
-    if(max_value <= uwb_follow_output_limit)
-    {
-        return;
-    }
-
-    scale = uwb_follow_output_limit / max_value;
-    g_car_mode1_state.forward_target *= scale;
-    g_car_mode1_state.strafe_target *= scale;
-}
-
-/* 初始化X/Y轴位置环PID */
 static void car_mode1_pid_init(void)
 {
-    PositionalPID_Init(&s_car_mode1_x_pid,
+    PositionalPID_Init(&s_mode1_forward_pid,
                        0.0f,
-                       uwb_follow_x_kp,
-                       uwb_follow_x_ki,
-                       uwb_follow_x_kd,
-                       uwb_follow_i_limit,
-                       uwb_follow_output_limit);
-    PositionalPID_Init(&s_car_mode1_y_pid,
+                       mode1_velocity_forward_kp,
+                       mode1_velocity_forward_ki,
+                       mode1_velocity_forward_kd,
+                       mode1_velocity_i_limit,
+                       mode1_velocity_pid_output_limit);
+    PositionalPID_Init(&s_mode1_strafe_pid,
                        0.0f,
-                       uwb_follow_y_kp,
-                       uwb_follow_y_ki,
-                       uwb_follow_y_kd,
-                       uwb_follow_i_limit,
-                       uwb_follow_output_limit);
+                       mode1_velocity_strafe_kp,
+                       mode1_velocity_strafe_ki,
+                       mode1_velocity_strafe_kd,
+                       mode1_velocity_i_limit,
+                       mode1_velocity_pid_output_limit);
 }
 
-/* 实时更新PID参数（支持菜单调参） */
 static void car_mode1_pid_apply_params(void)
 {
-    s_car_mode1_x_pid.kp_2 = 0.0f;
-    s_car_mode1_x_pid.kp_1 = uwb_follow_x_kp;
-    s_car_mode1_x_pid.ki = uwb_follow_x_ki;
-    s_car_mode1_x_pid.kd = uwb_follow_x_kd;
-    s_car_mode1_x_pid.i_limit = uwb_follow_i_limit;
-    s_car_mode1_x_pid.output_limit = uwb_follow_output_limit;
+    s_mode1_forward_pid.kp_2 = 0.0f;
+    s_mode1_forward_pid.kp_1 = mode1_velocity_forward_kp;
+    s_mode1_forward_pid.ki = mode1_velocity_forward_ki;
+    s_mode1_forward_pid.kd = mode1_velocity_forward_kd;
+    s_mode1_forward_pid.i_limit = mode1_velocity_i_limit;
+    s_mode1_forward_pid.output_limit = mode1_velocity_pid_output_limit;
 
-    s_car_mode1_y_pid.kp_2 = 0.0f;
-    s_car_mode1_y_pid.kp_1 = uwb_follow_y_kp;
-    s_car_mode1_y_pid.ki = uwb_follow_y_ki;
-    s_car_mode1_y_pid.kd = uwb_follow_y_kd;
-    s_car_mode1_y_pid.i_limit = uwb_follow_i_limit;
-    s_car_mode1_y_pid.output_limit = uwb_follow_output_limit;
+    s_mode1_strafe_pid.kp_2 = 0.0f;
+    s_mode1_strafe_pid.kp_1 = mode1_velocity_strafe_kp;
+    s_mode1_strafe_pid.ki = mode1_velocity_strafe_ki;
+    s_mode1_strafe_pid.kd = mode1_velocity_strafe_kd;
+    s_mode1_strafe_pid.i_limit = mode1_velocity_i_limit;
+    s_mode1_strafe_pid.output_limit = mode1_velocity_pid_output_limit;
+}
+
+static float car_mode1_stick_to_velocity(float stick)
+{
+    stick = car_math_limit_absf(stick, MODE1_STICK_MAX);
+    stick = car_math_soft_deadband(stick, MODE1_STICK_DEADBAND);
+    return stick * (MODE1_MAX_VELOCITY_MPS / MODE1_STICK_ACTIVE_RANGE);
+}
+
+static float car_mode1_limit_output(float value)
+{
+    float limit = mode1_velocity_output_limit;
+
+    if(limit < MODE1_MIN_OUTPUT_LIMIT)
+    {
+        limit = MODE1_MIN_OUTPUT_LIMIT;
+    }
+
+    return car_math_limit_absf(value, limit);
 }
 
 void car_mode1_init(void)
@@ -78,90 +76,87 @@ void car_mode1_init(void)
     car_mode1_reset();
 }
 
-/* 重置：清零PID + 清零所有状态 */
 void car_mode1_reset(void)
 {
     car_mode1_pid_init();
 
-    g_car_mode1_state.error_x_cm = 0.0f;
-    g_car_mode1_state.error_y_cm = 0.0f;
-    g_car_mode1_state.x_pid_p_term = 0.0f;
-    g_car_mode1_state.x_pid_i_term = 0.0f;
-    g_car_mode1_state.x_pid_d_term = 0.0f;
-    g_car_mode1_state.y_pid_p_term = 0.0f;
-    g_car_mode1_state.y_pid_i_term = 0.0f;
-    g_car_mode1_state.y_pid_d_term = 0.0f;
-    g_car_mode1_state.raw_x_cm = 0.0f;
-    g_car_mode1_state.raw_y_cm = 0.0f;
-    g_car_mode1_state.filt_x_cm = 0.0f;
-    g_car_mode1_state.filt_y_cm = 0.0f;
+    g_car_mode1_state.raw_forward_mps = 0.0f;
+    g_car_mode1_state.raw_strafe_mps = 0.0f;
+    g_car_mode1_state.velocity_forward_target_mps = 0.0f;
+    g_car_mode1_state.velocity_strafe_target_mps = 0.0f;
+    g_car_mode1_state.velocity_forward_feedback_mps = 0.0f;
+    g_car_mode1_state.velocity_strafe_feedback_mps = 0.0f;
+    g_car_mode1_state.forward_feedforward = 0.0f;
+    g_car_mode1_state.strafe_feedforward = 0.0f;
+    g_car_mode1_state.forward_pid_output = 0.0f;
+    g_car_mode1_state.strafe_pid_output = 0.0f;
     g_car_mode1_state.forward_target = 0.0f;
     g_car_mode1_state.strafe_target = 0.0f;
-    g_car_mode1_state.tag_online = 0U;
+    g_car_mode1_state.forward_pid_p_term = 0.0f;
+    g_car_mode1_state.forward_pid_i_term = 0.0f;
+    g_car_mode1_state.forward_pid_d_term = 0.0f;
+    g_car_mode1_state.strafe_pid_p_term = 0.0f;
+    g_car_mode1_state.strafe_pid_i_term = 0.0f;
+    g_car_mode1_state.strafe_pid_d_term = 0.0f;
     g_car_mode1_state.output_valid = 0U;
 }
 
-/* UWB跟随更新（25HZ）
- * 数据流：
- *   1. 检查标签在线（超时判断）
- *   2. 读取原始和滤波后的UWB坐标
- *   3. 死区处理消除小误差
- *   4. PID计算（以(0,0)为目标）
- *   5. 限幅 + 向量归一化
- *   6. 写入全局car_forward/strafe_target
- * 注意：X轴取反（UWB坐标系与车体坐标系可能相反）
- */
-void car_mode1_update_25HZ(uint32 now_ms)
+void car_mode1_update_100HZ(uint32 now_ms)
 {
-    ALX_AOA_Position_t position;
-
-    g_car_mode1_state.output_valid = 0U;
-    g_car_mode1_state.tag_online = ALX_AOA_IsTagOnline(now_ms, UWB_FOLLOW_TIMEOUT_MS);
-
-    /* 标签不在线或数据无效：清零输出（安全） */
-    if((0U == g_car_mode1_state.tag_online) ||
-       (0U == ALX_AOA_GetLatest(&position)) ||
-       (0U == ALX_AOA_GetFilteredXY(&g_car_mode1_state.filt_x_cm,
-                                    &g_car_mode1_state.filt_y_cm)))
-    {
-        car_mode1_reset();
-        return;
-    }
+    (void)now_ms;
 
     car_mode1_pid_apply_params();
-    g_car_mode1_state.raw_x_cm = (float)position.x_cm;
-    g_car_mode1_state.raw_y_cm = (float)position.y_cm;
 
-    /* 死区处理 */
-    g_car_mode1_state.error_x_cm =
-        car_math_deadband(g_car_mode1_state.filt_x_cm, uwb_follow_deadband_x_cm);
-    g_car_mode1_state.error_y_cm =
-        car_math_deadband(g_car_mode1_state.filt_y_cm, uwb_follow_deadband_y_cm);
+    g_car_mode1_state.raw_forward_mps = car_mode1_stick_to_velocity(g_air_crsf_std_ch1);
+    g_car_mode1_state.raw_strafe_mps = car_mode1_stick_to_velocity(-g_air_crsf_std_ch0);
 
-    /* PID计算（目标为0） + 输出限幅 */
-    g_car_mode1_state.strafe_target =
-        -car_math_limit_absf(PositionalPID_Update(&s_car_mode1_x_pid,
-                                                  g_car_mode1_state.error_x_cm,
-                                                  0.0f),
-                             uwb_follow_output_limit);
+    g_car_mode1_state.velocity_forward_target_mps =
+        car_filter_lpf1_apply(g_car_mode1_state.velocity_forward_target_mps,
+                              g_car_mode1_state.raw_forward_mps,
+                              ODOMETER_UPDATE_DT_S,
+                              mode1_velocity_smooth_tau_s);
+    g_car_mode1_state.velocity_strafe_target_mps =
+        car_filter_lpf1_apply(g_car_mode1_state.velocity_strafe_target_mps,
+                              g_car_mode1_state.raw_strafe_mps,
+                              ODOMETER_UPDATE_DT_S,
+                              mode1_velocity_smooth_tau_s);
+
+    g_car_mode1_state.velocity_forward_feedback_mps = g_odometer.forward_velocity_mps;
+    g_car_mode1_state.velocity_strafe_feedback_mps = g_odometer.strafe_velocity_mps;
+
+    g_car_mode1_state.forward_feedforward =
+        g_car_mode1_state.velocity_forward_target_mps *
+        ODOMETER_FORWARD_COUNT_PER_METER *
+        ODOMETER_UPDATE_DT_S;
+    g_car_mode1_state.strafe_feedforward =
+        g_car_mode1_state.velocity_strafe_target_mps *
+        ODOMETER_STRAFE_COUNT_PER_METER_ABS *
+        ODOMETER_UPDATE_DT_S;
+
+    g_car_mode1_state.forward_pid_output =
+        PositionalPID_Update(&s_mode1_forward_pid,
+                             g_car_mode1_state.velocity_forward_target_mps,
+                             g_car_mode1_state.velocity_forward_feedback_mps);
+    g_car_mode1_state.strafe_pid_output =
+        PositionalPID_Update(&s_mode1_strafe_pid,
+                             g_car_mode1_state.velocity_strafe_target_mps,
+                             g_car_mode1_state.velocity_strafe_feedback_mps);
+
     g_car_mode1_state.forward_target =
-        car_math_limit_absf(PositionalPID_Update(&s_car_mode1_y_pid,
-                                                 g_car_mode1_state.error_y_cm,
-                                                 0.0f),
-                            uwb_follow_output_limit);
+        car_mode1_limit_output(g_car_mode1_state.forward_feedforward +
+                               g_car_mode1_state.forward_pid_output);
+    g_car_mode1_state.strafe_target =
+        car_mode1_limit_output(g_car_mode1_state.strafe_feedforward +
+                               g_car_mode1_state.strafe_pid_output);
 
-    /* 保存PID中间值（调试用） */
-    g_car_mode1_state.x_pid_p_term = s_car_mode1_x_pid.p_term;
-    g_car_mode1_state.x_pid_i_term = s_car_mode1_x_pid.i_term;
-    g_car_mode1_state.x_pid_d_term = s_car_mode1_x_pid.d_term;
-    g_car_mode1_state.y_pid_p_term = s_car_mode1_y_pid.p_term;
-    g_car_mode1_state.y_pid_i_term = s_car_mode1_y_pid.i_term;
-    g_car_mode1_state.y_pid_d_term = s_car_mode1_y_pid.d_term;
-
-    car_mode1_apply_vector_limit();
+    g_car_mode1_state.forward_pid_p_term = s_mode1_forward_pid.p_term;
+    g_car_mode1_state.forward_pid_i_term = s_mode1_forward_pid.i_term;
+    g_car_mode1_state.forward_pid_d_term = s_mode1_forward_pid.d_term;
+    g_car_mode1_state.strafe_pid_p_term = s_mode1_strafe_pid.p_term;
+    g_car_mode1_state.strafe_pid_i_term = s_mode1_strafe_pid.i_term;
+    g_car_mode1_state.strafe_pid_d_term = s_mode1_strafe_pid.d_term;
     g_car_mode1_state.output_valid = 1U;
 
-    /* 写入全局目标 */
     car_forward_target = g_car_mode1_state.forward_target;
     car_strafe_target = g_car_mode1_state.strafe_target;
 }

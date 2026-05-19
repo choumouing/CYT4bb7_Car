@@ -284,6 +284,8 @@ static void car_loop_100HZ(void)
         // menu_discard_key_events();
     }
 
+    car_mode_update_100HZ(s_system_time_ms);
+
     if (car_control_enabled != 0U)
     {
         Control_100Hz(car_forward_target, car_strafe_target);

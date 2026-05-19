@@ -3,11 +3,11 @@
  * @brief 无线遥控控制实现
  *
  * 安全逻辑链：
- *   receiver_online=0 OR ch5=上 OR (ch6!=遥控 AND ch6!=UWB) → 强制急停
+ *   receiver_online=0 OR ch5=上 OR (ch6!=遥控 AND ch6!=mode2) → 强制急停
  *   其他情况 → 解析摇杆值输出速度指令
  *
  * CH5 开关：下 = 使能，上 = 禁止（急停）
- * CH6 开关：上 = 遥控模式，下 = UWB 跟随模式，中间 = 禁止
+ * CH6 开关：上 = 遥控模式，下 = mode2 占位模式，中间 = 禁止
  */
 
 #include "wireless_control.h"
@@ -29,7 +29,7 @@ static float wireless_scale_axis_to_limit(int16 axis_value, float output_limit)
 
 /**
  * @brief 清除所有运动目标值
- * 急停或 UWB 跟随模式下调用，确保不会残留上一次的遥控指令
+ * 急停或 mode2 占位模式下调用，确保不会残留上一次的遥控指令
  */
 static void wireless_clear_targets(void)
 {
@@ -59,7 +59,7 @@ static void wireless_force_estop(void)
     g_wireless_control_state.control_enabled = 0U;
     g_wireless_control_state.emergency_stop_active = 1U;
     g_wireless_control_state.remote_mode_requested = 0U;
-    g_wireless_control_state.uwb_follow_requested = 0U;
+    g_wireless_control_state.mode2_requested = 0U;
     g_wireless_control_state.mode_request_valid = 0U;
     wireless_clear_targets();
 }
@@ -95,9 +95,9 @@ void wireless_control_init(void)
  * 详细流程：
  *   1. 快照 SBUS 通道值
  *   2. 判断 CH5 使能开关（下=使能）
- *   3. 判断 CH6 模式开关（上=遥控, 下=UWB）
+ *   3. 判断 CH6 模式开关（上=遥控, 下=mode2）
  *   4. 三个安全条件不满足任一 → 强制急停返回
- *   5. UWB 模式 → 清除遥控目标值（UWB 模块另行控制）
+ *   5. mode2 占位模式 → 清除遥控目标值
  *   6. 遥控模式 → 解析 CH1/CH2/CH4 摇杆为速度指令
  */
 void wireless_control_update_25HZ(void)
@@ -105,7 +105,7 @@ void wireless_control_update_25HZ(void)
     const sbus_state_t *sbus;
     uint8 ch5_enabled;
     uint8 ch6_remote_mode;
-    uint8 ch6_uwb_mode;
+    uint8 ch6_mode2_request;
     float manual_rotate_speed;
 
     sbus = sbus_get_state();
@@ -120,14 +120,14 @@ void wireless_control_update_25HZ(void)
     ch6_remote_mode = ((0U != sbus->channel_valid[SBUS_CH6]) &&
                        (SBUS_STD_SWITCH_UP == sbus->std_channel[SBUS_CH6])) ? 1U : 0U;
 
-    /* CH6: 模式开关，"下"=UWB 跟随模式 */
-    ch6_uwb_mode = ((0U != sbus->channel_valid[SBUS_CH6]) &&
-                    (SBUS_STD_SWITCH_DOWN == sbus->std_channel[SBUS_CH6])) ? 1U : 0U;
+    /* CH6: 模式开关，"下"=mode2 占位模式 */
+    ch6_mode2_request = ((0U != sbus->channel_valid[SBUS_CH6]) &&
+                         (SBUS_STD_SWITCH_DOWN == sbus->std_channel[SBUS_CH6])) ? 1U : 0U;
 
     /* ===== 安全检查：任一条件不满足 → 急停 ===== */
     if((0U == g_wireless_control_state.receiver_online) ||
        (0U == ch5_enabled) ||
-       ((0U == ch6_remote_mode) && (0U == ch6_uwb_mode)))
+       ((0U == ch6_remote_mode) && (0U == ch6_mode2_request)))
     {
         wireless_force_estop();
         return;
@@ -137,11 +137,11 @@ void wireless_control_update_25HZ(void)
     g_wireless_control_state.control_enabled = 1U;
     g_wireless_control_state.emergency_stop_active = 0U;
     g_wireless_control_state.remote_mode_requested = ch6_remote_mode;
-    g_wireless_control_state.uwb_follow_requested = ch6_uwb_mode;
+    g_wireless_control_state.mode2_requested = ch6_mode2_request;
     g_wireless_control_state.mode_request_valid = 1U;
 
-    /* UWB 跟随模式：清零遥控目标，由 UWB 模块另行控制 */
-    if(0U != ch6_uwb_mode)
+    /* mode2 占位模式：清零遥控目标 */
+    if(0U != ch6_mode2_request)
     {
         wireless_clear_targets();
         return;
