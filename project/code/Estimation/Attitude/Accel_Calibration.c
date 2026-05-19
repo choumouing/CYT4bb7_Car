@@ -3252,7 +3252,7 @@ void AccelCalibration_ApplySensorCorrection(float *ax, float *ay, float *az)
 void AccelCalibration_Update_1000HZ(void)
 {
     float accel_sensor_g[3];
-    float accel_corrected_sensor_g[3];
+    float accel_raw_sensor_g[3];
     float gyro_sensor_dps[3];
     float gravity_x_g;
     float gravity_y_g;
@@ -3267,7 +3267,12 @@ void AccelCalibration_Update_1000HZ(void)
     /* ===================== ����Ϊʵʱ1kHz���� ===================== */
     sanitize_scale();
 
-    imu_calib_get_raw_sensor_sample(accel_sensor_g, gyro_sensor_dps);
+    accel_sensor_g[0] = g_imufilter_1000hz.accx;
+    accel_sensor_g[1] = g_imufilter_1000hz.accy;
+    accel_sensor_g[2] = g_imufilter_1000hz.accz;
+    gyro_sensor_dps[0] = g_imufilter_1000hz.gyrox;
+    gyro_sensor_dps[1] = g_imufilter_1000hz.gyroy;
+    gyro_sensor_dps[2] = g_imufilter_1000hz.gyroz;
 
     if (!imu_sample_valid(accel_sensor_g[0], accel_sensor_g[1], accel_sensor_g[2], gyro_sensor_dps[0], gyro_sensor_dps[1], gyro_sensor_dps[2]))
     {
@@ -3286,20 +3291,27 @@ void AccelCalibration_Update_1000HZ(void)
         return;
     }
 
-    rotate_imu_to_body(accel_sensor_g, g_accel_calibration.accel_raw_body_g);
+    IMU_GetRawSampleForCalibration(NULL,
+                                   NULL,
+                                   NULL,
+                                   &accel_raw_sensor_g[0],
+                                   &accel_raw_sensor_g[1],
+                                   &accel_raw_sensor_g[2]);
+    rotate_imu_to_body(accel_raw_sensor_g, g_accel_calibration.accel_raw_body_g);
+    rotate_imu_to_body(accel_sensor_g, g_accel_calibration.accel_corrected_body_g);
     rotate_imu_to_body(gyro_sensor_dps, g_accel_calibration.gyro_raw_body_dps);
 
     /* ����΢�����£�����ֹ����ʱ��Ч�� */
     get_gravity_body_g(&gravity_x_g, &gravity_y_g, &gravity_z_g);
 #if ACCEL_CALIBRATION_ENABLE_ONLINE_TRIM
     update_bias_online(
-        g_accel_calibration.accel_raw_body_g,
+        g_accel_calibration.accel_corrected_body_g,
         g_accel_calibration.gyro_raw_body_dps,
         gravity_x_g,
         gravity_y_g,
         gravity_z_g);
     update_scale_online(
-        g_accel_calibration.accel_raw_body_g,
+        g_accel_calibration.accel_corrected_body_g,
         g_accel_calibration.gyro_raw_body_dps);
 #endif
 
@@ -3307,13 +3319,6 @@ void AccelCalibration_Update_1000HZ(void)
        g_imufilter_1000hz 中的 acc 已经是校准后的值,
        rotate_imu_to_body 后的 accel_raw_body_g 即为校准后机体系值 */
     /* 原始传感器值先做零偏/矩阵校准，再旋转到机体系，得到实时校准输出 */
-    accel_corrected_sensor_g[0] = accel_sensor_g[0];
-    accel_corrected_sensor_g[1] = accel_sensor_g[1];
-    accel_corrected_sensor_g[2] = accel_sensor_g[2];
-    AccelCalibration_ApplySensorCorrection(&accel_corrected_sensor_g[0],
-                                           &accel_corrected_sensor_g[1],
-                                           &accel_corrected_sensor_g[2]);
-    rotate_imu_to_body(accel_corrected_sensor_g, g_accel_calibration.accel_corrected_body_g);
     update_runtime_quality(
         g_accel_calibration.accel_corrected_body_g,
         g_accel_calibration.gyro_raw_body_dps);

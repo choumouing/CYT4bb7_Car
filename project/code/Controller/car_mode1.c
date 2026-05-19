@@ -121,8 +121,8 @@ void car_mode1_update_100HZ(uint32 now_ms)
                               ODOMETER_UPDATE_DT_S,
                               mode1_velocity_smooth_tau_s);
 
-    g_car_mode1_state.velocity_forward_feedback_mps = g_odometer.forward_velocity_mps;
-    g_car_mode1_state.velocity_strafe_feedback_mps = g_odometer.strafe_velocity_mps;
+    g_car_mode1_state.velocity_forward_feedback_mps = g_odometer.vel[x];
+    g_car_mode1_state.velocity_strafe_feedback_mps = g_odometer.vel[y];
 
     g_car_mode1_state.forward_feedforward =
         g_car_mode1_state.velocity_forward_target_mps *

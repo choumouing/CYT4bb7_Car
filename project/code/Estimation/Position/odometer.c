@@ -1,25 +1,18 @@
 #include "odometer.h"
+#include "Estimation/Attitude/Accel_Calibration.h"
 
 #define ODOMETER_DEG_TO_RAD (0.017453292519943295f)
 #define ODOMETER_PI (3.14159265358979323846f)
 #define ODOMETER_TWO_PI (6.28318530717958647692f)
 
-typedef struct
-{
-    float forward;
-    float strafe;
-} odometer_vec2_t;
+odometer_data_t g_odometer = {0};
 
-typedef struct
-{
-    float yaw_zero_rad;
-    uint8 yaw_ready;
-} odometer_state_t;
-
-odometer_data_t g_odometer = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-odometer_vec2_t body_velocity;
-odometer_vec2_t horizontal_velocity;
-static odometer_state_t s_odometer_state = {0.0f, 0U};
+static float s_yaw_zero_rad;
+static float s_accel_bias[ODOMETER_AXIS_NUM];
+static float s_imu_vel[ODOMETER_AXIS_NUM];
+static float s_encoder_vel[ODOMETER_AXIS_NUM];
+static uint8 s_yaw_ready;
+static uint8 s_accel_bias_ready;
 
 static float odometer_normalize_angle(float angle)
 {
@@ -36,54 +29,53 @@ static float odometer_normalize_angle(float angle)
     return angle;
 }
 
-static float odometer_vec_norm(odometer_vec2_t value)
+static float odometer_norm(const float value[ODOMETER_AXIS_NUM])
 {
-    return sqrtf((value.forward * value.forward) + (value.strafe * value.strafe));
+    return sqrtf((value[x] * value[x]) + (value[y] * value[y]));
 }
 
-static odometer_vec2_t odometer_get_encoder_count(void)
+static float odometer_yaw_delta_rad(void)
 {
-    odometer_vec2_t count;
-    float left_front = encoder_get_left_front_filtered_count();
-    float right_front = encoder_get_right_front_filtered_count();
-    float left_rear = encoder_get_left_rear_filtered_count();
-    float right_rear = encoder_get_right_rear_filtered_count();
-
-    count.forward = (left_front + right_front + left_rear + right_rear) * 0.25f;
-    count.strafe = (-left_front + right_front + left_rear - right_rear) * 0.25f;
-    return count;
-}
-
-static odometer_vec2_t odometer_count_to_body_velocity(odometer_vec2_t count)
-{
-    odometer_vec2_t velocity;
-
-    velocity.forward = count.forward / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S;
-    velocity.strafe = count.strafe / ODOMETER_STRAFE_COUNT_PER_METER_ABS / ODOMETER_UPDATE_DT_S;
-    return velocity;
-}
-
-static odometer_vec2_t odometer_body_to_horizontal(odometer_vec2_t body_velocity)
-{
-    odometer_vec2_t horizontal;
     float yaw_now_rad = g_euler.yaw * ODOMETER_DEG_TO_RAD;
-    float yaw_delta_rad;
-    float cos_yaw;
-    float sin_yaw;
 
-    if (0U == s_odometer_state.yaw_ready)
+    if (0U == s_yaw_ready)
     {
-        s_odometer_state.yaw_zero_rad = yaw_now_rad;
-        s_odometer_state.yaw_ready = 1U;
+        s_yaw_zero_rad = yaw_now_rad;
+        s_yaw_ready = 1U;
     }
 
-    yaw_delta_rad = odometer_normalize_angle(yaw_now_rad - s_odometer_state.yaw_zero_rad);
-    cos_yaw = cosf(yaw_delta_rad);
-    sin_yaw = sinf(yaw_delta_rad);
+    return odometer_normalize_angle(yaw_now_rad - s_yaw_zero_rad);
+}
 
-    horizontal.forward = (cos_yaw * body_velocity.forward) - (sin_yaw * body_velocity.strafe);
-    horizontal.strafe = (sin_yaw * body_velocity.forward) + (cos_yaw * body_velocity.strafe);
-    return horizontal;
+static void odometer_body_to_horizontal(const float body[ODOMETER_AXIS_NUM],
+                                        float horizontal[ODOMETER_AXIS_NUM])
+{
+    float yaw_delta_rad = odometer_yaw_delta_rad();
+    float cos_yaw = cosf(yaw_delta_rad);
+    float sin_yaw = sinf(yaw_delta_rad);
+
+    horizontal[x] = (cos_yaw * body[x]) - (sin_yaw * body[y]);
+    horizontal[y] = (sin_yaw * body[x]) + (cos_yaw * body[y]);
+}
+
+static void odometer_update_accel(void)
+{
+    float body_acc[ODOMETER_AXIS_NUM];
+    float accel_y_right;
+
+    AccelCalibration_GetHorizontalAccelMps2(&body_acc[x], &accel_y_right);
+    body_acc[y] = -accel_y_right;
+    odometer_body_to_horizontal(body_acc, g_odometer.acc);
+
+    if (0U == s_accel_bias_ready)
+    {
+        s_accel_bias[x] = g_odometer.acc[x];
+        s_accel_bias[y] = g_odometer.acc[y];
+        s_accel_bias_ready = 1U;
+    }
+
+    g_odometer.acc[x] -= s_accel_bias[x];
+    g_odometer.acc[y] -= s_accel_bias[y];
 }
 
 void odometer_init(void)
@@ -93,40 +85,72 @@ void odometer_init(void)
 
 void odometer_reset(void)
 {
-    g_odometer.forward_distance = 0.0f;
-    g_odometer.strafe_distance = 0.0f;
-    g_odometer.travel_distance = 0.0f;
-    g_odometer.forward_velocity_mps = 0.0f;
-    g_odometer.strafe_velocity_mps = 0.0f;
-    s_odometer_state.yaw_zero_rad = 0.0f;
-    s_odometer_state.yaw_ready = 0U;
+    g_odometer = (odometer_data_t){0};
+    s_yaw_zero_rad = 0.0f;
+    s_accel_bias[x] = 0.0f;
+    s_accel_bias[y] = 0.0f;
+    s_imu_vel[x] = 0.0f;
+    s_imu_vel[y] = 0.0f;
+    s_encoder_vel[x] = 0.0f;
+    s_encoder_vel[y] = 0.0f;
+    s_yaw_ready = 0U;
+    s_accel_bias_ready = 0U;
 }
 
 void odometer_update_100HZ(void)
 {
-    odometer_vec2_t distance_delta;
+    float body_vel[ODOMETER_AXIS_NUM];
+    float left_front = encoder_get_left_front_filtered_count();
+    float right_front = encoder_get_right_front_filtered_count();
+    float left_rear = encoder_get_left_rear_filtered_count();
+    float right_rear = encoder_get_right_rear_filtered_count();
 
-    body_velocity = odometer_count_to_body_velocity(odometer_get_encoder_count());
-    horizontal_velocity = odometer_body_to_horizontal(body_velocity);
+    body_vel[x] =
+        (left_front + right_front + left_rear + right_rear) *
+        (0.25f / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S);
+    body_vel[y] =
+        (-left_front + right_front + left_rear - right_rear) *
+        (0.25f / ODOMETER_STRAFE_COUNT_PER_METER_ABS / ODOMETER_UPDATE_DT_S);
+    odometer_body_to_horizontal(body_vel, s_encoder_vel);
+    odometer_update_accel();
 
-    distance_delta.forward = horizontal_velocity.forward * ODOMETER_UPDATE_DT_S;
-    distance_delta.strafe = horizontal_velocity.strafe * ODOMETER_UPDATE_DT_S;
+    if ((odometer_norm(s_encoder_vel) < ODOMETER_STATIC_ENCODER_SPEED_MPS) &&
+        (odometer_norm(g_odometer.acc) < ODOMETER_STATIC_ACCEL_MPS2))
+    {
+        s_accel_bias[x] += ODOMETER_ACCEL_BIAS_ALPHA_STATIC * g_odometer.acc[x];
+        s_accel_bias[y] += ODOMETER_ACCEL_BIAS_ALPHA_STATIC * g_odometer.acc[y];
+        s_imu_vel[x] = 0.0f;
+        s_imu_vel[y] = 0.0f;
+    }
+    else
+    {
+        s_imu_vel[x] += ODOMETER_ENCODER_BLEND_ALPHA * (s_encoder_vel[x] - s_imu_vel[x]);
+        s_imu_vel[y] += ODOMETER_ENCODER_BLEND_ALPHA * (s_encoder_vel[y] - s_imu_vel[y]);
+    }
 
-    g_odometer.forward_velocity_mps = horizontal_velocity.forward;
-    g_odometer.strafe_velocity_mps = horizontal_velocity.strafe;
-    g_odometer.forward_distance += distance_delta.forward;
-    g_odometer.strafe_distance += distance_delta.strafe;
-    g_odometer.travel_distance += odometer_vec_norm(distance_delta);
+    g_odometer.vel[x] = s_imu_vel[x];
+    g_odometer.vel[y] = s_imu_vel[y];
+    g_odometer.position[x] += g_odometer.vel[x] * ODOMETER_UPDATE_DT_S;
+    g_odometer.position[y] += g_odometer.vel[y] * ODOMETER_UPDATE_DT_S;
 }
 
 void odometer_update_1000HZ(void)
 {
+    odometer_update_accel();
 
-    // 首先g_imufilter_1000hz.acc 为车体坐标系下面的加速度
-    // 首先要根据欧拉角转换为水平坐标系下面的加速度(也要和yaw解耦,与车头无关)
-    // 然后积分得到速度，积分得到位移
-    wifi_justfloat(tick_1000us_cnt, g_imufilter_1000hz.accx, g_imufilter_1000hz.accy, g_imufilter_1000hz.accz,
-                   g_euler.roll, g_euler.pitch, g_euler.yaw,
-                   horizontal_velocity.forward, horizontal_velocity.strafe,
-                   g_odometer.forward_distance, g_odometer.strafe_distance);
+    s_imu_vel[x] =
+        (s_imu_vel[x] * ODOMETER_VELOCITY_LEAK_FACTOR) +
+        (g_odometer.acc[x] * ODOMETER_IMU_UPDATE_DT_S);
+    s_imu_vel[y] =
+        (s_imu_vel[y] * ODOMETER_VELOCITY_LEAK_FACTOR) +
+        (g_odometer.acc[y] * ODOMETER_IMU_UPDATE_DT_S);
+
+    g_odometer.vel[x] = s_imu_vel[x];
+    g_odometer.vel[y] = s_imu_vel[y];
+    wifi_justfloat(tick_1000us_cnt,
+    g_odometer.position[x], g_odometer.position[y],
+    g_odometer.vel[x], g_odometer.vel[y],
+    g_odometer.acc[x], g_odometer.acc[y],
+    s_imu_vel[x], s_imu_vel[y],
+    s_encoder_vel[x], s_encoder_vel[y]);
 }
