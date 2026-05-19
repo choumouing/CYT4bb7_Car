@@ -138,12 +138,8 @@ void odometer_update_1000HZ(void)
 {
     odometer_update_accel();
 
-    s_imu_vel[x] =
-        (s_imu_vel[x] * ODOMETER_VELOCITY_LEAK_FACTOR) +
-        (g_odometer.acc[x] * ODOMETER_IMU_UPDATE_DT_S);
-    s_imu_vel[y] =
-        (s_imu_vel[y] * ODOMETER_VELOCITY_LEAK_FACTOR) +
-        (g_odometer.acc[y] * ODOMETER_IMU_UPDATE_DT_S);
+    s_imu_vel[x] += g_odometer.acc[x] * ODOMETER_IMU_UPDATE_DT_S;
+    s_imu_vel[y] += g_odometer.acc[y] * ODOMETER_IMU_UPDATE_DT_S;
 
     g_odometer.vel[x] = s_imu_vel[x];
     g_odometer.vel[y] = s_imu_vel[y];
