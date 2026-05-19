@@ -136,6 +136,12 @@ void odometer_update_100HZ(void)
 
 void odometer_update_1000HZ(void)
 {
+
+    float left_front = encoder_get_left_front_filtered_count();
+    float right_front = encoder_get_right_front_filtered_count();
+    float left_rear = encoder_get_left_rear_filtered_count();
+    float right_rear = encoder_get_right_rear_filtered_count();
+
     odometer_update_accel();
 
     s_imu_vel[x] += g_odometer.acc[x] * ODOMETER_IMU_UPDATE_DT_S;
@@ -144,6 +150,10 @@ void odometer_update_1000HZ(void)
     g_odometer.vel[x] = s_imu_vel[x];
     g_odometer.vel[y] = s_imu_vel[y];
     wifi_justfloat(tick_1000us_cnt,
+    ICM42688.acc_x, ICM42688.acc_y,
+    g_imufilter_1000hz.accx, g_imufilter_1000hz.accy,
+    g_euler.roll, g_euler.pitch, g_euler.yaw,
+    left_front, right_front, left_rear, right_rear,
     g_odometer.position[x], g_odometer.position[y],
     g_odometer.vel[x], g_odometer.vel[y],
     g_odometer.acc[x], g_odometer.acc[y],
