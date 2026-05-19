@@ -1,6 +1,6 @@
 /* Mode1：UWB跟随模式
  * 功能：跟随UWB标签移动
- * 数据流：UWB → 滤波 → 死区 → PID → 输出（编码器计数）
+ * 数据流：UWB/速度融合位置 → 死区 → PID → 输出（编码器计数）
  * 调用频率：25HZ
  * 注意：不控制旋转，rotate_target始终为0
  */
@@ -104,7 +104,7 @@ void car_mode1_reset(void)
 /* UWB跟随更新（25HZ）
  * 数据流：
  *   1. 检查标签在线（超时判断）
- *   2. 读取原始和滤波后的UWB坐标
+ *   2. 读取原始UWB坐标和控制用位置（优先融合，失效时回退UWB滤波）
  *   3. 死区处理消除小误差
  *   4. PID计算（以(0,0)为目标）
  *   5. 限幅 + 向量归一化
@@ -136,6 +136,12 @@ void car_mode1_update_25HZ(uint32 now_ms)
     car_mode1_pid_apply_params();
     g_car_mode1_state.raw_x_cm = (float)position.x_cm;
     g_car_mode1_state.raw_y_cm = (float)position.y_cm;
+    fusion_valid = velocity_fusion_get_state(&fusion_state);
+    if(0U != fusion_valid)
+    {
+        g_car_mode1_state.filt_x_cm = fusion_state.pos_right_cm;
+        g_car_mode1_state.filt_y_cm = fusion_state.pos_forward_cm;
+    }
 
     /* 死区处理 */
     g_car_mode1_state.error_x_cm =

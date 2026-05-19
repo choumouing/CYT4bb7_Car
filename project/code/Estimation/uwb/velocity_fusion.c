@@ -1,7 +1,6 @@
 #include "velocity_fusion.h"
 
 #define VELOCITY_FUSION_DT_S                    (0.01f)
-#define VELOCITY_FUSION_TOF_MIN_MM              (500.0f)
 #define VELOCITY_FUSION_FORWARD_COUNT_PER_M     (11287.0f)
 #define VELOCITY_FUSION_RIGHT_COUNT_PER_M       (12100.0f)
 
@@ -91,11 +90,6 @@ static void velocity_fusion_apply_position_lead(float vel_right_cmps,
 static uint8 velocity_fusion_is_air_valid(void)
 {
     if(0U == air_comm_car_is_online())
-    {
-        return 0U;
-    }
-
-    if(g_air_tof_fused_height_mm <= VELOCITY_FUSION_TOF_MIN_MM)
     {
         return 0U;
     }
