@@ -13,7 +13,17 @@
 
 
 /* 本地差异层: Mahony 解算前对 Z 轴陀螺输入施加对称死区，单位 dps */
-#define MAHONY_GYRO_Z_DEADBAND_DPS  0.2f
+#define MAHONY_GYRO_Z_DEADBAND_DPS  0.4f
+
+static float Mahony_ApplyDeadband(float value, float deadband)
+{
+    if (fabsf(value) <= fabsf(deadband))
+    {
+        return 0.0f;
+    }
+
+    return value;
+}
 
 /* 检查浮点数是否有限（排除 NaN 和过大值） */
 static uint8_t Mahony_IsFinite(float value)
@@ -160,8 +170,28 @@ static float Mahony_CalculateAccelWeightNearness(float accel_mag)
 
 static float Mahony_CalculateAccelWeightRateIgnore(const MahonyAhrs_t *ahrs)
 {
-    (void)ahrs;
-    return 1.0f;
+    float gyro_rate_dps;
+    float gate_start = MAHONY_ACCEL_IGNORE_RATE_DPS;
+    float gate_end = MAHONY_ACCEL_IGNORE_RATE_DPS + MAHONY_ACCEL_IGNORE_SLOPE_DPS;
+
+    if ((gate_start <= 0.0f) || (MAHONY_ACCEL_IGNORE_SLOPE_DPS <= 0.0f))
+    {
+        return 1.0f;
+    }
+
+    gyro_rate_dps = Mahony_VectorMagnitude(ahrs->gyro_lpf_x, ahrs->gyro_lpf_y, ahrs->gyro_lpf_z) * RADIANS_TO_DEGREES;
+
+    if (gyro_rate_dps <= gate_start)
+    {
+        return 1.0f;
+    }
+
+    if (gyro_rate_dps >= gate_end)
+    {
+        return 0.0f;
+    }
+
+    return 1.0f - (gyro_rate_dps - gate_start) / MAHONY_ACCEL_IGNORE_SLOPE_DPS;
 }
 
 static void Mahony_GetEstimatedGravityBody(const MahonyAhrs_t *ahrs,
@@ -286,6 +316,7 @@ void MahonyAhrs_Update(MahonyAhrs_t *ahrs,
     float accel_mag;
     float gyro_abs_dps;
     float accel_weight;
+    float integral_limit = MAHONY_INTEGRAL_LIMIT_DEG * DEGREES_TO_RADIANS;
     float p_correction_x = 0.0f;
     float p_correction_y = 0.0f;
     float p_correction_z = 0.0f;
@@ -302,9 +333,7 @@ void MahonyAhrs_Update(MahonyAhrs_t *ahrs,
 
     ahrs->elapsed_time_s += dt;
 
-    /* 先压掉 Z 轴零点附近的残余漂移，再进入 Mahony 后续静止判定与姿态积分 */
-    gyro_z = car_math_deadband(gyro_z, MAHONY_GYRO_Z_DEADBAND_DPS);
-
+    /* Z 轴零偏学习和死区在 rad/s 域处理，避免预处理影响静止判定。 */
     // 算模长
     accel_mag = Mahony_VectorMagnitude(accel_x, accel_y, accel_z);
     ahrs->accel_magnitude = accel_mag;
@@ -335,6 +364,13 @@ void MahonyAhrs_Update(MahonyAhrs_t *ahrs,
         ahrs->gyro_lpf_z = Mahony_Pt1Update(ahrs->gyro_lpf_z, measured_gz, MAHONY_ROTATION_LPF_HZ, dt);
     }
 
+    if (ahrs->is_static != 0U)
+    {
+        ahrs->gyro_bias_z_static += MAHONY_STATIC_BIAS_Z_ALPHA * (measured_gz - ahrs->gyro_bias_z_static);
+        ahrs->gyro_bias_z_static = car_math_clampf(ahrs->gyro_bias_z_static, -integral_limit, integral_limit);
+        ahrs->gyro_bias_z = ahrs->gyro_bias_z_static;
+    }
+
     prev_q0 = ahrs->q0;
     prev_q1 = ahrs->q1;
     prev_q2 = ahrs->q2;
@@ -342,7 +378,8 @@ void MahonyAhrs_Update(MahonyAhrs_t *ahrs,
 
     rotation_x = measured_gx;
     rotation_y = measured_gy;
-    rotation_z = measured_gz;
+    rotation_z = measured_gz - ahrs->gyro_bias_z_static;
+    rotation_z = Mahony_ApplyDeadband(rotation_z, MAHONY_GYRO_Z_DEADBAND_DPS * DEGREES_TO_RADIANS);
 
     if ((accel_mag > MAHONY_ACCEL_MIN_MAGNITUDE) && (accel_mag < MAHONY_ACCEL_MAX_MAGNITUDE))
     {
@@ -389,20 +426,23 @@ void MahonyAhrs_Update(MahonyAhrs_t *ahrs,
         err_y = gravity_z * est_gravity_x - gravity_x * est_gravity_z;
         err_z = gravity_x * est_gravity_y - gravity_y * est_gravity_x;
 
+        if ((ahrs->ki > 0.0f) && (ahrs->is_static != 0U))
+        {
+            ahrs->integral_fbx += ahrs->ki * err_x * accel_weight * dt;
+            ahrs->integral_fby += ahrs->ki * err_y * accel_weight * dt;
+            ahrs->integral_fbx = car_math_clampf(ahrs->integral_fbx, -integral_limit, integral_limit);
+            ahrs->integral_fby = car_math_clampf(ahrs->integral_fby, -integral_limit, integral_limit);
+            ahrs->gyro_bias_x = ahrs->integral_fbx;
+            ahrs->gyro_bias_y = ahrs->integral_fby;
+        }
+
         p_correction_x = err_x * ahrs->kp * accel_weight;
         p_correction_y = err_y * ahrs->kp * accel_weight;
         p_correction_z = err_z * ahrs->kp * accel_weight;
     }
 
-    ahrs->integral_fbx = 0.0f;
-    ahrs->integral_fby = 0.0f;
-    ahrs->integral_fbz = 0.0f;
-    ahrs->gyro_bias_x = 0.0f;
-    ahrs->gyro_bias_y = 0.0f;
-    ahrs->gyro_bias_z = 0.0f;
-
-    rotation_x += p_correction_x;
-    rotation_y += p_correction_y;
+    rotation_x += ahrs->integral_fbx + p_correction_x;
+    rotation_y += ahrs->integral_fby + p_correction_y;
     rotation_z += p_correction_z;
 
     {
@@ -516,8 +556,7 @@ void MahonyAhrs_SetGains(MahonyAhrs_t *ahrs, float kp, float ki)
     }
 
     ahrs->kp = kp;
-    (void)ki;
-    ahrs->ki = 0.0f;
+    ahrs->ki = ki;
 }
 
 void MahonyAhrs_ResetQuaternion(MahonyAhrs_t *ahrs)

@@ -21,25 +21,26 @@
 #define RADIANS_TO_DEGREES                    (180.0f / 3.14159265359f)   /* 弧度转角度系数 */
 
 /* ======================== INAV 对齐参数 ======================== */
-#define MAHONY_KP_DEFAULT                     1.0f     /* 第一阶段回退参数: 提高飞行段姿态拉回力度 */
-#define MAHONY_KI_DEFAULT                     0.0f     /* 第一阶段固定关闭积分，避免错误加速度学进 bias */
+#define MAHONY_KP_DEFAULT                     0.18f    /* 麦轮车稳定优先，进一步降低加速度拉回力度 */
+#define MAHONY_KI_DEFAULT                     0.003f   /* 仅静止可靠时慢速学习陀螺零偏 */
 #define MAHONY_INPUT_ACCEL_IS_SPECIFIC_FORCE  (1U)     /* 1=输入为比力，静止时约 -1g */
 #define MAHONY_ACCEL_MIN_MAGNITUDE            0.30f    /* 加速度有效最小模长，单位 g */
 #define MAHONY_ACCEL_MAX_MAGNITUDE            3.00f    /* 加速度有效最大模长，单位 g */
-#define MAHONY_ACCEL_TRUST_BAND_G             0.35f    /* 第一阶段线性信任带宽: |acc|-1g 超出后逐步降权 */
-#define MAHONY_ACCEL_WEIGHT_MIN               0.0f     /* 第一阶段不再额外抬高加计参与门限 */
-#define MAHONY_ACCEL_IGNORE_RATE_DPS          0.0f     /* 第一阶段关闭角速度门控，避免飞行段修正归零 */
-#define MAHONY_ACCEL_IGNORE_SLOPE_DPS         0.0f     /* 第一阶段关闭角速度门控斜坡 */
+#define MAHONY_ACCEL_TRUST_BAND_G             0.08f    /* 加速度模长偏离 1g 后更快降权 */
+#define MAHONY_ACCEL_WEIGHT_MIN               0.08f    /* 低可信加速度不参与姿态校正 */
+#define MAHONY_ACCEL_IGNORE_RATE_DPS          4.0f     /* 低角速度时才强信加速度 */
+#define MAHONY_ACCEL_IGNORE_SLOPE_DPS         10.0f    /* 4~14dps 之间线性退权 */
 #define MAHONY_SPIN_RATE_LIMIT_DPS            20.0f    /* INAV 6轴默认积分限速阈值，单位 dps */
-#define MAHONY_ROTATION_LPF_HZ                3.0f     /* INAV 6轴默认角速度门控低通，单位 Hz */
+#define MAHONY_ROTATION_LPF_HZ                1.5f     /* 门控用角速度低通，车端更稳 */
 #define MAHONY_FAST_GAIN_SCALE                1.0f     /* 第一阶段关闭未解锁快速增益，台架与飞行保持同一逻辑 */
 #define MAHONY_FAST_GAIN_WINDOW_S             0.0f     /* 第一阶段关闭未解锁快速增益窗口 */
 #define MAHONY_INTEGRAL_LIMIT_DEG             2.0f     /* INAV 风格积分限幅角度，单位 deg */
 
 /* ======================== 静止检测参数 ======================== */
-#define MAHONY_STATIC_GYRO_DPS_TH             1.5f     /* 静止判定角速度阈值，单位 dps */
-#define MAHONY_STATIC_ACC_ERR_G_TH            0.08f    /* 静止判定加速度模长误差阈值，单位 g */
-#define MAHONY_STATIC_LOCK_COUNT              (100U)   /* 静止判定锁定样本数 */
+#define MAHONY_STATIC_GYRO_DPS_TH             0.8f     /* 静止判定更严格，避免车身微振学错 bias */
+#define MAHONY_STATIC_ACC_ERR_G_TH            0.035f
+#define MAHONY_STATIC_LOCK_COUNT              (300U)
+#define MAHONY_STATIC_BIAS_Z_ALPHA            0.0005f  /* 静止时 Z 轴零偏慢速学习 */
 
 /* ======================== 数值稳定参数 ======================== */
 #define MAHONY_VECTOR_NORM_MIN                1e-6f    /* 向量/四元数最小模长阈值 */

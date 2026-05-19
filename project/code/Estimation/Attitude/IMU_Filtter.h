@@ -25,18 +25,24 @@ extern "C" {
 
 /* ======================== 陷波器参数 ======================== */
 /* 两级陷波分别针对电机振动的 161Hz 和 320Hz 谐波 */
-#define IMU_NOTCH0_HZ              (161.0f)            /* 第一级陷波中心频率 */
-#define IMU_NOTCH0_BW_HZ           (20.0f)             /* 第一级陷波带宽 */
-#define IMU_NOTCH0_Q               (IMU_NOTCH0_HZ / IMU_NOTCH0_BW_HZ) /* Q=f/BW，约 8.05 */
+#define IMU_NOTCH0_HZ              (120.0f)
+#define IMU_NOTCH0_BW_HZ           (18.0f)
+#define IMU_NOTCH0_Q               (IMU_NOTCH0_HZ / IMU_NOTCH0_BW_HZ)
 
-#define IMU_NOTCH1_HZ              (320.0f)            /* 第二级陷波中心频率 */
-#define IMU_NOTCH1_BW_HZ           (20.0f)             /* 第二级陷波带宽 */
-#define IMU_NOTCH1_Q               (IMU_NOTCH1_HZ / IMU_NOTCH1_BW_HZ) /* Q 约 16 */
+#define IMU_NOTCH1_HZ              (160.0f)
+#define IMU_NOTCH1_BW_HZ           (24.0f)
+#define IMU_NOTCH1_Q               (IMU_NOTCH1_HZ / IMU_NOTCH1_BW_HZ)
+
+#define IMU_NOTCH2_HZ              (320.0f)
+#define IMU_NOTCH2_BW_HZ           (30.0f)
+#define IMU_NOTCH2_Q               (IMU_NOTCH2_HZ / IMU_NOTCH2_BW_HZ)
 
 /* ======================== 低通参数 ======================== */
 #define IMU_GYRO_ANTI_ALIAS_LPF_HZ (250.0f)            /* 陀螺仪抗混叠 Butterworth 截止频率 */
-#define IMU_GYRO_LPF_HZ            (60.0f)             /* 陀螺仪主低通截止频率 */
-#define IMU_ACCEL_LPF_HZ           (12.0f)             /* 加速度计主低通截止频率（较激进，保留低频） */
+#define IMU_GYRO_LPF_HZ            (35.0f)             /* 稳定优先，压掉底盘高频假姿态 */
+#define IMU_ACCEL_LPF_HZ           (8.0f)              /* 加速度只保留低频重力参考 */
+
+#define IMU_ACCEL_SHOCK_AXIS_G     (3.0f)              /* 单轴加速度限幅，压制麦轮/齿轮冲击尖峰 */
 
 #define IMU_AXIS_NUM               (3U)                 /* 三轴 */
 
