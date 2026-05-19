@@ -32,16 +32,16 @@ extern float yaw_rate_kd;
 extern float yaw_rate_i_limit;
 extern float yaw_rate_output_limit;
 
-extern float uwb_follow_deadband_x_cm;
-extern float uwb_follow_deadband_y_cm;
-extern float uwb_follow_output_limit;
-extern float uwb_follow_i_limit;
-extern float uwb_follow_x_kp;
-extern float uwb_follow_x_ki;
-extern float uwb_follow_x_kd;
-extern float uwb_follow_y_kp;
-extern float uwb_follow_y_ki;
-extern float uwb_follow_y_kd;
+extern float mode1_velocity_smooth_tau_s;
+extern float mode1_velocity_output_limit;
+extern float mode1_velocity_pid_output_limit;
+extern float mode1_velocity_i_limit;
+extern float mode1_velocity_strafe_kp;
+extern float mode1_velocity_strafe_ki;
+extern float mode1_velocity_strafe_kd;
+extern float mode1_velocity_forward_kp;
+extern float mode1_velocity_forward_ki;
+extern float mode1_velocity_forward_kd;
 
 extern float s_curve_max_iter;
 extern float s_curve_conv_tol;

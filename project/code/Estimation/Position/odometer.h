@@ -2,6 +2,10 @@
 #ifndef _ODOMETER_H_
 #define _ODOMETER_H_
 
+#define ODOMETER_UPDATE_DT_S                (0.01f)
+#define ODOMETER_FORWARD_COUNT_PER_METER    (11287.0f)
+#define ODOMETER_STRAFE_COUNT_PER_METER_ABS (12100.0f)
+
 
 
 /* 里程计输出数据
@@ -25,8 +29,7 @@ void odometer_init(void);
 /* 清零所有累积量和滤波器状态，调头/脱困后可手动调 */
 void odometer_reset(void);
 
-/* 100Hz 周期调用，从编码器+IMU融合算位移
- * 异常：startup_hold 期间会丢弃数据等初始化完成 */
+/* 100Hz 周期调用：编码器速度经 yaw 解耦后积分成水平系速度和位移。 */
 void odometer_update_100HZ(void);
 
 #endif

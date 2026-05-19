@@ -1274,12 +1274,6 @@
                 <name>$PROJ_DIR$\..\..\code\Controller\car_mode2.c</name>
             </file>
             <file>
-                <name>$PROJ_DIR$\..\..\code\Controller\car_mode2_config.c</name>
-            </file>
-            <file>
-                <name>$PROJ_DIR$\..\..\code\Controller\car_mode2_config.h</name>
-            </file>
-            <file>
                 <name>$PROJ_DIR$\..\..\code\Controller\car_start_sbus.c</name>
             </file>
             <file>

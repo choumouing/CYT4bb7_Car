@@ -10,7 +10,7 @@
  *   - 接收器离线 → 强制急停
  *   - CH5 使能开关未拨下 → 强制急停
  *   - CH6 模式开关不在有效位置 → 强制急停
- *   - UWB 跟随模式下清除所有目标值（由 UWB 模块控制）
+ *   - mode2 占位模式下清除所有目标值
  */
 
 #ifndef _WIRELESS_CONTROL_H_
@@ -47,7 +47,7 @@ typedef struct
     uint8_t control_enabled;   /* 控制是否使能：1=使能，0=急停 */
     uint8_t emergency_stop_active;  /* 急停是否激活：1=急停中 */
     uint8_t remote_mode_requested;  /* CH6 请求遥控模式：1=是 */
-    uint8_t uwb_follow_requested;   /* CH6 请求 UWB 跟随模式：1=是 */
+    uint8_t mode2_requested;        /* CH6 requests the reserved mode2 slot. */
     uint8_t mode_request_valid;     /* 模式请求是否有效：1=有效（CH6 在有效挡位） */
 } wireless_control_state_t;
 

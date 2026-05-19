@@ -27,16 +27,16 @@ float yaw_rate_kd = 0.0f;
 float yaw_rate_i_limit = 120.0f;
 float yaw_rate_output_limit = 1000.0f;
 
-float uwb_follow_deadband_x_cm = 4.0f;
-float uwb_follow_deadband_y_cm = 5.0f;
-float uwb_follow_output_limit = 500.0f;
-float uwb_follow_i_limit = 0.0f;
-float uwb_follow_x_kp = 2.2f;
-float uwb_follow_x_ki = 0.0f;
-float uwb_follow_x_kd = 1.0f;
-float uwb_follow_y_kp = 1.9f;
-float uwb_follow_y_ki = 0.0f;
-float uwb_follow_y_kd = 0.8f;
+float mode1_velocity_smooth_tau_s = 0.12f;
+float mode1_velocity_output_limit = 650.0f;
+float mode1_velocity_pid_output_limit = 250.0f;
+float mode1_velocity_i_limit = 0.0f;
+float mode1_velocity_strafe_kp = 80.0f;
+float mode1_velocity_strafe_ki = 0.0f;
+float mode1_velocity_strafe_kd = 20.0f;
+float mode1_velocity_forward_kp = 80.0f;
+float mode1_velocity_forward_ki = 0.0f;
+float mode1_velocity_forward_kd = 20.0f;
 
 float s_curve_max_iter = 50.0f;
 float s_curve_conv_tol = 0.001f;
@@ -101,17 +101,17 @@ static menu_item_t yaw_angle_pid_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-static menu_item_t uwb_follow_pid_menu[] = {
-    {"DeadX", MENU_TYPE_PARAMETER, .param_index = 15},
-    {"DeadY", MENU_TYPE_PARAMETER, .param_index = 16},
-    {"OutLimit", MENU_TYPE_PARAMETER, .param_index = 17},
+static menu_item_t mode1_velocity_pid_menu[] = {
+    {"Smooth", MENU_TYPE_PARAMETER, .param_index = 15},
+    {"CmdLimit", MENU_TYPE_PARAMETER, .param_index = 16},
+    {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 17},
     {"ILimit", MENU_TYPE_PARAMETER, .param_index = 18},
-    {"XKp", MENU_TYPE_PARAMETER, .param_index = 19},
-    {"XKi", MENU_TYPE_PARAMETER, .param_index = 20},
-    {"XKd", MENU_TYPE_PARAMETER, .param_index = 21},
-    {"YKp", MENU_TYPE_PARAMETER, .param_index = 22},
-    {"YKi", MENU_TYPE_PARAMETER, .param_index = 23},
-    {"YKd", MENU_TYPE_PARAMETER, .param_index = 24},
+    {"SKp", MENU_TYPE_PARAMETER, .param_index = 19},
+    {"SKi", MENU_TYPE_PARAMETER, .param_index = 20},
+    {"SKd", MENU_TYPE_PARAMETER, .param_index = 21},
+    {"FKp", MENU_TYPE_PARAMETER, .param_index = 22},
+    {"FKi", MENU_TYPE_PARAMETER, .param_index = 23},
+    {"FKd", MENU_TYPE_PARAMETER, .param_index = 24},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -279,7 +279,7 @@ static menu_item_t main_menu[] = {
     {"Wheel PID", MENU_TYPE_SUBMENU, .submenu = wheel_pid_menu},
     {"YawRate PID", MENU_TYPE_SUBMENU, .submenu = yaw_rate_pid_menu},
     {"YawAng PID", MENU_TYPE_SUBMENU, .submenu = yaw_angle_pid_menu},
-    {"UWB PID", MENU_TYPE_SUBMENU, .submenu = uwb_follow_pid_menu},
+    {"Mode1 Vel", MENU_TYPE_SUBMENU, .submenu = mode1_velocity_pid_menu},
     {"Air", MENU_TYPE_SUBMENU, .submenu = air_menu},
     {"Diag", MENU_TYPE_SUBMENU, .submenu = diag_menu},
     {"Load Slot", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
@@ -309,16 +309,16 @@ void menu_config_init(void)
     menu_register_param(&yaw_angle_i_limit, 0.1f, 0.0f, 100.0f);
     menu_register_param(&yaw_angle_output_limit, 0.1f, 0.0f, 10.0f);
 
-    menu_register_param(&uwb_follow_deadband_x_cm, 1.0f, 0.0f, 50.0f);
-    menu_register_param(&uwb_follow_deadband_y_cm, 1.0f, 0.0f, 50.0f);
-    menu_register_param(&uwb_follow_output_limit, 10.0f, 0.0f, 1000.0f);
-    menu_register_param(&uwb_follow_i_limit, 1.0f, 0.0f, 1000.0f);
-    menu_register_param(&uwb_follow_x_kp, 0.1f, 0.0f, 50.0f);
-    menu_register_param(&uwb_follow_x_ki, 0.01f, 0.0f, 50.0f);
-    menu_register_param(&uwb_follow_x_kd, 0.1f, 0.0f, 50.0f);
-    menu_register_param(&uwb_follow_y_kp, 0.1f, 0.0f, 50.0f);
-    menu_register_param(&uwb_follow_y_ki, 0.01f, 0.0f, 50.0f);
-    menu_register_param(&uwb_follow_y_kd, 0.1f, 0.0f, 50.0f);
+    menu_register_param(&mode1_velocity_smooth_tau_s, 0.01f, 0.0f, 1.0f);
+    menu_register_param(&mode1_velocity_output_limit, 10.0f, 0.0f, 1500.0f);
+    menu_register_param(&mode1_velocity_pid_output_limit, 10.0f, 0.0f, 1000.0f);
+    menu_register_param(&mode1_velocity_i_limit, 1.0f, 0.0f, 1000.0f);
+    menu_register_param(&mode1_velocity_strafe_kp, 1.0f, 0.0f, 500.0f);
+    menu_register_param(&mode1_velocity_strafe_ki, 0.01f, 0.0f, 500.0f);
+    menu_register_param(&mode1_velocity_strafe_kd, 1.0f, 0.0f, 500.0f);
+    menu_register_param(&mode1_velocity_forward_kp, 1.0f, 0.0f, 500.0f);
+    menu_register_param(&mode1_velocity_forward_ki, 0.01f, 0.0f, 500.0f);
+    menu_register_param(&mode1_velocity_forward_kd, 1.0f, 0.0f, 500.0f);
 
     menu_air_support_init();
     menu_set_root(main_menu);
