@@ -483,11 +483,13 @@ static void diag_position_function(void)
     (void)ALX_AOA_GetFilteredXY(&filt_x_cm, &filt_y_cm);
 
     diag_begin();
-    sprintf(text, "Odo F:%7.3f", (double)g_odometer.forward_distance);
+    sprintf(text, "Odo X:%7.3f", (double)g_odometer.position[x]);
     diag_show_line(0U, text);
-    sprintf(text, "Odo S:%7.3f", (double)g_odometer.strafe_distance);
+    sprintf(text, "Odo Y:%7.3f", (double)g_odometer.position[y]);
     diag_show_line(1U, text);
-    sprintf(text, "Travel:%7.3f", (double)g_odometer.travel_distance);
+    sprintf(text, "Vel:%5.2f %5.2f",
+            (double)g_odometer.vel[x],
+            (double)g_odometer.vel[y]);
     diag_show_line(2U, text);
     sprintf(text, "UWB ok:%u", (unsigned int)uwb_ok);
     diag_show_line(3U, text);
