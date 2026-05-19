@@ -33,22 +33,7 @@ float control_yaw_angle_current = 0.0f;
 float control_yaw_angle_output = 0.0f;
 float control_yaw_rate_target = 0.0f;
 float control_yaw_rate_current = 0.0f;
-float control_yaw_rate_raw = 0.0f;
 float control_yaw_rate_output = 0.0f;
-
-/* 航向保持状态 */
-static float s_yaw_hold_target = 0.0f;
-static uint8 s_last_rotate_active = 0U;
-static uint8 s_yaw_hold_active = 0U;
-
-static float control_normalize_angle_rad(float angle)
-{
-    while (angle > CONTROL_PI)
-        angle -= CONTROL_TWO_PI;
-    while (angle < -CONTROL_PI)
-        angle += CONTROL_TWO_PI;
-    return angle;
-}
 
 static float control_wheel_ff(float target, float feedback, float ks, float kv, float kstart)
 {
@@ -130,13 +115,8 @@ void Control_Init(void)
 void Control_Reset(void)
 {
     control_pid_init_all();
-    control_yaw_angle_current = 0.0f;
-    control_yaw_angle_output = 0.0f;
-    control_yaw_rate_target = 0.0f;
-    control_yaw_rate_current = 0.0f;
-    control_yaw_rate_raw = 0.0f;
-    control_yaw_rate_output = 0.0f;
-    Control_YawHoldReset();
+    control_yaw_angle_current = control_yaw_angle_output = 0.0f;
+    control_yaw_rate_target = control_yaw_rate_current = control_yaw_rate_output = 0.0f;
 }
 
 void Control_Stop(void)
@@ -145,83 +125,44 @@ void Control_Stop(void)
     mecanum_motor_stop();
 }
 
-void Control_YawHoldReset(void)
-{
-    s_last_rotate_active = 0U;
-    s_yaw_hold_active = 0U;
-    s_yaw_hold_target = Control_GetYawAngle();
-}
-
 float Control_GetYawAngle(void)
 {
-    return control_normalize_angle_rad(-g_euler.yaw * CONTROL_DEG_TO_RAD);
+    float yaw = -g_euler.yaw * CONTROL_DEG_TO_RAD;
+
+    while (yaw > CONTROL_PI) yaw -= CONTROL_TWO_PI;
+    while (yaw < -CONTROL_PI) yaw += CONTROL_TWO_PI;
+    return yaw;
 }
 
-/* 25Hz：航向角度环 + 航向保持 */
-void Control_25Hz(float rotate_target)
-{
-    if (rotate_target != 0.0f)
-    {
-        s_yaw_hold_target = Control_GetYawAngle();
-        s_yaw_hold_active = 0U;
-    }
-    else
-    {
-        if ((0U == s_yaw_hold_active) || (0U != s_last_rotate_active))
-        {
-            s_yaw_hold_target = Control_GetYawAngle();
-            yaw_angle_pid.integral = 0.0f;
-            control_yaw_angle_output = 0.0f;
-            control_yaw_rate_target = 0.0f;
-            s_yaw_hold_active = 1U;
-        }
-
-        /* 角度环：目标航向 → 角速度目标 */
-        float yaw_error = control_normalize_angle_rad(s_yaw_hold_target - Control_GetYawAngle());
-        control_yaw_angle_current = Control_GetYawAngle();
-        yaw_angle_pid.kp_1 = yaw_angle_kp; yaw_angle_pid.ki = yaw_angle_ki;
-        yaw_angle_pid.kd = yaw_angle_kd;   yaw_angle_pid.i_limit = yaw_angle_i_limit;
-        yaw_angle_pid.output_limit = yaw_angle_output_limit;
-        control_yaw_angle_output = PositionalPID_Update(&yaw_angle_pid, yaw_error, 0.0f);
-        control_yaw_rate_target = control_yaw_angle_output;
-    }
-
-    s_last_rotate_active = (rotate_target != 0.0f) ? 1U : 0U;
-}
-
-/* 50Hz：航向角速度环 */
-void Control_50Hz(float rotate_target)
-{
-    yaw_rate_pid.kp_1 = yaw_rate_kp; yaw_rate_pid.ki = yaw_rate_ki;
-    yaw_rate_pid.kd = yaw_rate_kd;   yaw_rate_pid.i_limit = yaw_rate_i_limit;
-    yaw_rate_pid.output_limit = yaw_rate_output_limit;
-
-    control_yaw_rate_target = rotate_target;
-    control_yaw_rate_raw = -ICM42688.gyro_z * CONTROL_DEG_TO_RAD;
-    control_yaw_rate_current = -g_imufilter_1000hz.gyroz * CONTROL_DEG_TO_RAD;
-    control_yaw_rate_output = PositionalPID_Update(&yaw_rate_pid,
-                                                   rotate_target,
-                                                   control_yaw_rate_current);
-}
-
-/* 100Hz：麦克纳姆解算 + 四轮速度环 + 电机输出 */
+/* 100Hz：yaw锁0 + 麦克纳姆解算 + 四轮速度环 + 电机输出 */
 void Control_100Hz(float forward, float strafe)
 {
-    float rot = control_yaw_rate_output;
-    float lf = forward - strafe - rot;
-    float rf = forward + strafe + rot;
-    float lr = forward + strafe - rot;
-    float rr = forward - strafe + rot;
-    float lf_feedback = encoder_get_left_front_filtered_count();
-    float rf_feedback = encoder_get_right_front_filtered_count();
-    float lr_feedback = encoder_get_left_rear_filtered_count();
-    float rr_feedback = encoder_get_right_rear_filtered_count();
-    float lf_ff = control_wheel_ff(lf, lf_feedback, CONTROL_WHEEL_FF_KS_LF, CONTROL_WHEEL_FF_KV_LF, CONTROL_WHEEL_FF_KSTART_LF);
-    float rf_ff = control_wheel_ff(rf, rf_feedback, CONTROL_WHEEL_FF_KS_RF, CONTROL_WHEEL_FF_KV_RF, CONTROL_WHEEL_FF_KSTART_RF);
-    float lr_ff = control_wheel_ff(lr, lr_feedback, CONTROL_WHEEL_FF_KS_LR, CONTROL_WHEEL_FF_KV_LR, CONTROL_WHEEL_FF_KSTART_LR);
-    float rr_ff = control_wheel_ff(rr, rr_feedback, CONTROL_WHEEL_FF_KS_RR, CONTROL_WHEEL_FF_KV_RR, CONTROL_WHEEL_FF_KSTART_RR);
+    float rot, lf, rf, lr, rr;
+    float lf_feedback, rf_feedback, lr_feedback, rr_feedback;
+    float lf_ff, rf_ff, lr_ff, rr_ff;
 
     control_pid_apply_all();
+
+    control_yaw_angle_current = Control_GetYawAngle();
+    control_yaw_angle_output = PositionalPID_Update(&yaw_angle_pid, 0.0f, control_yaw_angle_current);
+    control_yaw_rate_target = control_yaw_angle_output;
+
+    control_yaw_rate_current = -g_imufilter_1000hz.gyroz * CONTROL_DEG_TO_RAD;
+    control_yaw_rate_output = PositionalPID_Update(&yaw_rate_pid, control_yaw_rate_target, control_yaw_rate_current);
+
+    rot = control_yaw_rate_output;
+    lf = forward - strafe - rot;
+    rf = forward + strafe + rot;
+    lr = forward + strafe - rot;
+    rr = forward - strafe + rot;
+    lf_feedback = encoder_get_left_front_filtered_count();
+    rf_feedback = encoder_get_right_front_filtered_count();
+    lr_feedback = encoder_get_left_rear_filtered_count();
+    rr_feedback = encoder_get_right_rear_filtered_count();
+    lf_ff = control_wheel_ff(lf, lf_feedback, CONTROL_WHEEL_FF_KS_LF, CONTROL_WHEEL_FF_KV_LF, CONTROL_WHEEL_FF_KSTART_LF);
+    rf_ff = control_wheel_ff(rf, rf_feedback, CONTROL_WHEEL_FF_KS_RF, CONTROL_WHEEL_FF_KV_RF, CONTROL_WHEEL_FF_KSTART_RF);
+    lr_ff = control_wheel_ff(lr, lr_feedback, CONTROL_WHEEL_FF_KS_LR, CONTROL_WHEEL_FF_KV_LR, CONTROL_WHEEL_FF_KSTART_LR);
+    rr_ff = control_wheel_ff(rr, rr_feedback, CONTROL_WHEEL_FF_KS_RR, CONTROL_WHEEL_FF_KV_RR, CONTROL_WHEEL_FF_KSTART_RR);
 
     mecanum_motor_set_all(
         (int16_t)(lf_ff + PositionalPID_Update(&wheel_left_front_pid, lf, lf_feedback)),
