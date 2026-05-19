@@ -64,7 +64,6 @@ void car_mode_reset(void)
     car_emergency_stop_active = 1U;
     car_forward_target = 0.0f;
     car_strafe_target = 0.0f;
-    car_rotate_target = 0.0f;
     car_mode_reset_all();
 }
 
@@ -81,7 +80,7 @@ car_mode_e car_mode_get(void)
  *   2. 检测切换 → 重置所有状态
  *   3. 控制未使能 → 清零输出直接返回（安全）
  *   4. 按模式分发到各mode_update
- *   5. mode_update内部写car_forward/strafe/rotate_target
+ *   5. mode_update内部只写car_forward/strafe_target，yaw由控制层锁0
  *   6. 100HZ的speed_loop读取这些target做控制
  */
 void car_mode_update_25HZ(uint32 now_ms)
@@ -96,7 +95,6 @@ void car_mode_update_25HZ(uint32 now_ms)
     {
         car_forward_target = 0.0f;
         car_strafe_target = 0.0f;
-        car_rotate_target = 0.0f;
         return;
     }
 
