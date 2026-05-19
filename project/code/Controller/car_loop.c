@@ -10,6 +10,7 @@
 volatile uint8_t timer_100HZ_flag = 0U;
 volatile uint8_t timer_25HZ_flag = 0U;
 volatile uint16 g_tick_1000HZ = 0U;
+volatile uint32 tick_1000us_cnt = 0U;
 
 float car_forward_target = 0.0f;
 float car_strafe_target = 0.0f;
@@ -212,6 +213,7 @@ static void car_loop_runtime_reset(void)
     timer_100HZ_flag = 0U;
     timer_25HZ_flag = 0U;
     g_tick_1000HZ = 0U;
+    tick_1000us_cnt = 0U;
 
     car_forward_target = 0.0f;
     car_strafe_target = 0.0f;

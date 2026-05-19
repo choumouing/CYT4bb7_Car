@@ -170,13 +170,13 @@ void Control_100Hz(float forward, float strafe)
         (int16_t)(lr_ff + PositionalPID_Update(&wheel_left_rear_pid, lr, lr_feedback)),
         (int16_t)(rr_ff + PositionalPID_Update(&wheel_right_rear_pid, rr, rr_feedback)));
 
-    wifi_justfloat(lf, lf_feedback, lf_ff, wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
-                   rf, rf_feedback, rf_ff, wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,
-                   lr, lr_feedback, lr_ff, wheel_left_rear_pid.p_term, wheel_left_rear_pid.i_term,
-                   rr, rr_feedback, rr_ff, wheel_right_rear_pid.p_term, wheel_right_rear_pid.i_term,
-                   g_euler.roll, g_euler.pitch, g_euler.yaw,
-                   g_imufilter_1000hz.gyrox, g_imufilter_1000hz.gyroy, g_imufilter_1000hz.gyroz,
-                   g_imufilter_1000hz.accx, g_imufilter_1000hz.accy);
+    // wifi_justfloat(lf, lf_feedback, lf_ff, wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
+    //                rf, rf_feedback, rf_ff, wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,
+    //                lr, lr_feedback, lr_ff, wheel_left_rear_pid.p_term, wheel_left_rear_pid.i_term,
+    //                rr, rr_feedback, rr_ff, wheel_right_rear_pid.p_term, wheel_right_rear_pid.i_term,
+    //                g_euler.roll, g_euler.pitch, g_euler.yaw,
+    //                g_imufilter_1000hz.gyrox, g_imufilter_1000hz.gyroy, g_imufilter_1000hz.gyroz,
+    //                g_imufilter_1000hz.accx, g_imufilter_1000hz.accy);
 
 
 

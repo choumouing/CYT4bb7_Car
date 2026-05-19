@@ -18,6 +18,7 @@
 extern volatile uint8_t timer_100HZ_flag;
 extern volatile uint8_t timer_25HZ_flag;
 extern volatile uint16 g_tick_1000HZ;
+extern volatile uint32 tick_1000us_cnt; /* 1000us tick counter */
 
 extern float car_forward_target;
 extern float car_strafe_target;

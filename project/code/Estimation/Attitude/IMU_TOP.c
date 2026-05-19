@@ -22,7 +22,6 @@ MahonyAhrs_Euler_t g_euler;       /* 当前姿态欧拉角（单位: 度） */
 uint8 g_imu_ready = 0U;           /* 1=IMU 初始化+自检+暖机全部完成 */
 static imudata_t s_imu_raw_calib_1000hz = {0}; /* 当前帧原始 IMU 快照，供校准链读取 */
 static uint8 s_imu_initializing = 0U;           /* 1=正在初始化中（暖机阶段） */
-extern uint32 tick_1000us_cnt;
 /* ======================== 本地工具函数 ======================== */
 static uint8 IMU_IsFiniteFloat(float value)
 {
@@ -155,9 +154,6 @@ void IMU_Init_All(void)
 	if (0U == IMU_Startup_SelfCheck())
 	{
 		printf("IMU startup self-check failed.\r\n");
-		while (1)
-		{
-		}
 	}
 
 	/* 步骤3: 初始化上层滤波与姿态解算器 */
@@ -246,6 +242,13 @@ void IMU_Update_1000HZ(void)
 
 	/* 步骤5: 从四元数提取欧拉角（单位: 度），缓存到 g_euler 供全局使用 */
 	g_euler = MahonyAhrs_GetEulerDegrees(&g_mahony_ahrs);
+
+
+	wifi_justfloat(tick_1000us_cnt,ICM42688.gyro_x, ICM42688.gyro_y, ICM42688.gyro_z,
+					ICM42688.acc_x, ICM42688.acc_y, ICM42688.acc_z,
+					g_imufilter_1000hz.gyrox, g_imufilter_1000hz.gyroy, g_imufilter_1000hz.gyroz,
+					g_imufilter_1000hz.accx, g_imufilter_1000hz.accy, g_imufilter_1000hz.accz,
+					g_euler.roll, g_euler.pitch, g_euler.yaw);
 
 }
 

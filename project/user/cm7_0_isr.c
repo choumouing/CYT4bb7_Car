@@ -14,6 +14,7 @@ void pit0_ch0_isr()
     {
         g_tick_1000HZ++;
     }
+    tick_1000us_cnt++;
 
     pit_ch0_100HZ_count++;
     if(pit_ch0_100HZ_count >= 10)
