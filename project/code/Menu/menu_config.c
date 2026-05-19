@@ -17,14 +17,14 @@ float wheel_i_limit = 2500.0f;          // 积分限幅
 //====================================================用户函数声明====================================================
 float yaw_angle_kp = 2.10f;
 float yaw_angle_ki = 0.0f;
-float yaw_angle_kd = 0.80f;
-float yaw_angle_i_limit = 1.0f;
+float yaw_angle_kd = 3.20f;
+float yaw_angle_i_limit = 4.0f;
 float yaw_angle_output_limit = 1.95f;
 
 float yaw_rate_kp = 90.0f;
-float yaw_rate_ki = 1.6f;
+float yaw_rate_ki = 0.8f;
 float yaw_rate_kd = 0.0f;
-float yaw_rate_i_limit = 60.0f;
+float yaw_rate_i_limit = 120.0f;
 float yaw_rate_output_limit = 1000.0f;
 
 float uwb_follow_deadband_x_cm = 4.0f;
