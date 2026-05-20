@@ -245,6 +245,8 @@ void car_loop_init(void)
     ALX_AOA_Init();
     air_comm_car_init();
     air_comm_set_run_data_callback(on_air_data);
+    Beep_Init();
+    Beep_Play(100, 1.0f, 1);
     pit_init(PIT_CH0, 1000);
 }
 
@@ -288,6 +290,8 @@ static void car_loop_100HZ(void)
     }
 
     car_mode_update_100HZ(s_system_time_ms);
+
+    Beep_Update_100HZ();
 
     if (car_control_enabled != 0U)
     {
