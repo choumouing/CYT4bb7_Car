@@ -237,8 +237,6 @@ static void beacon_detection_clear_enter_candidate(beacon_detection_enter_candid
     candidate->peak_location = BEACON_BUMP_LOCATION_UNKNOWN;
     candidate->pre_location = BEACON_BUMP_LOCATION_UNKNOWN;
     candidate->post_location = BEACON_BUMP_LOCATION_UNKNOWN;
-    candidate->exit_peak_location = BEACON_BUMP_LOCATION_UNKNOWN;
-    candidate->exit_min_speed_location = BEACON_BUMP_LOCATION_UNKNOWN;
 }
 
 static void beacon_detection_init_enter_candidate(beacon_detection_enter_candidate_t *candidate,
