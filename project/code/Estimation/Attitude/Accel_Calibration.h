@@ -35,7 +35,7 @@ extern "C" {
 #define ACCEL_CALIBRATION_STATIC_SPECIFIC_FORCE_SIGN (-1.0f)
 
 /* 水平系投影开关：0=仅 roll/pitch 去倾斜，1=额外做 yaw 旋转 */
-#define ACCEL_CALIBRATION_LEVEL_USE_YAW          (0U)
+#define ACCEL_CALIBRATION_LEVEL_USE_YAW          (0U) /* Keep 0 for odometer; odometer applies yaw itself. */
 
 /* ======================== 机体系方向符号约定 ======================== */
 /* 机体系 FRD（Forward-Right-Down）：+X 向前，+Y 向右，+Z 向下 */
@@ -202,6 +202,7 @@ void AccelCalibration_GetCorrectedSpecificForceG(float *ax_g, float *ay_g, float
 /* ======================== 水平系数据 API ======================== */
 void AccelCalibration_GetLevelAccelMps2(float *ax_level, float *ay_level, float *az_level);
                                                            /* 水平系线性加速度（去倾斜+重力），单位 m/s^2 */
+void AccelCalibration_GetBodyLevelAccelNoYawMps2(float *ax_forward, float *ay_right);
 void AccelCalibration_GetHorizontalAccelMps2(float *ax_h, float *ay_h);
                                                            /* 水平面 X/Y 线性加速度，单位 m/s^2 */
 void AccelCalibration_RotateImuToBody(const float vec_sensor[3], float vec_body[3]);

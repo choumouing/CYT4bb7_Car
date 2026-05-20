@@ -3483,6 +3483,21 @@ void AccelCalibration_GetLevelAccelMps2(float *ax_level, float *ay_level, float 
     }
 }
 
+void AccelCalibration_GetBodyLevelAccelNoYawMps2(float *ax_forward, float *ay_right)
+{
+#if ACCEL_CALIBRATION_LEVEL_USE_YAW
+#error "AccelCalibration_GetBodyLevelAccelNoYawMps2 requires ACCEL_CALIBRATION_LEVEL_USE_YAW == 0"
+#endif
+    if (ax_forward != NULL)
+    {
+        *ax_forward = g_accel_calibration.accel_level_mps2[0];
+    }
+    if (ay_right != NULL)
+    {
+        *ay_right = g_accel_calibration.accel_level_mps2[1];
+    }
+}
+
 void AccelCalibration_GetHorizontalAccelMps2(float *ax_h, float *ay_h)
 {
     if (ax_h != NULL)
