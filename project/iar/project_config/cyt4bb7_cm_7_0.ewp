@@ -1180,6 +1180,15 @@
                     <name>$PROJ_DIR$\..\..\code\HW_Drivers\CameraSpi\camera_spi_hw.h</name>
                 </file>
             </group>
+            <group>
+                <name>Beep</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\HW_Drivers\Beep\Beep.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\HW_Drivers\Beep\Beep.h</name>
+                </file>
+            </group>
         </group>
         <group>
             <name>Estimation</name>
