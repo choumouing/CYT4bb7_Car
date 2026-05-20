@@ -267,6 +267,15 @@ static void car_loop_100HZ(void)
     odometer_update_100HZ();
     beacon_detection_update_100HZ();
 
+    if (g_beacon_detection.bump_detected != 0U)
+    {
+        Beep_Play(100, 0.5f, 1);
+    }
+    else
+    {
+        Beep_Stop();
+    }
+
     CameraSpi_Poll();
     car_loop_camera_spi_read_100HZ();
     car_loop_beacon_fusion_update_100HZ();

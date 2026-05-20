@@ -460,6 +460,36 @@ void beacon_detection_update_1000HZ(void)
                                      BEACON_BUMP_CONFIDENCE_LOW :
                                      BEACON_BUMP_CONFIDENCE_HIGH);
     }
+    float left_front = encoder_get_left_front_filtered_count();
+    float right_front = encoder_get_right_front_filtered_count();
+    float left_rear = encoder_get_left_rear_filtered_count();
+    float right_rear = encoder_get_right_rear_filtered_count();
+
+
+    wifi_justfloat(
+      tick_1000us_cnt,
+
+      ICM42688.acc_x, ICM42688.acc_y, ICM42688.acc_z,
+      ICM42688.gyro_x, ICM42688.gyro_y, ICM42688.gyro_z,
+
+      g_imufilter_1000hz.accx, g_imufilter_1000hz.accy, g_imufilter_1000hz.accz,
+      g_imufilter_1000hz.gyrox, g_imufilter_1000hz.gyroy, g_imufilter_1000hz.gyroz,
+
+      g_euler.roll, g_euler.pitch, g_euler.yaw,
+
+      left_front, right_front, left_rear, right_rear,
+
+      accel_x_g, accel_y_g, accel_z_g,
+      gyro_x_dps, gyro_y_dps, gyro_z_dps,
+
+      sample.tilt_deg,
+
+      g_beacon_detection.bump_detected,
+      g_beacon_detection.confidence,
+      g_beacon_detection.location,
+      g_beacon_detection.wheel_mask,
+      g_beacon_detection.score
+  );
 }
 
 void beacon_detection_update_100HZ(void)
@@ -469,18 +499,20 @@ void beacon_detection_update_100HZ(void)
     float left_rear;
     float right_rear;
     float beta;
+    float yaw_rad;
+    float cos_yaw;
+    float sin_yaw;
 
     left_front = encoder_get_left_front_filtered_count();
     right_front = encoder_get_right_front_filtered_count();
     left_rear = encoder_get_left_rear_filtered_count();
     right_rear = encoder_get_right_rear_filtered_count();
 
-    g_beacon_detection.vel[0] =
-        (left_front + right_front + left_rear + right_rear) *
-        (0.25f / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S);
-    g_beacon_detection.vel[1] =
-        (-left_front + right_front + left_rear - right_rear) *
-        (0.25f / ODOMETER_STRAFE_COUNT_PER_METER_ABS / ODOMETER_UPDATE_DT_S);
+    yaw_rad = g_euler.yaw * 0.017453292519943295f;
+    cos_yaw = cosf(yaw_rad);
+    sin_yaw = sinf(yaw_rad);
+    g_beacon_detection.vel[0] =  cos_yaw * g_odometer.vel[x] + sin_yaw * g_odometer.vel[y];
+    g_beacon_detection.vel[1] = -sin_yaw * g_odometer.vel[x] + cos_yaw * g_odometer.vel[y];
     g_beacon_detection.speed_mps =
         beacon_detection_vec2_norm(g_beacon_detection.vel[0],
                                    g_beacon_detection.vel[1]);
