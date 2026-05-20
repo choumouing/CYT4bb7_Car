@@ -235,7 +235,7 @@ void car_loop_init(void)
     encoder_control_init();
     odometer_init();
     CameraSpi_Init();
-    beacon_detection_init();
+    beacon_detection_reset();
     IMU_Init_All();
     AccelCalibration_Init();
     IMUCalib_Init();
@@ -251,6 +251,7 @@ void car_loop_init(void)
 static void car_loop_1000HZ(void)
 {
     IMU_Update_1000HZ();
+    beacon_detection_update_1000HZ();
 }
 
 static void car_loop_100HZ(void)
@@ -262,6 +263,7 @@ static void car_loop_100HZ(void)
 
     encoder_update_100HZ();
     odometer_update_100HZ();
+    beacon_detection_update_100HZ();
 
     CameraSpi_Poll();
     car_loop_camera_spi_read_100HZ();
@@ -274,7 +276,6 @@ static void car_loop_100HZ(void)
         // menu_air_stop_param_sync();
     }
     air_comm_car_update_100HZ();
-    beacon_detection_update_100HZ();
 
     if ((car_control_enabled == 0U) || (car_emergency_stop_active != 0U))
     {

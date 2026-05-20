@@ -6,7 +6,7 @@
 - `project/code/Protocols/CameraSpi/`：负责三从机轮询、帧解析、CRC、上下行 payload、在线状态和目标快照。
 - `project/code/Protocols/AirComm/`：负责小车主控与飞机端主控的串口协议，保持旧帧格式 `AA AA 55 55 | Type | Seq | Len | Payload | CRC_L | CRC_H`。
 - `project/code/Menu/menu_air_support.*`：保存 Air 参数镜像、Air Flash 槽、远程调参与批量同步。
-- `project/code/Estimation/Beacon_Detection/`：通过 `beacon_detection_get_camera_target()` 对外提供摄像头信标目标快照，协议层不直接改控制目标。
+- `project/code/Estimation/Image/`：通过 `beacon_fusion_update_100HZ()` 对外提供摄像头信标融合结果，协议层不直接改控制目标。
 
 ## 调度
 
