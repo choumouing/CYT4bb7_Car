@@ -11,15 +11,9 @@ typedef enum
 {
     BEACON_BUMP_LOCATION_UNKNOWN = 0,
     BEACON_BUMP_LOCATION_FRONT,
-    BEACON_BUMP_LOCATION_REAR,
-    BEACON_BUMP_LOCATION_LEFT,
     BEACON_BUMP_LOCATION_RIGHT,
-    BEACON_BUMP_LOCATION_LEFT_FRONT,
-    BEACON_BUMP_LOCATION_RIGHT_FRONT,
-    BEACON_BUMP_LOCATION_LEFT_REAR,
-    BEACON_BUMP_LOCATION_RIGHT_REAR,
-    BEACON_BUMP_LOCATION_DIAGONAL_LF_RR,
-    BEACON_BUMP_LOCATION_DIAGONAL_RF_LR
+    BEACON_BUMP_LOCATION_LEFT,
+    BEACON_BUMP_LOCATION_REAR
 } beacon_bump_location_t;
 
 typedef enum
@@ -37,14 +31,22 @@ typedef enum
 typedef struct
 {
     uint8_t bump_detected;
+    uint8_t on_beacon;
+    uint8_t enter_event;
+    uint8_t exit_event;
+
     beacon_bump_confidence_t confidence;
     beacon_bump_location_t location;
     uint8_t wheel_mask;
 
     uint16_t hold_ticks;
     uint32_t event_count;
+    uint32_t enter_count;
+    uint32_t exit_count;
 
     float score;
+    float impact_baseline;
+    float impact_robust_z;
     float speed_mps;
     float vel[2];
 
