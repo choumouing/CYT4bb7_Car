@@ -995,8 +995,17 @@ void beacon_detection_update_1000HZ(void)
       g_beacon_detection.confidence,
       g_beacon_detection.location,
       g_beacon_detection.wheel_mask,
-      g_beacon_detection.score
+      g_beacon_detection.score,
+      g_beacon_detection.enter_event,
+      g_beacon_detection.exit_event,
+      g_beacon_detection.on_beacon,
+      g_beacon_detection.impact_robust_z,
+      g_beacon_detection.speed_mps,
+      g_beacon_detection.vel[0],
+      g_beacon_detection.vel[1],
+      g_beacon_detection.wheel_highpass_count
   );
+  wifi_core_Poll();
 }
 
 void beacon_detection_update_100HZ(void)
