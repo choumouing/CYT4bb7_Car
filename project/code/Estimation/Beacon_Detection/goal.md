@@ -1,172 +1,411 @@
-你现在要长期优化车端信标检测算法。请始终使用简体中文回复，先读代码和日志，再写分析脚本，再基于数据改算法。不要只围绕现有 beacon_detection.c 的阈值小修小补，你可以优化当前算法，也可以完全替换成一套新的检测算法。目标是：基于现有 28 份日志，离线复现并优化信标检测，最终让车端 C 代码能精确识别每一次“上信标灯”和“下信标灯”，并把位置结果简化为前、右、左、后四类。
+你现在要重新研究并长期优化车端信标检测算法。请始终使用简体中文回复，先读代码和日志，再写离线分析脚本，再基于数据设计和修改算法。不要只围绕当前 `beacon_detection.c` 的阈值小修小补；如果数据证明当前算法方向不对，可以直接替换为一套新的、简单可解释、可嵌入式实时实现的检测算法。
 
-项目路径：
+## 项目路径
+
+```text
 D:\HDUASC-SmartCar-21st-FlyOverMinefield
+```
 
 重点代码：
+
+```text
 CYT4bb7_Car\project\code\Estimation\Beacon_Detection\beacon_detection.c
 CYT4bb7_Car\project\code\Estimation\Beacon_Detection\beacon_detection.h
+```
 
-日志目录：
-CYT4bb7_Car\project\code\Estimation\Beacon_Detection
+第二次标定日志目录：
 
-这个目录下有 28 份日志。日志来自车端 wifi_justfloat，通道顺序如下：
+```text
+CYT4bb7_Car\project\code\Estimation\Beacon_Detection\第二次算法的标定数据
+```
 
-1. tick_1000us_cnt
-2. ICM42688.acc_x
-3. ICM42688.acc_y
-4. ICM42688.acc_z
-5. ICM42688.gyro_x
-6. ICM42688.gyro_y
-7. ICM42688.gyro_z
-8. g_imufilter_1000hz.accx
-9. g_imufilter_1000hz.accy
-10. g_imufilter_1000hz.accz
-11. g_imufilter_1000hz.gyrox
-12. g_imufilter_1000hz.gyroy
-13. g_imufilter_1000hz.gyroz
-14. g_euler.roll
-15. g_euler.pitch
-16. g_euler.yaw
-17. left_front
-18. right_front
-19. left_rear
-20. right_rear
-21. accel_x_g
-22. accel_y_g
-23. accel_z_g
-24. gyro_x_dps
-25. gyro_y_dps
-26. gyro_z_dps
-27. sample.tilt_deg
-28. g_beacon_detection.bump_detected
-29. g_beacon_detection.confidence
-30. g_beacon_detection.location
-31. g_beacon_detection.wheel_mask
-32. g_beacon_detection.score
+数据提交节点：
 
-日志语义：
+```text
+6cdceaeb9484627ef0141bf7eca2c91e45e17d3f
+```
 
-- 有一份长日志，名称含义类似“经过20次信标灯”。这是小车正常运行，全程一共碾压/经过信标灯 20 次。它适合做最终离线仿真验证：算法应该识别到 20 次有效信标事件，并尽量准确识别每次上信标灯和下信标灯的时间。
-- 日志名称“快速跑，没有经过信标灯”表示全程没有碰到信标灯，离线算法不应该误识别任何信标事件。
-- 日志名称“实际没有信标灯”同样表示全程没有碰到信标灯，也不应该误触发。
-- 其他名称较统一的短日志，例如“信标在正后方，直接经过快速.csv”。这里“正前方/正后方/左/右”等描述的是上信标灯那一瞬间，车体与信标灯的相对位置关系，不代表车只做单轴运动。小车可能往前、后、左、右、斜向等多个方向运动。
-- 文件名里的“快速/中速/慢速”表示经过信标灯时的速度等级。不同速度下 IMU、欧拉角、轮速冲击特征不同，必须分别分析。
-- 文件名后缀如“中速2.csv”表示同一场景重复采集的第二次日志，应该作为同类样本处理。
+该节点提交信息为：`运行了29次,记录了29份日志`。
 
-核心目标：
+## 信标灯物理信息
 
-1. 不要局限于当前 beacon_detection.c 的 classic_bump、axis_bump、edge_bump、hand_push 等规则。
-2. 必须先把所有 CSV 日志读通，建立统一数据加载器。
-3. 必须建立离线仿真框架：给定一份日志，输出检测到的上信标灯事件、下信标灯事件、事件时间、事件方向、score/confidence。
-4. 必须能批量跑 28 份日志，输出每份日志的识别结果统计。
-5. 对无信标日志，误触发次数应为 0，除非你有非常充分的数据理由说明某处疑似真实冲击。
-6. 对“经过20次信标灯”的长日志，应重点检查是否能识别 20 次有效事件，并尽量分析每次上/下信标的时间。
-7. 对短日志，应结合文件名里的方向、速度标签，评估方向识别是否正确。
-8. 最终修改 C 代码时，优先保证嵌入式实时性，不能引入复杂动态内存、大数组、大量浮点高阶模型或难以维护的代码。
+信标灯是一个整体的小圆形凸起，不是长坡道：
 
-Python 分析要求：
+- 外形：圆形盘状。
+- 外径：260 mm。
+- 边缘厚度：1.8 mm。
+- 中心最高处总厚度：15 mm。
+- 通过过程很短。正常实车经过时，上信标灯到下信标灯不应该拖到几秒后；如果算法几秒后才报事件，应按失败处理。
 
-- 优先使用 Python 做离线分析。
-- 推荐使用 pandas、numpy、scipy、matplotlib；如果需要参数搜索或分类评估，可以使用 scikit-learn。
-- 数据量较大时，不要写低效 Python for 循环硬扫全量数据。尽量使用 numpy 向量化、pandas rolling、scipy signal、numba 或缓存 npz/parquet。
-- 第一步先写数据加载脚本，自动发现 Beacon_Detection 目录下的日志文件。
-- 给每个 CSV 自动加列名，列名按上面的 32 个通道定义。
-- 检查采样周期、tick 是否跳变、是否有丢帧、是否有异常 NaN/Inf。
-- 建议建立 analysis 子目录，例如：
-  CYT4bb7_Car\project\code\Estimation\Beacon_Detection\analysis
-  里面放 Python 脚本、分析报告、生成图表或缓存文件。
-- 不要破坏原始日志，不要覆盖 CSV。
+方向语义：
 
-必须做的分析：
+- `信标在车正前方`：上信标灯时，车体应先出现抬头趋势；下信标灯时，车体应出现低头/降头趋势。
+- `信标在车正后方`：上/下信标灯的俯仰变化方向与正前方相反。
+- `信标在车正右方`：上信标灯时，车体右侧应上抬；下信标灯时，车体应向右侧下落/倾斜。
+- `信标在车正左方`：上/下信标灯的横滚变化方向与正右方相反。
+- 文件名里的方向描述的是上信标灯瞬间车体与信标灯的相对位置，不代表车只沿单一轴运动。
 
-1. 画出典型日志里的关键曲线：
-   - 校准后 gyro_x_dps/y_dps/z_dps
-   - gyro_xy = sqrt(gx^2 + gy^2)
-   - accel_norm_error = abs(norm(accel_x_g/y_g/z_g) - 1)
-   - tilt_deg
-   - tilt_rate_dps，可离线由 tilt_deg 或 roll/pitch 差分得到
-   - 四轮速度 left_front/right_front/left_rear/right_rear
-   - 车体速度 forward/strafe/speed
-   - 轮速高通特征 wheel_highpass_count
-   - 原算法输出 bump_detected/score/location
-2. 对有信标日志，找出上信标灯和下信标灯附近的共同特征。
-3. 对无信标日志，找出正常跑动时 IMU 和轮速的最大噪声边界，重点避免误触发。
-4. 比较不同速度：快速、中速、慢速下，冲击峰值、持续时间、窗口宽度是否不同。
-5. 比较不同方向：前、后、左、右经过时，四轮冲击模式和车体速度方向是否可用于方向判断。
-6. 评估当前算法在所有日志上的表现：漏检、误检、重复触发、方向错误、上/下信标混淆。
-7. 尝试新算法方案，不要只调阈值。可以考虑：
-   - 多特征窗口峰值检测
-   - 自适应噪声基线 + robust z-score
-   - IMU 冲击候选 + 轮速/速度门控
-   - 状态机：idle -> on_beacon_candidate -> on_beacon_hold -> off_beacon_candidate -> cooldown
-   - 上信标和下信标分开识别
-   - 基于速度方向和轮速冲击分布判断前/后/左/右
-8. 对候选算法做批量评估，给出参数表和选择理由。
+## 总目标和优先级
 
-最终 C 代码目标：
+最终目标是让车端 C 代码稳定识别每一次经过信标灯的事件。优先级固定如下：
 
-- 修改 beacon_detection.h，简化 beacon_bump_location_t。不要保留左前、右前、左后、右后、对角线这些复杂结果。只需要：
-  BEACON_BUMP_LOCATION_UNKNOWN
-  BEACON_BUMP_LOCATION_FRONT
-  BEACON_BUMP_LOCATION_RIGHT
-  BEACON_BUMP_LOCATION_LEFT
-  BEACON_BUMP_LOCATION_REAR
-- beacon_detection_data_t 里保留必要结果字段，重点支持：
-  - 是否正在信标上
-  - 上信标事件锁存
-  - 下信标事件锁存
-  - location：前/右/左/后
-  - confidence
-  - score
-  - event_count，最好区分 enter_count/exit_count，如果结构体需要调整就说明原因
-  - speed_mps、vel[2]
-  - 关键 IMU 特征和轮速特征，方便调试
-- beacon_detection.c 可以继续保持 1kHz IMU 更新 + 100Hz 轮速更新的结构。
-- 1000Hz 函数负责 IMU 特征、窗口峰值、状态机推进、事件锁存。
-- 100Hz 函数负责四轮速度、车体速度、轮速高通特征。
-- 不要把离线 Python 里复杂的东西无脑搬进 C。C 代码必须简单、可解释、实时性好。
-- 如果需要新增少量静态状态变量可以，但要保持模块薄、清楚、可维护。
+1. 无信标日志必须 0 误触发。
+2. 准确、及时识别上信标灯 `enter_event`。
+3. 准确、及时识别下信标灯 `exit_event`，并和对应 `enter_event` 配对。
+4. 正确维护 `on_beacon` 状态，不能长期卡住，也不能几秒后才补报。
+5. 在前面目标满足后，再优化方向识别：`FRONT / RIGHT / LEFT / REAR`。
 
-输出成果要求：
+方向识别是二级目标。能精确识别最好，但不能为了方向结果牺牲“是否正在信标上”和“上/下信标时刻”的稳定性。
 
-1. 先给出你对日志文件的扫描结果：发现多少 CSV、每个文件大概多少行、是否能正常解析 32 通道。
-2. 给出离线分析脚本路径和使用方法。
-3. 给出批量评估结果表，至少包含：
-   - 文件名
-   - 期望事件数
-   - 检测到的上信标次数
-   - 检测到的下信标次数
-   - 误触发次数
-   - 方向识别结果
-   - 备注
-4. 给出你最终选择的算法说明，不要空泛，要说明用了哪些特征、窗口大小、阈值、状态机逻辑。
-5. 给出参数搜索或参数选择依据：为什么这些阈值适合快速/中速/慢速和无信标日志。
-6. 修改 beacon_detection.c/h，并说明改动点。
-7. 不要执行 git commit、git push、git reset、git checkout。
-8. 如果没有 IAR 环境，不要尝试编译。可以跑 Python 离线脚本和静态检查。
-9. 最终必须明确说明：
-   - 离线算法是否跑通 28 份日志
-   - 无信标日志是否 0 误触发
-   - “经过20次信标灯”长日志识别到了多少次
-   - 当前仍有哪些风险，需要后续补哪些实车日志
+## 日志数据集
 
-工作顺序：
+本轮必须以 `第二次算法的标定数据` 里的 29 份 CSV 为主验收集，不再以旧 28 份日志作为主目标。
 
-1. 读 AGENTS.md 和现有 beacon_detection.c/h。
-2. 扫描 Beacon_Detection 目录下所有 CSV 日志。
-3. 写 Python 数据加载和校验脚本。
-4. 建立当前 C 算法的离线复现版本，先评估旧算法。
-5. 画关键曲线，分析误检/漏检。
-6. 设计至少 2 套新候选算法，并批量评估。
-7. 选择最稳的一套，转成 C 实现。
-8. 再用同一批日志离线复测新算法。
-9. 输出简洁但完整的报告和代码改动总结。
+29 份日志分三类：
+
+1. 短日志：整份日志保证只压过 1 次信标灯。文件名写明信标在车的正前方、正后方、正左方、正右方，以及快速/中速/慢速工况。
+2. 长日志：4 份，每份经过 10 个信标灯，方向分别全在车前边、后边、左边、右边。
+3. 无信标日志：`全程没有碰到信标灯.csv`，全程不应检测到任何信标事件。
+
+### 已扫描到的日志概况
+
+这 29 份 CSV 均为 40 通道日志。行数如下：
+
+| 文件名 | 行数 | 通道数 |
+| --- | ---: | ---: |
+| `全程没有碰到信标灯.csv` | 469344 | 40 |
+| `此日志一共经过10个信标灯,信标方向都在车前边.csv` | 45490 | 40 |
+| `此日志一共经过10个信标灯,信标方向都在车后边.csv` | 56108 | 40 |
+| `此日志一共经过10个信标灯,信标方向都在车右边.csv` | 96172 | 40 |
+| `此日志一共经过10个信标灯,信标方向都在车左边.csv` | 51097 | 40 |
+| 其余 24 份短日志 | 每份约 3078 到 18984 行 | 40 |
+
+## 40 通道顺序
+
+日志来自车端 `wifi_justfloat`，通道顺序必须按以下定义解析：
+
+1. `tick_1000us_cnt`
+2. `ICM42688.acc_x`
+3. `ICM42688.acc_y`
+4. `ICM42688.acc_z`
+5. `ICM42688.gyro_x`
+6. `ICM42688.gyro_y`
+7. `ICM42688.gyro_z`
+8. `g_imufilter_1000hz.accx`
+9. `g_imufilter_1000hz.accy`
+10. `g_imufilter_1000hz.accz`
+11. `g_imufilter_1000hz.gyrox`
+12. `g_imufilter_1000hz.gyroy`
+13. `g_imufilter_1000hz.gyroz`
+14. `g_euler.roll`
+15. `g_euler.pitch`
+16. `g_euler.yaw`
+17. `left_front`
+18. `right_front`
+19. `left_rear`
+20. `right_rear`
+21. `accel_x_g`
+22. `accel_y_g`
+23. `accel_z_g`
+24. `gyro_x_dps`
+25. `gyro_y_dps`
+26. `gyro_z_dps`
+27. `sample.tilt_deg`
+28. `g_beacon_detection.bump_detected`
+29. `g_beacon_detection.confidence`
+30. `g_beacon_detection.location`
+31. `g_beacon_detection.wheel_mask`
+32. `g_beacon_detection.score`
+33. `g_beacon_detection.enter_event`
+34. `g_beacon_detection.exit_event`
+35. `g_beacon_detection.on_beacon`
+36. `g_beacon_detection.impact_robust_z`
+37. `g_beacon_detection.speed_mps`
+38. `g_beacon_detection.vel[0]`
+39. `g_beacon_detection.vel[1]`
+40. `g_beacon_detection.wheel_highpass_count`
+
+离线脚本必须兼容旧 32 通道日志和新 40 通道日志，但本轮主评估必须使用上述 29 份 40 通道日志。
+
+## 当前旧算法基线问题
+
+必须先评估当前算法，不能跳过。已知当前车端输出在第二次标定数据上存在明显问题：
+
+| 文件/类别 | 当前表现 |
+| --- | --- |
+| `全程没有碰到信标灯.csv` | `bump_detected` 有 12 次上升沿，`enter_event` 8 次，`exit_event` 8 次，属于严重误触发。 |
+| `此日志一共经过10个信标灯,信标方向都在车前边.csv` | `enter_event` 10 次，`exit_event` 10 次，但 `bump_detected` 14 次，存在重复/额外蜂鸣器触发。 |
+| `此日志一共经过10个信标灯,信标方向都在车后边.csv` | `enter_event` 10 次，`exit_event` 10 次，但 `bump_detected` 17 次，存在重复/额外蜂鸣器触发。 |
+| `此日志一共经过10个信标灯,信标方向都在车右边.csv` | `enter_event` 6 次，`exit_event` 6 次，漏检严重。 |
+| `此日志一共经过10个信标灯,信标方向都在车左边.csv` | `enter_event` 4 次，`exit_event` 4 次，漏检严重。 |
+| 多个短日志 | 出现应为 1 次却检测 0 次、2 次、4 次的情况。 |
+
+旧算法不能作为最终方案。后续必须重点解决：
+
+- 平地晃动、急转、结构振动导致的无信标误触发。
+- 真正上信标灯时漏检。
+- 下信标灯未及时识别，几秒后才补报。
+- `bump_detected` 同时代表 enter/exit，导致蜂鸣器含义混乱。
+- 左右方向和横滚相关工况明显漏检。
+
+## 验收标准
+
+### 事件数量
+
+- 短日志：每份期望 1 次 `enter_event` 和 1 次 `exit_event`。
+- 10 信标长日志：每份期望 10 次 `enter_event` 和 10 次 `exit_event`。
+- 无信标日志：期望 0 次 `enter_event`、0 次 `exit_event`、0 次等价蜂鸣器触发。
+
+### 事件时序
+
+- 同一次信标的 `enter_event -> exit_event` 配对间隔必须在 `0.2s - 1.0s` 内。
+- 超过 `1.0s` 才出现 `exit_event`，或者几秒后才响蜂鸣器，直接判为失败。
+- 检测时刻应贴近真实冲击/姿态特征峰，实车感知尺度上要求在 `0.5s` 内输出。
+- 不追求毫秒级人工标注，但不能出现用户可明显感知的延迟。
+
+### 方向识别
+
+- 方向输出只允许：
+  - `UNKNOWN`
+  - `FRONT`
+  - `RIGHT`
+  - `LEFT`
+  - `REAR`
+- 短日志方向标签来自文件名。
+- 方向识别为二级指标，报告中必须统计正确率，但不能为了方向牺牲事件检测和误触发控制。
+
+### 蜂鸣器语义
+
+- 当前实车允许上信标灯和下信标灯都响。
+- 但算法评估不能只看 `bump_detected`。必须区分：
+  - `enter_event`：上信标灯。
+  - `exit_event`：下信标灯。
+  - `on_beacon`：当前是否认为车正在信标上。
+- 如果保留上下都响，报告必须说明每一次蜂鸣器对应 enter 还是 exit。不能让“响了一下”成为含糊事件。
+
+## 离线分析要求
+
+必须优先用 Python 做离线分析，严禁一上来直接改 C。
+
+建议使用：
+
+- `pandas`
+- `numpy`
+- `scipy`
+- `matplotlib`
+- 必要时可用 `numba`、`parquet/npz` 缓存提升速度。
+
+必须建立或更新：
+
+```text
+CYT4bb7_Car\project\code\Estimation\Beacon_Detection\analysis
+```
+
+该目录用于放：
+
+- 数据加载脚本。
+- 批量评估脚本。
+- 事件明细 CSV。
+- 扫描摘要 CSV。
+- 分析报告。
+- 关键曲线图。
+- 缓存文件。
 
 注意：
 
-- 不要一开始就改 C。先用日志把问题看清楚。
-- 不要只凭一两份日志调参。必须批量跑全部日志。
-- 不要只追求识别有信标日志，必须同时压住无信标日志误触发。
-- 不要迷信当前算法，必要时直接换掉。
-- 最终目标不是花哨，而是实车稳定识别每一次上信标灯和下信标灯。
+- 不要破坏原始 CSV。
+- 不要覆盖原始日志。
+- 可以覆盖 `analysis/output` 下由脚本生成的结果文件。
+
+## 必须分析的曲线和特征
+
+对典型有信标、无信标、误检、漏检日志，必须画图或输出窗口统计：
+
+- `gyro_x_dps / gyro_y_dps / gyro_z_dps`
+- `gyro_xy = sqrt(gyro_x_dps^2 + gyro_y_dps^2)`
+- `accel_norm_error = abs(norm(accel_x_g, accel_y_g, accel_z_g) - 1)`
+- `roll / pitch / yaw`
+- `tilt_deg`
+- `tilt_rate_dps`
+- 四轮速度：`left_front / right_front / left_rear / right_rear`
+- 车体速度：`forward / strafe / speed`
+- 轮速高通特征：`wheel_highpass_count`
+- 当前车端输出：`bump_detected / enter_event / exit_event / on_beacon / score / location`
+- 新算法候选输出：候选峰、enter、exit、配对关系、方向、置信度。
+
+必须重点比较：
+
+- 快速、中速、慢速下冲击峰值和持续时间。
+- 前、后、左、右方向下俯仰/横滚特征差异。
+- 有信标事件与无信标平地晃动、急转、结构振动的边界。
+- 当前旧算法误触发点附近的 IMU 和轮速特征。
+- 漏检样本附近是否存在更可靠的低幅特征。
+
+## 真值和自分析要求
+
+本轮不要求先人工逐帧标注所有 enter/exit 时间。要求算法先自分析，因为数据中的信标特征应当足够明显。
+
+实现方式：
+
+1. 根据文件名确定期望事件数、方向、速度等级。
+2. 对每份日志自动寻找候选 enter/exit 峰。
+3. 按物理约束配对：同一次信标的 enter/exit 间隔优先落在 `0.2s - 1.0s`。
+4. 输出每个候选事件前后至少 `1.5s` 的关键特征摘要。
+5. 对无法满足数量或时间约束的样本，自动列入“需要人工复核”列表。
+6. 人工复核只针对争议样本，不作为前置条件。
+
+## 新算法设计方向
+
+不要只调几个阈值。至少设计并批量比较 2 套候选算法。
+
+候选方向可以包括但不限于：
+
+1. 多特征窗口峰值检测：
+   - 结合 `gyro_xy`、`tilt_rate_dps`、`accel_norm_error_g`、`wheel_highpass_count`。
+   - 使用短窗口峰值而不是单点阈值。
+2. 自适应噪声基线：
+   - 在无信标和正常跑动中估计噪声边界。
+   - 使用 robust z-score 或类似抗异常指标。
+3. enter/exit 分离：
+   - 不允许一个 `bump_detected` 混掉上下信标。
+   - enter 检测负责开始，exit 检测负责闭合。
+4. 物理时间约束状态机：
+   - `idle -> enter_candidate -> on_beacon -> exit_candidate -> cooldown`
+   - 或者等价但更稳的状态机。
+   - 必须防止几秒后才把 exit 当成当前信标的闭合事件。
+5. 方向判定：
+   - 正前/正后重点看 pitch/俯仰和前后速度。
+   - 正左/正右重点看 roll/横滚和横向速度。
+   - 方向不确定时允许 `UNKNOWN`，不要硬判导致错误传播。
+
+## C 端实现约束
+
+最终 C 代码必须符合嵌入式实时要求：
+
+- 不能引入动态内存。
+- 不能引入大数组。
+- 不能引入高阶复杂模型。
+- 不能把离线 Python 复杂逻辑无脑搬进 C。
+- 可以使用少量静态状态变量。
+- 可以继续保持当前 `1kHz IMU 更新 + 100Hz 轮速更新` 结构。
+
+建议职责：
+
+- `beacon_detection_update_1000HZ()`：
+  - 更新 IMU 特征。
+  - 推进窗口峰值。
+  - 推进 enter/exit 状态机。
+  - 锁存事件。
+  - 输出 40 路调试日志。
+- `beacon_detection_update_100HZ()`：
+  - 更新四轮速度。
+  - 更新车体 `forward / strafe / speed`。
+  - 更新轮速高通特征。
+  - 更新方向辅助信息。
+
+`beacon_detection_data_t` 至少应保留：
+
+- `bump_detected`
+- `on_beacon`
+- `enter_event`
+- `exit_event`
+- `confidence`
+- `location`
+- `wheel_mask`
+- `hold_ticks`
+- `event_count`
+- `enter_count`
+- `exit_count`
+- `score`
+- `impact_baseline`
+- `impact_robust_z`
+- `speed_mps`
+- `vel[2]`
+- `gyro_xy_dps`
+- `gyro_z_abs_dps`
+- `tilt_rate_dps`
+- `tilt_deg`
+- `accel_norm_error_g`
+- `wheel_highpass_count`
+
+## 输出成果要求
+
+最终必须输出以下成果：
+
+1. 日志扫描结果：
+   - CSV 数量。
+   - 每个文件行数。
+   - 通道数。
+   - NaN/Inf。
+   - tick 跳变/丢帧情况。
+2. 离线脚本路径和运行方法。
+3. 当前旧算法基线评估：
+   - 每份日志 `bump_detected / enter_event / exit_event / on_beacon` 统计。
+   - 漏检、误检、重复触发、延迟闭合。
+4. 新候选算法评估表：
+   - 文件名。
+   - 期望 enter 数。
+   - 期望 exit 数。
+   - 实际 enter 数。
+   - 实际 exit 数。
+   - 误触发数。
+   - enter-exit 配对间隔。
+   - 方向识别结果。
+   - 备注。
+5. 参数选择依据：
+   - 为什么能覆盖快速/中速/慢速。
+   - 为什么能压住无信标平地晃动。
+   - 为什么不会几秒后才补报。
+6. 最终算法说明：
+   - 使用哪些特征。
+   - 窗口大小。
+   - 阈值。
+   - 状态机逻辑。
+   - enter/exit 配对逻辑。
+   - 方向判定逻辑。
+7. C 代码改动总结：
+   - `beacon_detection.c`
+   - `beacon_detection.h`
+   - 如需调整蜂鸣器触发处，也必须说明原因。
+8. 最终风险和后续补采建议。
+
+## 工作顺序
+
+严格按以下顺序做：
+
+1. 读 `AGENTS.md` 和现有 `beacon_detection.c/h`。
+2. 扫描 `第二次算法的标定数据` 下 29 份 CSV。
+3. 建立或更新 Python 数据加载器，兼容 32/40 通道。
+4. 复现当前车端输出，先评估旧算法。
+5. 针对无信标误检日志画图，找误触发边界。
+6. 针对短日志漏检/多检样本画图，找 enter/exit 共同特征。
+7. 针对 4 份 10 信标长日志评估连续事件稳定性。
+8. 设计至少 2 套新候选算法并批量评估。
+9. 选择最稳的一套，说明参数依据。
+10. 转成 C 端实时实现。
+11. 用同一批 29 份日志复测。
+12. 输出报告和代码改动总结。
+
+## 禁止事项
+
+- 禁止直接从当前算法阈值小修小补开始。
+- 禁止不读日志就改 C。
+- 禁止只看有信标日志，不看无信标误触发。
+- 禁止只追求方向识别，忽略 enter/exit 时序。
+- 禁止把几秒后的补报当成正确检测。
+- 禁止覆盖原始 CSV。
+- 禁止执行 `git commit`、`git push`、`git reset`、`git checkout`，除非用户明确要求。
+- 没有 IAR 环境时，不要声称车端编译通过。
+
+## 最终必须明确回答
+
+每次阶段性完成后，必须明确说明：
+
+- 是否跑通 29 份日志。
+- 无信标日志是否 0 误触发。
+- 4 份 10 信标长日志分别识别到多少次 enter/exit。
+- 短日志是否每份都识别到 1 次 enter/exit。
+- 是否存在超过 `1.0s` 的 enter-exit 闭合。
+- 当前方向识别正确率。
+- 哪些样本仍需人工复核。
+- 后续还需要补采哪些实车日志。
