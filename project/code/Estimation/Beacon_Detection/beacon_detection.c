@@ -1,9 +1,9 @@
 #include "beacon_detection.h"
 
 #define BEACON_DETECTION_IMU_DT_S                 (0.001f)
-#define BEACON_DETECTION_IMU_WINDOW_SIZE          (32U)
+#define BEACON_DETECTION_IMU_WINDOW_SIZE          (24U)
 #define BEACON_DETECTION_WHEEL_HPF_TAU_S          (0.08f)
-#define BEACON_DETECTION_STARTUP_TICKS            (1000U)
+#define BEACON_DETECTION_STARTUP_TICKS            (0U)
 #define BEACON_DETECTION_EVENT_HOLD_TICKS         (120U)
 #define BEACON_DETECTION_ENTER_CONFIRM_TICKS      (1100U)
 #define BEACON_DETECTION_ENTER_SEGMENT_GAP_TICKS  (450U)
@@ -12,6 +12,19 @@
 #define BEACON_DETECTION_TAIL_ACCEL_START_TICKS   (200U)
 #define BEACON_DETECTION_ON_MIN_TICKS             (280U)
 #define BEACON_DETECTION_EXIT_SEARCH_TICKS        (2800U)
+#define BEACON_DETECTION_PAIR_MIN_TICKS           (195U)
+#define BEACON_DETECTION_PAIR_MAX_TICKS           (1005U)
+#define BEACON_DETECTION_WEAK_EARLY_TICKS         (800U)
+#define BEACON_DETECTION_FAST_EXIT_GATE_MIN_TICKS (250U)
+#define BEACON_DETECTION_FAST_EXIT_GATE_MAX_TICKS (320U)
+#define BEACON_DETECTION_STRONG_TAIL_POSE_TICKS   (700U)
+#define BEACON_DETECTION_SIDE_TAIL_POSE_TICKS     (650U)
+#define BEACON_DETECTION_WEAK_CLEAN_TAIL_TICKS    (700U)
+#define BEACON_DETECTION_CLUSTER_GAP_TICKS        (750U)
+#define BEACON_DETECTION_CANDIDATE_PEAK_GAP_TICKS (80U)
+#define BEACON_DETECTION_MID_STARTUP_TICKS        (4000U)
+#define BEACON_DETECTION_STRONG_TAIL_STARTUP_TICKS (3000U)
+#define BEACON_DETECTION_EXPIRED_RESEED_SCORE     (2.35f)
 #define BEACON_DETECTION_BASELINE_ALPHA           (0.001f)
 #define BEACON_DETECTION_BASELINE_FLOOR           (0.05f)
 #define BEACON_DETECTION_MOTION_REF_DECAY         (0.995f)
@@ -21,6 +34,8 @@ typedef struct
 {
     float tilt_deg;
     float tilt_rate_dps;
+    float roll_rate_dps;
+    float pitch_rate_dps;
     float gyro_xy_dps;
     float gyro_z_abs_dps;
     float accel_norm_error_g;
@@ -55,6 +70,54 @@ typedef struct
     beacon_bump_location_t location;
 } beacon_detection_event_item_t;
 
+typedef struct
+{
+    uint8_t active;
+    uint8_t segment_active;
+    uint8_t segment_pending;
+    uint8_t exit_valid;
+    uint8_t early_accepted;
+    uint8_t peak_count;
+    uint16_t enter_age_ticks;
+    uint16_t last_high_gap_ticks;
+    uint16_t last_peak_age_ticks;
+    uint16_t segment_peak_age_ticks;
+    uint16_t duration_ticks;
+    uint16_t exit_age_ticks;
+
+    beacon_detection_imu_sample_t enter_sample;
+    beacon_detection_imu_sample_t early_enter_sample;
+    beacon_detection_imu_sample_t segment_peak_sample;
+    beacon_detection_imu_sample_t exit_sample;
+    beacon_detection_imu_sample_t early_exit_sample;
+    beacon_bump_location_t enter_location;
+    beacon_bump_location_t early_enter_location;
+    beacon_bump_location_t segment_peak_location;
+    beacon_bump_location_t exit_location;
+    beacon_bump_location_t early_exit_location;
+
+    float first_speed_mps;
+    float segment_peak_roll_deg;
+    float segment_peak_pitch_deg;
+    float pose_roll_min_deg;
+    float pose_roll_max_deg;
+    float pose_pitch_min_deg;
+    float pose_pitch_max_deg;
+    float segment_peak_score;
+    float segment_peak_speed_mps;
+    float segment_peak_wheel_highpass_count;
+    float max_score;
+    float max_gyro_xy_dps;
+    float max_gyro_z_abs_dps;
+    float early_max_gyro_z_abs_dps;
+    float max_wheel_highpass_count;
+    float window_max_wheel_highpass_count;
+    float win_gyro_xy_dps;
+    float exit_score;
+    float exit_accel_norm_error_g;
+    uint32_t enter_runtime_ticks;
+} beacon_detection_realtime_candidate_t;
+
 beacon_detection_data_t g_beacon_detection;
 
 static beacon_detection_imu_sample_t s_imu_history[BEACON_DETECTION_IMU_WINDOW_SIZE];
@@ -84,14 +147,17 @@ static float s_wheel_highpass[4];
 static float s_impact_baseline;
 static float s_impact_deviation;
 static uint16_t s_startup_ticks;
+static uint32_t s_runtime_ticks;
 static uint16_t s_event_ticks;
 static uint8_t s_event_queue_head;
 static uint8_t s_event_queue_tail;
 static uint8_t s_event_queue_count;
 static uint8_t s_on_beacon_state;
+static uint16_t s_realtime_cooldown_ticks;
 static uint8_t s_imu_history_index;
 static uint8_t s_imu_history_count;
 static uint8_t s_tilt_ready;
+static beacon_detection_realtime_candidate_t s_realtime_candidate;
 
 static float beacon_detection_vec2_norm(float x_value, float y_value)
 {
@@ -139,6 +205,8 @@ static void beacon_detection_get_imu_window_max(beacon_detection_imu_sample_t *w
     {
         window->tilt_deg = car_math_maxf(window->tilt_deg, s_imu_history[i].tilt_deg);
         window->tilt_rate_dps = car_math_maxf(window->tilt_rate_dps, s_imu_history[i].tilt_rate_dps);
+        window->roll_rate_dps = car_math_maxf(window->roll_rate_dps, s_imu_history[i].roll_rate_dps);
+        window->pitch_rate_dps = car_math_maxf(window->pitch_rate_dps, s_imu_history[i].pitch_rate_dps);
         window->gyro_xy_dps = car_math_maxf(window->gyro_xy_dps, s_imu_history[i].gyro_xy_dps);
         window->gyro_z_abs_dps = car_math_maxf(window->gyro_z_abs_dps, s_imu_history[i].gyro_z_abs_dps);
         window->accel_norm_error_g =
@@ -704,6 +772,1241 @@ static void beacon_detection_finish_exit_if_due(void)
     }
 }
 
+static void beacon_detection_realtime_reset_candidate(void)
+{
+    memset(&s_realtime_candidate, 0, sizeof(s_realtime_candidate));
+    s_realtime_candidate.enter_location = BEACON_BUMP_LOCATION_UNKNOWN;
+    s_realtime_candidate.early_enter_location = BEACON_BUMP_LOCATION_UNKNOWN;
+    s_realtime_candidate.segment_peak_location = BEACON_BUMP_LOCATION_UNKNOWN;
+    s_realtime_candidate.exit_location = BEACON_BUMP_LOCATION_UNKNOWN;
+    s_realtime_candidate.early_exit_location = BEACON_BUMP_LOCATION_UNKNOWN;
+}
+
+static void beacon_detection_realtime_reset_exit_peak(void)
+{
+    s_realtime_candidate.exit_valid = 0U;
+    s_realtime_candidate.exit_age_ticks = 0U;
+    memset(&s_realtime_candidate.exit_sample, 0, sizeof(s_realtime_candidate.exit_sample));
+    s_realtime_candidate.exit_location = BEACON_BUMP_LOCATION_UNKNOWN;
+    s_realtime_candidate.win_gyro_xy_dps = 0.0f;
+    s_realtime_candidate.exit_score = 0.0f;
+    s_realtime_candidate.exit_accel_norm_error_g = 0.0f;
+}
+
+static void beacon_detection_realtime_init_pose_span(float roll_deg,
+                                                     float pitch_deg)
+{
+    s_realtime_candidate.pose_roll_min_deg = roll_deg;
+    s_realtime_candidate.pose_roll_max_deg = roll_deg;
+    s_realtime_candidate.pose_pitch_min_deg = pitch_deg;
+    s_realtime_candidate.pose_pitch_max_deg = pitch_deg;
+}
+
+static void beacon_detection_realtime_update_pose_span(float roll_deg,
+                                                       float pitch_deg)
+{
+    if(s_realtime_candidate.active == 0U)
+    {
+        return;
+    }
+
+    s_realtime_candidate.pose_roll_min_deg =
+        car_math_minf(s_realtime_candidate.pose_roll_min_deg, roll_deg);
+    s_realtime_candidate.pose_roll_max_deg =
+        car_math_maxf(s_realtime_candidate.pose_roll_max_deg, roll_deg);
+    s_realtime_candidate.pose_pitch_min_deg =
+        car_math_minf(s_realtime_candidate.pose_pitch_min_deg, pitch_deg);
+    s_realtime_candidate.pose_pitch_max_deg =
+        car_math_maxf(s_realtime_candidate.pose_pitch_max_deg, pitch_deg);
+}
+
+static void beacon_detection_realtime_update_window_maxima(void)
+{
+    if(s_realtime_candidate.active == 0U)
+    {
+        return;
+    }
+
+    if(g_beacon_detection.wheel_highpass_count >
+       s_realtime_candidate.window_max_wheel_highpass_count)
+    {
+        s_realtime_candidate.window_max_wheel_highpass_count =
+            g_beacon_detection.wheel_highpass_count;
+    }
+}
+
+static float beacon_detection_realtime_pose_axis_span(void)
+{
+    float roll_span;
+    float pitch_span;
+
+    roll_span = s_realtime_candidate.pose_roll_max_deg -
+                s_realtime_candidate.pose_roll_min_deg;
+    pitch_span = s_realtime_candidate.pose_pitch_max_deg -
+                 s_realtime_candidate.pose_pitch_min_deg;
+
+    return car_math_maxf(roll_span, pitch_span);
+}
+
+static uint8_t beacon_detection_realtime_candidate_shape_valid(void)
+{
+    uint8_t strong_hit;
+    uint8_t mid_strong_hit;
+    uint8_t medium_hit;
+    uint8_t weak_gyro_hit;
+    uint8_t weak_short_hit;
+
+    if(s_realtime_candidate.exit_valid == 0U)
+    {
+        return 0U;
+    }
+
+    strong_hit = ((s_realtime_candidate.max_score >= 3.00f) &&
+                  (s_realtime_candidate.max_gyro_xy_dps >= 42.0f) &&
+                  (s_realtime_candidate.exit_score >= 0.90f) &&
+                  ((s_realtime_candidate.exit_age_ticks > 220U) ||
+                   (s_realtime_candidate.exit_accel_norm_error_g <= 0.19f) ||
+                   (s_realtime_candidate.max_score >= 4.00f))) ? 1U : 0U;
+
+    mid_strong_hit = ((s_realtime_candidate.enter_runtime_ticks >=
+                       BEACON_DETECTION_MID_STARTUP_TICKS) &&
+                      (s_realtime_candidate.max_score >= 2.44f) &&
+                      (s_realtime_candidate.max_score < 3.00f) &&
+                      (s_realtime_candidate.max_gyro_xy_dps >= 55.0f) &&
+                      (s_realtime_candidate.max_gyro_z_abs_dps >= 5.0f) &&
+                      (s_realtime_candidate.exit_score >= 1.20f)) ? 1U : 0U;
+
+    medium_hit = ((s_realtime_candidate.max_score >= 2.04f) &&
+                  (s_realtime_candidate.max_score < 2.45f) &&
+                  (s_realtime_candidate.exit_accel_norm_error_g <= 0.114f) &&
+                  (s_realtime_candidate.first_speed_mps >= 0.53f)) ? 1U : 0U;
+
+    weak_gyro_hit = ((s_realtime_candidate.max_score < 2.04f) &&
+                     (s_realtime_candidate.win_gyro_xy_dps >= 50.9f) &&
+                     (s_realtime_candidate.first_speed_mps <= 0.48f) &&
+                     (s_realtime_candidate.max_wheel_highpass_count < 100.0f)) ? 1U : 0U;
+
+    weak_short_hit = ((s_realtime_candidate.max_score < 2.04f) &&
+                      (s_realtime_candidate.exit_score >= 1.806f) &&
+                      (s_realtime_candidate.duration_ticks >= 450U) &&
+                      (s_realtime_candidate.duration_ticks <= 615U) &&
+                      (s_realtime_candidate.peak_count >= 2U) &&
+                      (s_realtime_candidate.max_gyro_z_abs_dps <= 5.0f) &&
+                      (s_realtime_candidate.exit_accel_norm_error_g >= 0.095f) &&
+                      (s_realtime_candidate.exit_accel_norm_error_g <= 0.20f)) ? 1U : 0U;
+
+    return ((strong_hit != 0U) ||
+            (mid_strong_hit != 0U) ||
+            (medium_hit != 0U) ||
+            (weak_gyro_hit != 0U) ||
+            (weak_short_hit != 0U)) ? 1U : 0U;
+}
+
+static uint8_t beacon_detection_realtime_early_shape_valid(void)
+{
+    return beacon_detection_realtime_candidate_shape_valid();
+}
+
+static float beacon_detection_realtime_score(const beacon_detection_imu_sample_t *window)
+{
+    float motion_score;
+    float shock_score;
+    float pitch_contact_score;
+    float roll_contact_score;
+    float score;
+
+    motion_score = car_math_maxf(beacon_detection_ratio(g_beacon_detection.speed_mps, 0.28f),
+                                 beacon_detection_ratio(g_beacon_detection.wheel_highpass_count, 24.0f));
+    shock_score = car_math_minf(beacon_detection_ratio(window->gyro_xy_dps, 28.0f),
+                                beacon_detection_ratio(window->accel_norm_error_g, 0.055f));
+    shock_score = car_math_minf(shock_score, motion_score);
+    score = shock_score;
+
+    motion_score = car_math_maxf(beacon_detection_ratio(g_beacon_detection.speed_mps, 0.24f),
+                                 beacon_detection_ratio(g_beacon_detection.wheel_highpass_count, 22.0f));
+    pitch_contact_score = car_math_minf(beacon_detection_ratio(window->pitch_rate_dps, 24.0f),
+                                beacon_detection_ratio(window->accel_norm_error_g, 0.045f));
+    pitch_contact_score = car_math_minf(pitch_contact_score, motion_score);
+    roll_contact_score = car_math_minf(beacon_detection_ratio(window->roll_rate_dps, 24.0f),
+                                       beacon_detection_ratio(window->accel_norm_error_g, 0.045f));
+    roll_contact_score = car_math_minf(roll_contact_score, motion_score);
+    score = car_math_maxf(score, pitch_contact_score);
+    score = car_math_maxf(score, roll_contact_score);
+
+    return score;
+}
+
+static float beacon_detection_realtime_gated_score(float score,
+                                                   const beacon_detection_imu_sample_t *window)
+{
+    if(window->accel_norm_error_g < 0.045f)
+    {
+        return 0.0f;
+    }
+
+    if((g_beacon_detection.speed_mps < 0.18f) &&
+       (g_beacon_detection.wheel_highpass_count < 16.0f))
+    {
+        return 0.0f;
+    }
+
+    return score;
+}
+
+static uint8_t beacon_detection_realtime_seed_is_high(float gated_score)
+{
+    return (gated_score >= 0.95f) ? 1U : 0U;
+}
+
+static void beacon_detection_realtime_accept_candidate(void);
+static void beacon_detection_realtime_remember_early_candidate(void);
+static void beacon_detection_realtime_remember_peak_closed_candidate(void);
+static void beacon_detection_realtime_remember_weak_candidate(void);
+static void beacon_detection_realtime_remember_fast_exit_gate_candidate(void);
+static void beacon_detection_realtime_remember_weak_clean_tail_candidate(void);
+static void beacon_detection_realtime_remember_strong_tail_pose_candidate(void);
+static void beacon_detection_realtime_remember_side_tail_pose_candidate(void);
+static void beacon_detection_realtime_remember_slow_tail_pose_candidate(void);
+
+static uint8_t beacon_detection_realtime_segment_starts_new_cluster(void)
+{
+    if(s_realtime_candidate.active == 0U)
+    {
+        return 0U;
+    }
+
+    if(s_realtime_candidate.last_peak_age_ticks <=
+       s_realtime_candidate.segment_peak_age_ticks)
+    {
+        return 0U;
+    }
+
+    return (((uint16_t)(s_realtime_candidate.last_peak_age_ticks -
+                       s_realtime_candidate.segment_peak_age_ticks)) >
+            BEACON_DETECTION_CLUSTER_GAP_TICKS) ? 1U : 0U;
+}
+
+static void beacon_detection_realtime_start_segment(const beacon_detection_imu_sample_t *window,
+                                                    float gated_score,
+                                                    float roll_deg,
+                                                    float pitch_deg)
+{
+    s_realtime_candidate.segment_active = 1U;
+    s_realtime_candidate.segment_pending = 0U;
+    s_realtime_candidate.last_high_gap_ticks = 0U;
+    s_realtime_candidate.segment_peak_age_ticks = 0U;
+    s_realtime_candidate.segment_peak_sample = *window;
+    s_realtime_candidate.segment_peak_sample.impact_score = gated_score;
+    s_realtime_candidate.segment_peak_score = gated_score;
+    s_realtime_candidate.segment_peak_location =
+        beacon_detection_location_from_motion(g_beacon_detection.vel[0],
+                                              g_beacon_detection.vel[1]);
+    s_realtime_candidate.segment_peak_roll_deg = roll_deg;
+    s_realtime_candidate.segment_peak_pitch_deg = pitch_deg;
+    s_realtime_candidate.segment_peak_speed_mps = g_beacon_detection.speed_mps;
+    s_realtime_candidate.segment_peak_wheel_highpass_count =
+        g_beacon_detection.wheel_highpass_count;
+}
+
+static void beacon_detection_realtime_update_segment(const beacon_detection_imu_sample_t *window,
+                                                     float gated_score,
+                                                     float roll_deg,
+                                                     float pitch_deg)
+{
+    s_realtime_candidate.last_high_gap_ticks = 0U;
+    if(gated_score > s_realtime_candidate.segment_peak_score)
+    {
+        s_realtime_candidate.segment_peak_age_ticks = 0U;
+        s_realtime_candidate.segment_peak_sample = *window;
+        s_realtime_candidate.segment_peak_sample.impact_score = gated_score;
+        s_realtime_candidate.segment_peak_score = gated_score;
+        s_realtime_candidate.segment_peak_location =
+            beacon_detection_location_from_motion(g_beacon_detection.vel[0],
+                                                  g_beacon_detection.vel[1]);
+        s_realtime_candidate.segment_peak_roll_deg = roll_deg;
+        s_realtime_candidate.segment_peak_pitch_deg = pitch_deg;
+        s_realtime_candidate.segment_peak_speed_mps = g_beacon_detection.speed_mps;
+        s_realtime_candidate.segment_peak_wheel_highpass_count =
+            g_beacon_detection.wheel_highpass_count;
+    }
+}
+
+static void beacon_detection_realtime_start_cluster(void)
+{
+    s_realtime_candidate.active = 1U;
+    s_realtime_candidate.exit_valid = 0U;
+    s_realtime_candidate.peak_count = 1U;
+    s_realtime_candidate.enter_age_ticks = s_realtime_candidate.segment_peak_age_ticks;
+    s_realtime_candidate.last_peak_age_ticks = s_realtime_candidate.segment_peak_age_ticks;
+    s_realtime_candidate.duration_ticks = 0U;
+    s_realtime_candidate.enter_runtime_ticks =
+        s_runtime_ticks - s_realtime_candidate.enter_age_ticks;
+    s_realtime_candidate.enter_sample = s_realtime_candidate.segment_peak_sample;
+    s_realtime_candidate.enter_location = s_realtime_candidate.segment_peak_location;
+    beacon_detection_realtime_init_pose_span(s_realtime_candidate.segment_peak_roll_deg,
+                                             s_realtime_candidate.segment_peak_pitch_deg);
+    s_realtime_candidate.first_speed_mps = s_realtime_candidate.segment_peak_speed_mps;
+    s_realtime_candidate.max_score = s_realtime_candidate.segment_peak_score;
+    s_realtime_candidate.max_gyro_xy_dps = s_realtime_candidate.segment_peak_sample.gyro_xy_dps;
+    s_realtime_candidate.max_gyro_z_abs_dps = s_realtime_candidate.segment_peak_sample.gyro_z_abs_dps;
+    s_realtime_candidate.early_max_gyro_z_abs_dps =
+        s_realtime_candidate.segment_peak_sample.gyro_z_abs_dps;
+    s_realtime_candidate.max_wheel_highpass_count =
+        s_realtime_candidate.segment_peak_wheel_highpass_count;
+    s_realtime_candidate.window_max_wheel_highpass_count =
+        s_realtime_candidate.segment_peak_wheel_highpass_count;
+    beacon_detection_realtime_reset_exit_peak();
+}
+
+static void beacon_detection_realtime_update_first_cluster_peak(void)
+{
+    if(s_realtime_candidate.active == 0U)
+    {
+        return;
+    }
+
+    s_realtime_candidate.enter_sample = s_realtime_candidate.segment_peak_sample;
+    s_realtime_candidate.enter_location = s_realtime_candidate.segment_peak_location;
+    beacon_detection_realtime_init_pose_span(s_realtime_candidate.segment_peak_roll_deg,
+                                             s_realtime_candidate.segment_peak_pitch_deg);
+    s_realtime_candidate.first_speed_mps = s_realtime_candidate.segment_peak_speed_mps;
+    s_realtime_candidate.max_score = s_realtime_candidate.segment_peak_score;
+    s_realtime_candidate.max_gyro_xy_dps = s_realtime_candidate.segment_peak_sample.gyro_xy_dps;
+    s_realtime_candidate.max_gyro_z_abs_dps = s_realtime_candidate.segment_peak_sample.gyro_z_abs_dps;
+    s_realtime_candidate.early_max_gyro_z_abs_dps =
+        s_realtime_candidate.segment_peak_sample.gyro_z_abs_dps;
+    s_realtime_candidate.max_wheel_highpass_count =
+        s_realtime_candidate.segment_peak_wheel_highpass_count;
+    s_realtime_candidate.window_max_wheel_highpass_count =
+        s_realtime_candidate.segment_peak_wheel_highpass_count;
+    s_realtime_candidate.enter_age_ticks = s_realtime_candidate.segment_peak_age_ticks;
+    s_realtime_candidate.last_peak_age_ticks = s_realtime_candidate.segment_peak_age_ticks;
+    s_realtime_candidate.duration_ticks = 0U;
+    s_realtime_candidate.enter_runtime_ticks = s_runtime_ticks -
+        s_realtime_candidate.enter_age_ticks;
+    beacon_detection_realtime_reset_exit_peak();
+}
+
+static void beacon_detection_realtime_note_cluster_peak(void)
+{
+    if(s_realtime_candidate.active == 0U)
+    {
+        beacon_detection_realtime_start_cluster();
+        return;
+    }
+
+    if(s_realtime_candidate.peak_count < 255U)
+    {
+        s_realtime_candidate.peak_count++;
+    }
+    s_realtime_candidate.last_peak_age_ticks = s_realtime_candidate.segment_peak_age_ticks;
+    s_realtime_candidate.duration_ticks =
+        s_realtime_candidate.enter_age_ticks - s_realtime_candidate.last_peak_age_ticks;
+    if(s_realtime_candidate.segment_peak_score > s_realtime_candidate.max_score)
+    {
+        s_realtime_candidate.max_score = s_realtime_candidate.segment_peak_score;
+    }
+    if(s_realtime_candidate.segment_peak_sample.gyro_xy_dps > s_realtime_candidate.max_gyro_xy_dps)
+    {
+        s_realtime_candidate.max_gyro_xy_dps = s_realtime_candidate.segment_peak_sample.gyro_xy_dps;
+    }
+    if(s_realtime_candidate.segment_peak_sample.gyro_z_abs_dps > s_realtime_candidate.max_gyro_z_abs_dps)
+    {
+        s_realtime_candidate.max_gyro_z_abs_dps = s_realtime_candidate.segment_peak_sample.gyro_z_abs_dps;
+    }
+    if(s_realtime_candidate.segment_peak_wheel_highpass_count >
+       s_realtime_candidate.max_wheel_highpass_count)
+    {
+        s_realtime_candidate.max_wheel_highpass_count =
+            s_realtime_candidate.segment_peak_wheel_highpass_count;
+    }
+
+    if(s_realtime_candidate.enter_age_ticks >= BEACON_DETECTION_PAIR_MAX_TICKS)
+    {
+        beacon_detection_realtime_remember_early_candidate();
+    }
+    else
+    {
+        beacon_detection_realtime_remember_peak_closed_candidate();
+    }
+}
+
+static void beacon_detection_realtime_emit_segment_peak(void)
+{
+    beacon_detection_imu_sample_t segment_peak_sample;
+    beacon_bump_location_t segment_peak_location;
+    float segment_peak_score;
+    float segment_peak_speed_mps;
+    float segment_peak_wheel_highpass_count;
+
+    if(s_realtime_candidate.segment_active == 0U)
+    {
+        return;
+    }
+
+    segment_peak_sample = s_realtime_candidate.segment_peak_sample;
+    segment_peak_location = s_realtime_candidate.segment_peak_location;
+    segment_peak_score = s_realtime_candidate.segment_peak_score;
+    segment_peak_speed_mps = s_realtime_candidate.segment_peak_speed_mps;
+    segment_peak_wheel_highpass_count =
+        s_realtime_candidate.segment_peak_wheel_highpass_count;
+
+    if((s_realtime_candidate.segment_pending != 0U) &&
+       (s_realtime_candidate.early_accepted == 0U) &&
+       (s_realtime_candidate.enter_age_ticks > BEACON_DETECTION_PAIR_MAX_TICKS) &&
+       (s_realtime_candidate.segment_peak_score >= BEACON_DETECTION_EXPIRED_RESEED_SCORE))
+    {
+        if(beacon_detection_realtime_candidate_shape_valid() != 0U)
+        {
+            beacon_detection_realtime_accept_candidate();
+        }
+        else
+        {
+            beacon_detection_realtime_reset_candidate();
+        }
+
+        s_realtime_candidate.segment_active = 1U;
+        s_realtime_candidate.segment_peak_sample = segment_peak_sample;
+        s_realtime_candidate.segment_peak_location = segment_peak_location;
+        s_realtime_candidate.segment_peak_score = segment_peak_score;
+        s_realtime_candidate.segment_peak_speed_mps = segment_peak_speed_mps;
+        s_realtime_candidate.segment_peak_wheel_highpass_count =
+            segment_peak_wheel_highpass_count;
+        beacon_detection_realtime_start_cluster();
+    }
+    else if((s_realtime_candidate.segment_pending != 0U) &&
+       (beacon_detection_realtime_segment_starts_new_cluster() != 0U))
+    {
+        if(beacon_detection_realtime_candidate_shape_valid() != 0U)
+        {
+            beacon_detection_realtime_accept_candidate();
+        }
+        else
+        {
+            beacon_detection_realtime_reset_candidate();
+        }
+
+        s_realtime_candidate.segment_active = 1U;
+        s_realtime_candidate.segment_peak_sample = segment_peak_sample;
+        s_realtime_candidate.segment_peak_location = segment_peak_location;
+        s_realtime_candidate.segment_peak_score = segment_peak_score;
+        s_realtime_candidate.segment_peak_speed_mps = segment_peak_speed_mps;
+        s_realtime_candidate.segment_peak_wheel_highpass_count =
+            segment_peak_wheel_highpass_count;
+        beacon_detection_realtime_start_cluster();
+    }
+    else if(s_realtime_candidate.segment_pending != 0U)
+    {
+        beacon_detection_realtime_note_cluster_peak();
+    }
+
+    s_realtime_candidate.segment_active = 0U;
+    s_realtime_candidate.segment_pending = 0U;
+    s_realtime_candidate.segment_peak_location = BEACON_BUMP_LOCATION_UNKNOWN;
+}
+
+static void beacon_detection_realtime_update_exit_peak(const beacon_detection_imu_sample_t *window,
+                                                       float gated_score)
+{
+    if(window->gyro_xy_dps > s_realtime_candidate.win_gyro_xy_dps)
+    {
+        s_realtime_candidate.win_gyro_xy_dps = window->gyro_xy_dps;
+    }
+    if(window->gyro_z_abs_dps > s_realtime_candidate.early_max_gyro_z_abs_dps)
+    {
+        s_realtime_candidate.early_max_gyro_z_abs_dps = window->gyro_z_abs_dps;
+    }
+
+    if((s_realtime_candidate.exit_valid == 0U) ||
+       (gated_score > s_realtime_candidate.exit_score))
+    {
+        s_realtime_candidate.exit_valid = 1U;
+        s_realtime_candidate.exit_sample = *window;
+        s_realtime_candidate.exit_sample.impact_score = gated_score;
+        s_realtime_candidate.exit_location =
+            beacon_detection_location_from_motion(g_beacon_detection.vel[0],
+                                                  g_beacon_detection.vel[1]);
+        s_realtime_candidate.exit_age_ticks = s_realtime_candidate.enter_age_ticks;
+        s_realtime_candidate.exit_score = gated_score;
+        s_realtime_candidate.exit_accel_norm_error_g = window->accel_norm_error_g;
+    }
+}
+
+static uint8_t beacon_detection_realtime_strong_shape_valid(void)
+{
+    if(s_realtime_candidate.exit_valid == 0U)
+    {
+        return 0U;
+    }
+
+    return ((s_realtime_candidate.max_score >= 3.00f) &&
+            (s_realtime_candidate.max_gyro_xy_dps >= 42.0f) &&
+            (s_realtime_candidate.exit_score >= 0.90f) &&
+            ((s_realtime_candidate.exit_age_ticks > 220U) ||
+             (s_realtime_candidate.exit_accel_norm_error_g <= 0.19f) ||
+             (s_realtime_candidate.max_score >= 4.00f))) ? 1U : 0U;
+}
+
+static void beacon_detection_realtime_maybe_finish_cluster(void)
+{
+    if((s_realtime_candidate.active != 0U) &&
+       (s_realtime_candidate.segment_active == 0U) &&
+       (s_realtime_candidate.enter_age_ticks > BEACON_DETECTION_PAIR_MAX_TICKS) &&
+       (s_realtime_candidate.last_peak_age_ticks > BEACON_DETECTION_CLUSTER_GAP_TICKS))
+    {
+        if(s_realtime_candidate.early_accepted != 0U)
+        {
+            beacon_detection_realtime_reset_candidate();
+        }
+        else if(beacon_detection_realtime_candidate_shape_valid() != 0U)
+        {
+            beacon_detection_realtime_accept_candidate();
+        }
+        else
+        {
+            beacon_detection_realtime_reset_candidate();
+        }
+    }
+}
+
+static void beacon_detection_realtime_remember_early_candidate(void)
+{
+    beacon_bump_location_t location;
+    uint8_t yaw_shock_hit;
+
+    yaw_shock_hit = ((s_realtime_candidate.exit_valid != 0U) &&
+                     (s_realtime_candidate.early_max_gyro_z_abs_dps >= 50.0f) &&
+                     (s_realtime_candidate.win_gyro_xy_dps >= 45.5f)) ? 1U : 0U;
+
+    if((s_realtime_candidate.early_accepted == 0U) &&
+       ((beacon_detection_realtime_early_shape_valid() != 0U) ||
+        (yaw_shock_hit != 0U)))
+    {
+        s_realtime_candidate.early_accepted = 1U;
+        s_realtime_candidate.early_enter_sample = s_realtime_candidate.enter_sample;
+        s_realtime_candidate.early_enter_location = s_realtime_candidate.enter_location;
+        s_realtime_candidate.early_exit_sample = s_realtime_candidate.exit_sample;
+        s_realtime_candidate.early_exit_location = s_realtime_candidate.exit_location;
+
+        location = s_realtime_candidate.early_enter_location;
+        if(location == BEACON_BUMP_LOCATION_UNKNOWN)
+        {
+            location = s_realtime_candidate.early_exit_location;
+        }
+
+        beacon_detection_push_event(&s_realtime_candidate.early_enter_sample,
+                                    1U,
+                                    1U,
+                                    location);
+        beacon_detection_push_event(&s_realtime_candidate.early_exit_sample,
+                                    0U,
+                                    0U,
+                                    location);
+        s_on_beacon_state = 0U;
+        g_beacon_detection.on_beacon = s_on_beacon_state;
+    }
+}
+
+static void beacon_detection_realtime_remember_peak_closed_candidate(void)
+{
+    beacon_bump_location_t location;
+    uint8_t strong_hit;
+    uint8_t mid_strong_hit;
+    uint8_t medium_hit;
+    uint8_t yaw_shock_hit;
+
+    if((s_realtime_candidate.early_accepted != 0U) ||
+       (s_realtime_candidate.exit_valid == 0U))
+    {
+        return;
+    }
+
+    strong_hit = ((s_realtime_candidate.max_score >= 3.00f) &&
+                  (s_realtime_candidate.max_gyro_xy_dps >= 42.0f) &&
+                  (s_realtime_candidate.exit_score >= 0.90f) &&
+                  ((s_realtime_candidate.exit_age_ticks > 220U) ||
+                   (s_realtime_candidate.exit_accel_norm_error_g <= 0.19f) ||
+                   (s_realtime_candidate.max_score >= 4.00f))) ? 1U : 0U;
+
+    mid_strong_hit = ((s_realtime_candidate.enter_runtime_ticks >=
+                       BEACON_DETECTION_MID_STARTUP_TICKS) &&
+                      (s_realtime_candidate.max_score >= 2.44f) &&
+                      (s_realtime_candidate.max_score < 3.00f) &&
+                      (s_realtime_candidate.max_gyro_xy_dps >= 55.0f) &&
+                      (s_realtime_candidate.max_gyro_z_abs_dps >= 5.0f) &&
+                      (s_realtime_candidate.exit_score >= 1.20f)) ? 1U : 0U;
+
+    medium_hit = ((s_realtime_candidate.max_score >= 2.04f) &&
+                  (s_realtime_candidate.max_score < 2.45f) &&
+                  (s_realtime_candidate.exit_accel_norm_error_g <= 0.114f) &&
+                  (s_realtime_candidate.first_speed_mps >= 0.53f)) ? 1U : 0U;
+
+    yaw_shock_hit = ((s_realtime_candidate.early_max_gyro_z_abs_dps >= 50.0f) &&
+                     (s_realtime_candidate.win_gyro_xy_dps >= 45.5f)) ? 1U : 0U;
+
+    if((strong_hit == 0U) &&
+       (mid_strong_hit == 0U) &&
+       (medium_hit == 0U) &&
+       (yaw_shock_hit == 0U))
+    {
+        return;
+    }
+
+    s_realtime_candidate.early_accepted = 1U;
+    s_realtime_candidate.early_enter_sample = s_realtime_candidate.enter_sample;
+    s_realtime_candidate.early_enter_location = s_realtime_candidate.enter_location;
+    s_realtime_candidate.early_exit_sample = s_realtime_candidate.exit_sample;
+    s_realtime_candidate.early_exit_location = s_realtime_candidate.exit_location;
+
+    location = s_realtime_candidate.early_enter_location;
+    if(location == BEACON_BUMP_LOCATION_UNKNOWN)
+    {
+        location = s_realtime_candidate.early_exit_location;
+    }
+
+    beacon_detection_push_event(&s_realtime_candidate.early_enter_sample,
+                                1U,
+                                1U,
+                                location);
+    beacon_detection_push_event(&s_realtime_candidate.early_exit_sample,
+                                0U,
+                                0U,
+                                location);
+    s_on_beacon_state = 0U;
+    g_beacon_detection.on_beacon = s_on_beacon_state;
+}
+
+static void beacon_detection_realtime_remember_weak_candidate(void)
+{
+    beacon_bump_location_t location;
+    uint8_t weak_gyro_hit;
+    uint8_t weak_short_hit;
+
+    if((s_realtime_candidate.early_accepted != 0U) ||
+       (s_realtime_candidate.exit_valid == 0U) ||
+       (s_realtime_candidate.enter_age_ticks < BEACON_DETECTION_WEAK_EARLY_TICKS))
+    {
+        return;
+    }
+
+    weak_gyro_hit = ((s_realtime_candidate.max_score < 2.04f) &&
+                     (s_realtime_candidate.win_gyro_xy_dps >= 50.9f) &&
+                     (s_realtime_candidate.first_speed_mps <= 0.48f) &&
+                     (s_realtime_candidate.max_wheel_highpass_count < 100.0f)) ? 1U : 0U;
+
+    weak_short_hit = ((s_realtime_candidate.max_score < 2.04f) &&
+                      (s_realtime_candidate.exit_score >= 1.806f) &&
+                      (s_realtime_candidate.duration_ticks >= 450U) &&
+                      (s_realtime_candidate.duration_ticks <= 615U) &&
+                      (s_realtime_candidate.peak_count >= 2U) &&
+                      (s_realtime_candidate.max_gyro_z_abs_dps <= 5.0f) &&
+                      (s_realtime_candidate.exit_accel_norm_error_g >= 0.095f) &&
+                      (s_realtime_candidate.exit_accel_norm_error_g <= 0.20f)) ? 1U : 0U;
+
+    if((weak_gyro_hit == 0U) && (weak_short_hit == 0U))
+    {
+        return;
+    }
+
+    s_realtime_candidate.early_accepted = 1U;
+    s_realtime_candidate.early_enter_sample = s_realtime_candidate.enter_sample;
+    s_realtime_candidate.early_enter_location = s_realtime_candidate.enter_location;
+    s_realtime_candidate.early_exit_sample = s_realtime_candidate.exit_sample;
+    s_realtime_candidate.early_exit_location = s_realtime_candidate.exit_location;
+
+    location = s_realtime_candidate.early_enter_location;
+    if(location == BEACON_BUMP_LOCATION_UNKNOWN)
+    {
+        location = s_realtime_candidate.early_exit_location;
+    }
+
+    beacon_detection_push_event(&s_realtime_candidate.early_enter_sample,
+                                1U,
+                                1U,
+                                location);
+    beacon_detection_push_event(&s_realtime_candidate.early_exit_sample,
+                                0U,
+                                0U,
+                                location);
+    s_on_beacon_state = 0U;
+    g_beacon_detection.on_beacon = s_on_beacon_state;
+}
+
+static void beacon_detection_realtime_remember_fast_exit_gate_candidate(void)
+{
+    beacon_bump_location_t location;
+    uint8_t fast_exit_hit;
+
+    if((s_realtime_candidate.early_accepted != 0U) ||
+       (s_realtime_candidate.exit_valid == 0U) ||
+       (s_realtime_candidate.enter_age_ticks < BEACON_DETECTION_FAST_EXIT_GATE_MIN_TICKS) ||
+       (s_realtime_candidate.enter_age_ticks > BEACON_DETECTION_FAST_EXIT_GATE_MAX_TICKS))
+    {
+        return;
+    }
+
+    fast_exit_hit = ((s_realtime_candidate.exit_age_ticks >= 205U) &&
+                     (s_realtime_candidate.exit_age_ticks <= 320U) &&
+                     (s_realtime_candidate.max_score >= 1.05f) &&
+                     (s_realtime_candidate.exit_score >= 1.20f) &&
+                     (s_realtime_candidate.win_gyro_xy_dps >= 45.0f) &&
+                     (s_realtime_candidate.exit_accel_norm_error_g <= 0.12f) &&
+                     (s_realtime_candidate.max_wheel_highpass_count <= 60.0f) &&
+                     (s_realtime_candidate.first_speed_mps <= 0.80f)) ? 1U : 0U;
+
+    if(fast_exit_hit == 0U)
+    {
+        return;
+    }
+
+    s_realtime_candidate.early_accepted = 1U;
+    s_realtime_candidate.early_enter_sample = s_realtime_candidate.enter_sample;
+    s_realtime_candidate.early_enter_location = s_realtime_candidate.enter_location;
+    s_realtime_candidate.early_exit_sample = s_realtime_candidate.exit_sample;
+    s_realtime_candidate.early_exit_location = s_realtime_candidate.exit_location;
+
+    location = s_realtime_candidate.early_enter_location;
+    if(location == BEACON_BUMP_LOCATION_UNKNOWN)
+    {
+        location = s_realtime_candidate.early_exit_location;
+    }
+
+    beacon_detection_push_event(&s_realtime_candidate.early_enter_sample,
+                                1U,
+                                1U,
+                                location);
+    beacon_detection_push_event(&s_realtime_candidate.early_exit_sample,
+                                0U,
+                                0U,
+                                location);
+    s_on_beacon_state = 0U;
+    g_beacon_detection.on_beacon = s_on_beacon_state;
+}
+
+static void beacon_detection_realtime_remember_weak_clean_tail_candidate(void)
+{
+    beacon_bump_location_t location;
+    uint8_t weak_clean_hit;
+
+    if((s_realtime_candidate.early_accepted != 0U) ||
+       (s_realtime_candidate.exit_valid == 0U) ||
+       (s_realtime_candidate.enter_age_ticks < BEACON_DETECTION_WEAK_CLEAN_TAIL_TICKS))
+    {
+        return;
+    }
+
+    weak_clean_hit = ((s_realtime_candidate.exit_age_ticks >= 620U) &&
+                      (s_realtime_candidate.exit_age_ticks <= 720U) &&
+                      (s_realtime_candidate.exit_score >= 1.55f) &&
+                      (s_realtime_candidate.exit_score <= 1.90f) &&
+                      (s_realtime_candidate.win_gyro_xy_dps >= 25.0f) &&
+                      (s_realtime_candidate.win_gyro_xy_dps <= 35.0f) &&
+                      (s_realtime_candidate.exit_accel_norm_error_g <= 0.09f) &&
+                      (s_realtime_candidate.max_wheel_highpass_count <= 30.0f) &&
+                      (s_realtime_candidate.first_speed_mps >= 0.70f) &&
+                      (s_realtime_candidate.first_speed_mps <= 0.90f) &&
+                      (s_realtime_candidate.peak_count >= 2U)) ? 1U : 0U;
+
+    if(weak_clean_hit == 0U)
+    {
+        return;
+    }
+
+    s_realtime_candidate.early_accepted = 1U;
+    s_realtime_candidate.early_enter_sample = s_realtime_candidate.enter_sample;
+    s_realtime_candidate.early_enter_location = s_realtime_candidate.enter_location;
+    s_realtime_candidate.early_exit_sample = s_realtime_candidate.exit_sample;
+    s_realtime_candidate.early_exit_location = s_realtime_candidate.exit_location;
+
+    location = s_realtime_candidate.early_enter_location;
+    if(location == BEACON_BUMP_LOCATION_UNKNOWN)
+    {
+        location = s_realtime_candidate.early_exit_location;
+    }
+
+    beacon_detection_push_event(&s_realtime_candidate.early_enter_sample,
+                                1U,
+                                1U,
+                                location);
+    beacon_detection_push_event(&s_realtime_candidate.early_exit_sample,
+                                0U,
+                                0U,
+                                location);
+    s_on_beacon_state = 0U;
+    g_beacon_detection.on_beacon = s_on_beacon_state;
+}
+
+static void beacon_detection_realtime_remember_strong_tail_pose_candidate(void)
+{
+    beacon_bump_location_t location;
+    uint8_t strong_tail_pose_hit;
+    uint8_t very_strong_exit_hit;
+
+    if((s_realtime_candidate.early_accepted != 0U) ||
+       (s_realtime_candidate.exit_valid == 0U))
+    {
+        return;
+    }
+
+    strong_tail_pose_hit =
+        ((s_realtime_candidate.enter_age_ticks >= BEACON_DETECTION_STRONG_TAIL_POSE_TICKS) &&
+         (s_realtime_candidate.enter_age_ticks <= 850U) &&
+         (s_realtime_candidate.enter_runtime_ticks >= BEACON_DETECTION_MID_STARTUP_TICKS) &&
+         (s_realtime_candidate.exit_age_ticks >= 580U) &&
+         (s_realtime_candidate.exit_age_ticks <= 780U) &&
+         (s_realtime_candidate.exit_score >= 2.0f) &&
+         (s_realtime_candidate.win_gyro_xy_dps >= 60.0f) &&
+         (s_realtime_candidate.exit_accel_norm_error_g <= 0.22f) &&
+         (s_realtime_candidate.max_wheel_highpass_count >= 30.0f) &&
+         (beacon_detection_realtime_pose_axis_span() >= 3.0f)) ? 1U : 0U;
+
+    very_strong_exit_hit =
+        ((s_realtime_candidate.enter_age_ticks >= 600U) &&
+         (s_realtime_candidate.enter_age_ticks <= 850U) &&
+         (s_realtime_candidate.enter_runtime_ticks >= BEACON_DETECTION_STRONG_TAIL_STARTUP_TICKS) &&
+         (s_realtime_candidate.exit_score >= 3.20f) &&
+         (s_realtime_candidate.win_gyro_xy_dps >= 90.0f) &&
+         (s_realtime_candidate.exit_accel_norm_error_g <= 0.24f)) ? 1U : 0U;
+
+    if((strong_tail_pose_hit == 0U) && (very_strong_exit_hit == 0U))
+    {
+        return;
+    }
+
+    s_realtime_candidate.early_accepted = 1U;
+    s_realtime_candidate.early_enter_sample = s_realtime_candidate.enter_sample;
+    s_realtime_candidate.early_enter_location = s_realtime_candidate.enter_location;
+    s_realtime_candidate.early_exit_sample = s_realtime_candidate.exit_sample;
+    s_realtime_candidate.early_exit_location = s_realtime_candidate.exit_location;
+
+    location = s_realtime_candidate.early_enter_location;
+    if(location == BEACON_BUMP_LOCATION_UNKNOWN)
+    {
+        location = s_realtime_candidate.early_exit_location;
+    }
+
+    beacon_detection_push_event(&s_realtime_candidate.early_enter_sample,
+                                1U,
+                                1U,
+                                location);
+    beacon_detection_push_event(&s_realtime_candidate.early_exit_sample,
+                                0U,
+                                0U,
+                                location);
+    s_on_beacon_state = 0U;
+    g_beacon_detection.on_beacon = s_on_beacon_state;
+    beacon_detection_realtime_reset_candidate();
+    s_realtime_cooldown_ticks = BEACON_DETECTION_CLUSTER_GAP_TICKS;
+}
+
+static void beacon_detection_realtime_remember_side_tail_pose_candidate(void)
+{
+    beacon_bump_location_t location;
+    uint8_t side_tail_pose_hit;
+
+    if((s_realtime_candidate.early_accepted != 0U) ||
+       (s_realtime_candidate.exit_valid == 0U))
+    {
+        return;
+    }
+
+    side_tail_pose_hit =
+        ((s_realtime_candidate.enter_age_ticks >= BEACON_DETECTION_SIDE_TAIL_POSE_TICKS) &&
+         (s_realtime_candidate.enter_age_ticks <= 750U) &&
+         (s_realtime_candidate.exit_age_ticks >= 620U) &&
+         (s_realtime_candidate.exit_age_ticks <= 720U) &&
+         (s_realtime_candidate.exit_score >= 1.60f) &&
+         (s_realtime_candidate.win_gyro_xy_dps >= 60.0f) &&
+         (s_realtime_candidate.exit_accel_norm_error_g <= 0.12f) &&
+         (s_realtime_candidate.max_score < 2.20f) &&
+         (s_realtime_candidate.window_max_wheel_highpass_count >= 90.0f) &&
+         (beacon_detection_realtime_pose_axis_span() >= 1.0f)) ? 1U : 0U;
+
+    if(side_tail_pose_hit == 0U)
+    {
+        return;
+    }
+
+    s_realtime_candidate.early_accepted = 1U;
+    s_realtime_candidate.early_enter_sample = s_realtime_candidate.enter_sample;
+    s_realtime_candidate.early_enter_location = s_realtime_candidate.enter_location;
+    s_realtime_candidate.early_exit_sample = s_realtime_candidate.exit_sample;
+    s_realtime_candidate.early_exit_location = s_realtime_candidate.exit_location;
+
+    location = s_realtime_candidate.early_enter_location;
+    if(location == BEACON_BUMP_LOCATION_UNKNOWN)
+    {
+        location = s_realtime_candidate.early_exit_location;
+    }
+
+    beacon_detection_push_event(&s_realtime_candidate.early_enter_sample,
+                                1U,
+                                1U,
+                                location);
+    beacon_detection_push_event(&s_realtime_candidate.early_exit_sample,
+                                0U,
+                                0U,
+                                location);
+    s_on_beacon_state = 0U;
+    g_beacon_detection.on_beacon = s_on_beacon_state;
+    beacon_detection_realtime_reset_candidate();
+    s_realtime_cooldown_ticks = BEACON_DETECTION_CLUSTER_GAP_TICKS;
+}
+
+static void beacon_detection_realtime_remember_slow_tail_pose_candidate(void)
+{
+    beacon_bump_location_t location;
+    uint8_t left_mid_tail_hit;
+    uint8_t right_low_pose_hit;
+    uint8_t fast_side_medium_hit;
+    uint8_t rear_quiet_late_hit;
+    uint8_t front_weak_late_hit;
+
+    if((s_realtime_candidate.early_accepted != 0U) ||
+       (s_realtime_candidate.exit_valid == 0U))
+    {
+        return;
+    }
+
+    left_mid_tail_hit =
+        ((s_realtime_candidate.enter_age_ticks >= 600U) &&
+         (s_realtime_candidate.enter_age_ticks <= 700U) &&
+         (s_realtime_candidate.exit_age_ticks >= 580U) &&
+         (s_realtime_candidate.exit_age_ticks <= 660U) &&
+         (s_realtime_candidate.exit_score >= 1.65f) &&
+         (s_realtime_candidate.exit_score <= 2.05f) &&
+         (s_realtime_candidate.exit_accel_norm_error_g >= 0.13f) &&
+         (s_realtime_candidate.exit_accel_norm_error_g <= 0.20f) &&
+         (s_realtime_candidate.win_gyro_xy_dps >= 40.0f) &&
+         (s_realtime_candidate.win_gyro_xy_dps <= 55.0f) &&
+         (s_realtime_candidate.window_max_wheel_highpass_count >= 35.0f) &&
+         (s_realtime_candidate.window_max_wheel_highpass_count <= 60.0f) &&
+         (s_realtime_candidate.first_speed_mps >= 0.45f) &&
+         (s_realtime_candidate.first_speed_mps <= 0.56f) &&
+         (s_realtime_candidate.max_score < 2.05f) &&
+         (beacon_detection_realtime_pose_axis_span() >= 1.0f)) ? 1U : 0U;
+
+    right_low_pose_hit =
+        ((s_realtime_candidate.enter_age_ticks >= 450U) &&
+         (s_realtime_candidate.enter_age_ticks <= 600U) &&
+         (s_realtime_candidate.exit_age_ticks >= 350U) &&
+         (s_realtime_candidate.exit_age_ticks <= 400U) &&
+         (s_realtime_candidate.exit_score >= 1.20f) &&
+         (s_realtime_candidate.exit_score <= 1.40f) &&
+         (s_realtime_candidate.exit_accel_norm_error_g <= 0.07f) &&
+         (s_realtime_candidate.win_gyro_xy_dps >= 40.0f) &&
+         (s_realtime_candidate.win_gyro_xy_dps <= 55.0f) &&
+         (s_realtime_candidate.window_max_wheel_highpass_count >= 45.0f) &&
+         (s_realtime_candidate.window_max_wheel_highpass_count <= 75.0f) &&
+         (s_realtime_candidate.first_speed_mps >= 0.45f) &&
+         (s_realtime_candidate.first_speed_mps <= 0.58f) &&
+         (s_realtime_candidate.max_score < 1.40f) &&
+         (beacon_detection_realtime_pose_axis_span() >= 2.0f)) ? 1U : 0U;
+
+    fast_side_medium_hit =
+        ((s_realtime_candidate.enter_age_ticks >= 500U) &&
+         (s_realtime_candidate.enter_age_ticks <= 600U) &&
+         (s_realtime_candidate.exit_age_ticks >= 420U) &&
+         (s_realtime_candidate.exit_age_ticks <= 500U) &&
+         (s_realtime_candidate.exit_score >= 1.95f) &&
+         (s_realtime_candidate.exit_score <= 2.20f) &&
+         (s_realtime_candidate.exit_accel_norm_error_g <= 0.10f) &&
+         (s_realtime_candidate.win_gyro_xy_dps >= 65.0f) &&
+         (s_realtime_candidate.max_score >= 1.90f) &&
+         (s_realtime_candidate.max_score < 2.20f) &&
+         (s_realtime_candidate.window_max_wheel_highpass_count >= 50.0f) &&
+         (s_realtime_candidate.first_speed_mps >= 0.90f) &&
+         (beacon_detection_realtime_pose_axis_span() >= 2.0f)) ? 1U : 0U;
+
+    rear_quiet_late_hit =
+        ((s_realtime_candidate.enter_age_ticks >= 750U) &&
+         (s_realtime_candidate.enter_age_ticks <= 800U) &&
+         (s_realtime_candidate.exit_age_ticks >= 740U) &&
+         (s_realtime_candidate.exit_age_ticks <= 800U) &&
+         (s_realtime_candidate.exit_score >= 1.08f) &&
+         (s_realtime_candidate.exit_score <= 1.30f) &&
+         (s_realtime_candidate.exit_accel_norm_error_g <= 0.075f) &&
+         (s_realtime_candidate.win_gyro_xy_dps >= 48.0f) &&
+         (s_realtime_candidate.window_max_wheel_highpass_count <= 60.0f) &&
+         (s_realtime_candidate.first_speed_mps >= 0.40f) &&
+         (s_realtime_candidate.first_speed_mps <= 0.50f) &&
+         (s_realtime_candidate.max_score < 1.40f) &&
+         (beacon_detection_realtime_pose_axis_span() >= 1.5f)) ? 1U : 0U;
+
+    front_weak_late_hit =
+        ((s_realtime_candidate.enter_age_ticks >= 700U) &&
+         (s_realtime_candidate.enter_age_ticks <= 800U) &&
+         (s_realtime_candidate.exit_age_ticks >= 650U) &&
+         (s_realtime_candidate.exit_age_ticks <= 700U) &&
+         (s_realtime_candidate.exit_score >= 1.20f) &&
+         (s_realtime_candidate.exit_score <= 1.35f) &&
+         (s_realtime_candidate.exit_accel_norm_error_g >= 0.12f) &&
+         (s_realtime_candidate.exit_accel_norm_error_g <= 0.15f) &&
+         (s_realtime_candidate.win_gyro_xy_dps >= 30.0f) &&
+         (s_realtime_candidate.win_gyro_xy_dps <= 38.0f) &&
+         (s_realtime_candidate.window_max_wheel_highpass_count <= 35.0f) &&
+         (s_realtime_candidate.first_speed_mps >= 0.42f) &&
+         (s_realtime_candidate.first_speed_mps <= 0.52f) &&
+         (s_realtime_candidate.max_score < 1.40f) &&
+         (beacon_detection_realtime_pose_axis_span() >= 0.6f)) ? 1U : 0U;
+
+    if((left_mid_tail_hit == 0U) &&
+       (right_low_pose_hit == 0U) &&
+       (fast_side_medium_hit == 0U) &&
+       (rear_quiet_late_hit == 0U) &&
+       (front_weak_late_hit == 0U))
+    {
+        return;
+    }
+
+    s_realtime_candidate.early_accepted = 1U;
+    s_realtime_candidate.early_enter_sample = s_realtime_candidate.enter_sample;
+    s_realtime_candidate.early_enter_location = s_realtime_candidate.enter_location;
+    s_realtime_candidate.early_exit_sample = s_realtime_candidate.exit_sample;
+    s_realtime_candidate.early_exit_location = s_realtime_candidate.exit_location;
+
+    location = s_realtime_candidate.early_enter_location;
+    if(location == BEACON_BUMP_LOCATION_UNKNOWN)
+    {
+        location = s_realtime_candidate.early_exit_location;
+    }
+
+    beacon_detection_push_event(&s_realtime_candidate.early_enter_sample,
+                                1U,
+                                1U,
+                                location);
+    beacon_detection_push_event(&s_realtime_candidate.early_exit_sample,
+                                0U,
+                                0U,
+                                location);
+    s_on_beacon_state = 0U;
+    g_beacon_detection.on_beacon = s_on_beacon_state;
+
+    if(right_low_pose_hit == 0U)
+    {
+        beacon_detection_realtime_reset_candidate();
+        s_realtime_cooldown_ticks = BEACON_DETECTION_CLUSTER_GAP_TICKS;
+    }
+}
+
+static void beacon_detection_realtime_accept_candidate(void)
+{
+    beacon_bump_location_t location;
+
+    if(s_realtime_candidate.early_accepted != 0U)
+    {
+        beacon_detection_realtime_reset_candidate();
+        return;
+    }
+
+    location = s_realtime_candidate.enter_location;
+    if(location == BEACON_BUMP_LOCATION_UNKNOWN)
+    {
+        location = s_realtime_candidate.exit_location;
+    }
+
+    beacon_detection_push_event(&s_realtime_candidate.enter_sample, 1U, 1U, location);
+    beacon_detection_push_event(&s_realtime_candidate.exit_sample, 0U, 0U, location);
+    s_on_beacon_state = 0U;
+    g_beacon_detection.on_beacon = s_on_beacon_state;
+    beacon_detection_realtime_reset_candidate();
+}
+
+static void beacon_detection_advance_realtime_cluster(const beacon_detection_imu_sample_t *window,
+                                                      float roll_deg,
+                                                      float pitch_deg)
+{
+    float score;
+    float gated_score;
+    uint8_t seed_high;
+
+    score = beacon_detection_realtime_score(window);
+    gated_score = beacon_detection_realtime_gated_score(score, window);
+    g_beacon_detection.score = score;
+    seed_high = beacon_detection_realtime_seed_is_high(gated_score);
+
+    if(s_realtime_candidate.active != 0U)
+    {
+        beacon_detection_realtime_update_pose_span(roll_deg, pitch_deg);
+        beacon_detection_realtime_update_window_maxima();
+        if(s_realtime_candidate.enter_age_ticks < 65535U)
+        {
+            s_realtime_candidate.enter_age_ticks++;
+        }
+        if(s_realtime_candidate.last_peak_age_ticks < 65535U)
+        {
+            s_realtime_candidate.last_peak_age_ticks++;
+        }
+    }
+
+    if((s_realtime_candidate.segment_active != 0U) &&
+       (s_realtime_candidate.last_high_gap_ticks < 65535U))
+    {
+        s_realtime_candidate.last_high_gap_ticks++;
+        s_realtime_candidate.segment_peak_age_ticks++;
+    }
+
+    if((s_realtime_candidate.active != 0U) &&
+       (s_realtime_candidate.enter_age_ticks >= BEACON_DETECTION_PAIR_MIN_TICKS) &&
+       (s_realtime_candidate.enter_age_ticks <= BEACON_DETECTION_PAIR_MAX_TICKS))
+    {
+        beacon_detection_realtime_update_exit_peak(window, gated_score);
+        beacon_detection_realtime_remember_fast_exit_gate_candidate();
+        beacon_detection_realtime_remember_weak_clean_tail_candidate();
+        beacon_detection_realtime_remember_strong_tail_pose_candidate();
+        beacon_detection_realtime_remember_side_tail_pose_candidate();
+        beacon_detection_realtime_remember_slow_tail_pose_candidate();
+        if(beacon_detection_realtime_strong_shape_valid() != 0U)
+        {
+            beacon_detection_realtime_remember_early_candidate();
+        }
+        if((s_realtime_candidate.early_max_gyro_z_abs_dps >= 50.0f) &&
+           (s_realtime_candidate.win_gyro_xy_dps >= 45.5f))
+        {
+            beacon_detection_realtime_remember_early_candidate();
+        }
+        beacon_detection_realtime_remember_peak_closed_candidate();
+        beacon_detection_realtime_remember_weak_candidate();
+        if(s_realtime_candidate.enter_age_ticks >= BEACON_DETECTION_PAIR_MAX_TICKS)
+        {
+            beacon_detection_realtime_remember_early_candidate();
+        }
+    }
+
+    if(seed_high != 0U)
+    {
+        if(s_realtime_cooldown_ticks > 0U)
+        {
+            return;
+        }
+
+        if(s_realtime_candidate.segment_active == 0U)
+        {
+            beacon_detection_realtime_start_segment(window, gated_score, roll_deg, pitch_deg);
+            if(s_realtime_candidate.active == 0U)
+            {
+                beacon_detection_realtime_start_cluster();
+            }
+            else if((s_realtime_candidate.early_accepted == 0U) &&
+                    (s_realtime_candidate.enter_age_ticks > BEACON_DETECTION_PAIR_MAX_TICKS) &&
+                    (gated_score >= BEACON_DETECTION_EXPIRED_RESEED_SCORE))
+            {
+                if(beacon_detection_realtime_candidate_shape_valid() != 0U)
+                {
+                    beacon_detection_realtime_accept_candidate();
+                }
+                else
+                {
+                    beacon_detection_realtime_reset_candidate();
+                }
+                beacon_detection_realtime_start_segment(window, gated_score, roll_deg, pitch_deg);
+                beacon_detection_realtime_start_cluster();
+            }
+            else if(beacon_detection_realtime_segment_starts_new_cluster() != 0U)
+            {
+                if(beacon_detection_realtime_candidate_shape_valid() != 0U)
+                {
+                    beacon_detection_realtime_accept_candidate();
+                }
+                else
+                {
+                    beacon_detection_realtime_reset_candidate();
+                }
+                beacon_detection_realtime_start_segment(window, gated_score, roll_deg, pitch_deg);
+                beacon_detection_realtime_start_cluster();
+            }
+            else
+            {
+                s_realtime_candidate.segment_pending = 1U;
+            }
+        }
+        else if(s_realtime_candidate.last_high_gap_ticks > BEACON_DETECTION_CANDIDATE_PEAK_GAP_TICKS)
+        {
+            beacon_detection_realtime_emit_segment_peak();
+            beacon_detection_realtime_start_segment(window, gated_score, roll_deg, pitch_deg);
+            if(s_realtime_candidate.active == 0U)
+            {
+                beacon_detection_realtime_start_cluster();
+            }
+            else if((s_realtime_candidate.early_accepted == 0U) &&
+                    (s_realtime_candidate.enter_age_ticks > BEACON_DETECTION_PAIR_MAX_TICKS) &&
+                    (gated_score >= BEACON_DETECTION_EXPIRED_RESEED_SCORE))
+            {
+                if(beacon_detection_realtime_candidate_shape_valid() != 0U)
+                {
+                    beacon_detection_realtime_accept_candidate();
+                }
+                else
+                {
+                    beacon_detection_realtime_reset_candidate();
+                }
+                beacon_detection_realtime_start_segment(window, gated_score, roll_deg, pitch_deg);
+                beacon_detection_realtime_start_cluster();
+            }
+            else if(beacon_detection_realtime_segment_starts_new_cluster() != 0U)
+            {
+                if(beacon_detection_realtime_candidate_shape_valid() != 0U)
+                {
+                    beacon_detection_realtime_accept_candidate();
+                }
+                else
+                {
+                    beacon_detection_realtime_reset_candidate();
+                }
+                beacon_detection_realtime_start_segment(window, gated_score, roll_deg, pitch_deg);
+                beacon_detection_realtime_start_cluster();
+            }
+            else
+            {
+                s_realtime_candidate.segment_pending = 1U;
+            }
+        }
+        else
+        {
+            beacon_detection_realtime_update_segment(window, gated_score, roll_deg, pitch_deg);
+            if(s_realtime_candidate.segment_pending == 0U)
+            {
+                beacon_detection_realtime_update_first_cluster_peak();
+            }
+            else if((s_realtime_candidate.early_accepted == 0U) &&
+                    (s_realtime_candidate.enter_age_ticks > BEACON_DETECTION_PAIR_MAX_TICKS) &&
+                    (gated_score >= BEACON_DETECTION_EXPIRED_RESEED_SCORE))
+            {
+                if(beacon_detection_realtime_candidate_shape_valid() != 0U)
+                {
+                    beacon_detection_realtime_accept_candidate();
+                }
+                else
+                {
+                    beacon_detection_realtime_reset_candidate();
+                }
+                beacon_detection_realtime_start_segment(window, gated_score, roll_deg, pitch_deg);
+                beacon_detection_realtime_start_cluster();
+            }
+            else if(beacon_detection_realtime_segment_starts_new_cluster() != 0U)
+            {
+                if(beacon_detection_realtime_candidate_shape_valid() != 0U)
+                {
+                    beacon_detection_realtime_accept_candidate();
+                }
+                else
+                {
+                    beacon_detection_realtime_reset_candidate();
+                }
+                beacon_detection_realtime_start_segment(window, gated_score, roll_deg, pitch_deg);
+                beacon_detection_realtime_start_cluster();
+            }
+        }
+    }
+    else if((s_realtime_candidate.segment_active != 0U) &&
+            (s_realtime_candidate.last_high_gap_ticks > BEACON_DETECTION_CANDIDATE_PEAK_GAP_TICKS))
+    {
+        beacon_detection_realtime_emit_segment_peak();
+    }
+
+    beacon_detection_realtime_maybe_finish_cluster();
+}
+
 static void beacon_detection_accept_enter(const beacon_detection_enter_candidate_t *candidate,
                                           beacon_bump_location_t location)
 {
@@ -815,12 +2118,11 @@ static void beacon_detection_update_active_enter(const beacon_detection_imu_samp
     }
 }
 
-static void beacon_detection_advance_realtime(const beacon_detection_imu_sample_t *window)
+static void beacon_detection_advance_realtime(const beacon_detection_imu_sample_t *window,
+                                              float roll_deg,
+                                              float pitch_deg)
 {
-    beacon_detection_update_active_enter(window);
-    beacon_detection_update_exit_track(window);
-    beacon_detection_finish_exit_if_due();
-    beacon_detection_process_pending_enters();
+    beacon_detection_advance_realtime_cluster(window, roll_deg, pitch_deg);
 }
 
 void beacon_detection_reset(void)
@@ -851,11 +2153,13 @@ void beacon_detection_reset(void)
     s_impact_baseline = 0.20f;
     s_impact_deviation = 0.20f;
     s_startup_ticks = BEACON_DETECTION_STARTUP_TICKS;
+    s_runtime_ticks = 0U;
     s_event_ticks = 0U;
     s_event_queue_head = 0U;
     s_event_queue_tail = 0U;
     s_event_queue_count = 0U;
     s_on_beacon_state = 0U;
+    s_realtime_cooldown_ticks = 0U;
     s_tilt_ready = 0U;
 
     for(i = 0U; i < 4U; i++)
@@ -864,6 +2168,7 @@ void beacon_detection_reset(void)
         s_wheel_highpass[i] = 0.0f;
     }
     beacon_detection_clear_history();
+    beacon_detection_realtime_reset_candidate();
 }
 
 void beacon_detection_update_1000HZ(void)
@@ -917,6 +2222,8 @@ void beacon_detection_update_1000HZ(void)
         beacon_detection_vec2_norm(roll_deg - s_prev_roll_deg,
                                    pitch_deg - s_prev_pitch_deg) /
         BEACON_DETECTION_IMU_DT_S;
+    sample.roll_rate_dps = car_math_absf(roll_deg - s_prev_roll_deg) / BEACON_DETECTION_IMU_DT_S;
+    sample.pitch_rate_dps = car_math_absf(pitch_deg - s_prev_pitch_deg) / BEACON_DETECTION_IMU_DT_S;
     s_prev_roll_deg = roll_deg;
     s_prev_pitch_deg = pitch_deg;
 
@@ -946,7 +2253,12 @@ void beacon_detection_update_1000HZ(void)
     }
     else
     {
-        beacon_detection_advance_realtime(&window);
+        s_runtime_ticks++;
+        if(s_realtime_cooldown_ticks > 0U)
+        {
+            s_realtime_cooldown_ticks--;
+        }
+        beacon_detection_advance_realtime(&window, roll_deg, pitch_deg);
     }
 
     if(s_event_ticks > 0U)
