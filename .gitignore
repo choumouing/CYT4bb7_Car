@@ -181,6 +181,7 @@ core
 # test_data/
 # resources/*.bin
 temp/gitee_seekfree_cyt4bb7_library/
+project/code/Estimation/Beacon_Detection/第二次算法的标定数据/全程没有碰到信标灯.csv
 
 # ============================================
 # 保留空目录的占位文件（如果需要）
