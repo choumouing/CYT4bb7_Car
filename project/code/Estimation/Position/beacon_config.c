@@ -18,7 +18,7 @@ typedef struct
  */
 static const beacon_config_point_t s_default_beacons[] =
 {
-    {4.5f, 4.5f},
+    {4.0f, 4.5f},
     {3.0f, 4.5f},
     {1.0f, 3.5f},
     {2.0f, 2.0f},
