@@ -9,7 +9,7 @@
 #define BEACON_EDGE_WINDOW_SIZE              (41U)
 #define BEACON_EDGE_WINDOW_HALF_SIZE         (20U)
 #define BEACON_EDGE_HISTORY_SIZE             (3072U)
-#define BEACON_EDGE_STARTUP_TICKS            (1000U)
+#define BEACON_EDGE_STARTUP_TICKS            (250U)
 #define BEACON_EDGE_EVENT_HOLD_TICKS         (80U)
 #define BEACON_EDGE_PEAK_CLOSE_TICKS         (24U)
 #define BEACON_EDGE_GROUP_GAP_TICKS          (300U)
@@ -18,7 +18,9 @@
 #define BEACON_EDGE_BASE_GAP_TICKS           (60U)
 #define BEACON_EDGE_VALIDATE_PRE_TICKS       (180U)
 #define BEACON_EDGE_VALIDATE_POST_TICKS      (220U)
-#define BEACON_EDGE_PEAK_MERGE_TICKS         (150U)
+#define BEACON_EDGE_PEAK_MERGE_TICKS         (130U)
+#define BEACON_EDGE_ENTER_BACKDATE_TICKS     (350U)
+#define BEACON_EDGE_EXIT_EXTEND_TICKS        (500U)
 
 #define BEACON_EDGE_MIN_SPEED_MPS            (0.18f)
 #define BEACON_EDGE_PEAK_SCORE_MIN           (1.18f)
@@ -68,6 +70,7 @@ typedef struct
 {
     uint8_t active;
     uint8_t edge_count;
+    uint8_t enter_emitted;
     uint32_t first_tick_ms;
     uint32_t last_tick_ms;
     beacon_edge_location_t location;
@@ -152,6 +155,11 @@ static float beacon_edge_norm2(float x_value, float y_value)
 static float beacon_edge_norm3(float x_value, float y_value, float z_value)
 {
     return sqrtf((x_value * x_value) + (y_value * y_value) + (z_value * z_value));
+}
+
+static uint32_t beacon_edge_backdate_tick(uint32_t tick_ms, uint32_t backdate_ticks)
+{
+    return (tick_ms > backdate_ticks) ? (tick_ms - backdate_ticks) : 0U;
 }
 
 static beacon_edge_location_t beacon_edge_location_from_velocity(float forward_mps,
@@ -467,6 +475,35 @@ static void beacon_edge_flush_pending_peak(void)
     memset(&s_pending_peak, 0, sizeof(s_pending_peak));
 }
 
+static void beacon_edge_update_group_stats(void)
+{
+    float base_roll_deg;
+    float base_pitch_deg;
+    float max_tilt_deg;
+    float distance_m;
+    float max_wheel_highpass_count;
+
+    if(s_group.active == 0U)
+    {
+        return;
+    }
+
+    base_roll_deg = s_group.base_roll_deg;
+    base_pitch_deg = s_group.base_pitch_deg;
+    beacon_edge_history_window_stats(s_group.first_tick_ms,
+                                     s_group.last_tick_ms,
+                                     &base_roll_deg,
+                                     &base_pitch_deg,
+                                     &max_tilt_deg,
+                                     &distance_m,
+                                     &max_wheel_highpass_count);
+    s_group.base_roll_deg = base_roll_deg;
+    s_group.base_pitch_deg = base_pitch_deg;
+    s_group.max_tilt_deg = max_tilt_deg;
+    s_group.distance_m = distance_m;
+    s_group.max_wheel_highpass_count = max_wheel_highpass_count;
+}
+
 static void beacon_edge_latch_event(const beacon_edge_event_item_t *item)
 {
     g_beacon_edge_state.bump_detected = 1U;
@@ -498,8 +535,13 @@ static void beacon_edge_dispatch_event(void)
 {
     beacon_edge_event_item_t item;
 
-    if((g_beacon_edge_state.hold_ticks != 0U) ||
-       (s_event_count == 0U))
+    if(s_event_count == 0U)
+    {
+        return;
+    }
+
+    if((g_beacon_edge_state.hold_ticks != 0U) &&
+       (s_event_queue[s_event_head].is_enter_event == 0U))
     {
         return;
     }
@@ -552,6 +594,22 @@ static uint8_t beacon_edge_group_is_valid(const beacon_edge_group_t *group)
         valid = 1U;
     }
 
+    if((group->max_tilt_deg >= 5.50f) &&
+       (group->max_score >= 1.70f) &&
+       (group->max_accel_along_abs_g <= 0.20f) &&
+       (group->max_accel_horizontal_g <= 0.20f))
+    {
+        valid = 1U;
+    }
+
+    if((group->max_tilt_deg >= 4.80f) &&
+       (group->max_score >= 4.10f) &&
+       (group->max_accel_along_abs_g <= 0.95f) &&
+       (group->max_accel_horizontal_g <= 1.05f))
+    {
+        valid = 1U;
+    }
+
     if((group->distance_m > 2.8f) && (group->max_score < 3.4f))
     {
         valid = 0U;
@@ -568,49 +626,74 @@ static uint8_t beacon_edge_group_is_valid(const beacon_edge_group_t *group)
         valid = 0U;
     }
 
+    if(group->first_tick_ms <= BEACON_EDGE_STARTUP_TICKS)
+    {
+        valid = 0U;
+    }
+
     return valid;
+}
+
+static void beacon_edge_try_emit_enter(void)
+{
+    beacon_edge_confidence_t confidence;
+    uint32_t enter_tick_ms;
+
+    if((s_group.active == 0U) || (s_group.enter_emitted != 0U))
+    {
+        return;
+    }
+
+    beacon_edge_update_group_stats();
+    if(beacon_edge_group_is_valid(&s_group) == 0U)
+    {
+        return;
+    }
+
+    confidence = (s_group.max_score >= 3.0f) ?
+                 BEACON_EDGE_CONFIDENCE_HIGH :
+                 BEACON_EDGE_CONFIDENCE_LOW;
+    enter_tick_ms = beacon_edge_backdate_tick(s_group.first_tick_ms,
+                                              BEACON_EDGE_ENTER_BACKDATE_TICKS);
+    beacon_edge_push_event(1U, 1U, enter_tick_ms,
+                           s_group.location, confidence,
+                           s_group.max_score, s_group.max_tilt_deg,
+                           s_group.distance_m);
+    s_group.enter_emitted = 1U;
 }
 
 static void beacon_edge_finish_group(void)
 {
     beacon_edge_confidence_t confidence;
-    float base_roll_deg;
-    float base_pitch_deg;
-    float max_tilt_deg;
-    float distance_m;
-    float max_wheel_highpass_count;
+    uint8_t valid;
+    uint32_t enter_tick_ms;
 
     if(s_group.active == 0U)
     {
         return;
     }
 
-    base_roll_deg = s_group.base_roll_deg;
-    base_pitch_deg = s_group.base_pitch_deg;
-    beacon_edge_history_window_stats(s_group.first_tick_ms,
-                                     s_group.last_tick_ms,
-                                     &base_roll_deg,
-                                     &base_pitch_deg,
-                                     &max_tilt_deg,
-                                     &distance_m,
-                                     &max_wheel_highpass_count);
-    s_group.base_roll_deg = base_roll_deg;
-    s_group.base_pitch_deg = base_pitch_deg;
-    s_group.max_tilt_deg = max_tilt_deg;
-    s_group.distance_m = distance_m;
-    s_group.max_wheel_highpass_count = max_wheel_highpass_count;
+    beacon_edge_update_group_stats();
+    valid = beacon_edge_group_is_valid(&s_group);
 
-    if((s_group.first_tick_ms > BEACON_EDGE_STARTUP_TICKS) &&
-       (beacon_edge_group_is_valid(&s_group) != 0U))
+    if((valid != 0U) || (s_group.enter_emitted != 0U))
     {
         confidence = (s_group.max_score >= 3.0f) ?
                      BEACON_EDGE_CONFIDENCE_HIGH :
                      BEACON_EDGE_CONFIDENCE_LOW;
-        beacon_edge_push_event(1U, 1U, s_group.first_tick_ms,
-                               s_group.location, confidence,
-                               s_group.max_score, s_group.max_tilt_deg,
-                               s_group.distance_m);
-        beacon_edge_push_event(0U, 0U, s_group.last_tick_ms,
+
+        if(s_group.enter_emitted == 0U)
+        {
+            enter_tick_ms = beacon_edge_backdate_tick(s_group.first_tick_ms,
+                                                      BEACON_EDGE_ENTER_BACKDATE_TICKS);
+            beacon_edge_push_event(1U, 1U, enter_tick_ms,
+                                   s_group.location, confidence,
+                                   s_group.max_score, s_group.max_tilt_deg,
+                                   s_group.distance_m);
+        }
+
+        beacon_edge_push_event(0U, 0U,
+                               s_group.last_tick_ms + BEACON_EDGE_EXIT_EXTEND_TICKS,
                                s_group.location, confidence,
                                s_group.max_score, s_group.max_tilt_deg,
                                s_group.distance_m);
@@ -663,6 +746,7 @@ static void beacon_edge_add_peak_to_group(const beacon_edge_peak_t *peak)
     s_group.vel_sum[1] += peak->vel[1];
     s_group.location =
         beacon_edge_location_from_velocity(s_group.vel_sum[0], s_group.vel_sum[1]);
+    beacon_edge_try_emit_enter();
 }
 
 static void beacon_edge_submit_peak(void)
@@ -867,6 +951,7 @@ void beacon_edge_state_update_1000HZ(float accel_x_g,
         {
             beacon_edge_flush_pending_peak();
         }
+        beacon_edge_try_emit_enter();
         if((s_group.active != 0U) &&
            ((s_tick_ms - s_group.last_tick_ms) >
             (BEACON_EDGE_GROUP_GAP_TICKS + BEACON_EDGE_VALIDATE_POST_TICKS +
