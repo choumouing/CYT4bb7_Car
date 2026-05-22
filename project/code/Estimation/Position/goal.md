@@ -1,543 +1,423 @@
-# 车端信标坐标约束修正惯导漂移长期任务
+# 惯导结合信标检测矫正目标文档
 
-你现在要在 CYT4BB7 麦克纳姆轮小车工程里，搭建“信标检测结果 + 已知信标全局坐标 + 当前惯导坐标”的位置修正基础框架。请始终使用简体中文回复，先读现有代码再动手，先确认接口和调度顺序再新增模块。不要一上来搞复杂融合，当前目标是简单、稳定、能开关、能上车验证的 v1 框架。
+本文档约束 `CYT4bb7_Car/project/code/Estimation/Position` 中的惯性导航、编码器里程计、信标检测矫正融合任务。当前阶段目标是把需求、数据、验收标准写清楚；后续是否改 C 代码、是否新增离线脚本、是否调整参数，必须以本文档为准。
 
-## 项目背景
+## 1. 背景
 
-当前项目路径：
+当前系统已经具备两类能力：
 
-```text
-D:\HDUASC-SmartCar-21st-FlyOverMinefield
-```
+1. `Estimation/Beacon_Detection` 已经实现信标灯接触检测，能输出 `enter_event`、`enter_count`、`on_beacon`、`location`、`confidence`、`score`、`impact_robust_z` 等信号。
+2. `Estimation/Position` 已经结合四轮编码器和姿态 yaw，实现了基于编码器的短期惯性导航，能输出 `g_odometer.position[x/y]` 和 `g_odometer.vel[x/y]`。
 
-已有两个可用基础模块：
+但是这两类能力单独使用都有明显问题：
 
-```text
-CYT4bb7_Car\project\code\Estimation\Position\odometer.h
-CYT4bb7_Car\project\code\Estimation\Position\odometer.c
+- 信标检测模块本质上只判断“是否像经过信标灯”，并不知道地图上真实的信标灯编号。
+- 信标检测可能在平地晃动、急转、车体结构振动时误检。
+- 信标检测也可能在真实经过信标灯时漏检，尤其是方向、速度、压灯姿态不同的时候。
+- 编码器惯性导航短期较准，但长期积分会漂移。
+- 当前 `fixator` 如果只在 `enter_event` 时按当前位置找最近信标，容易出现漏配、误配、重复匹配。
+- 最终目标不是“检测到一个凸起”这么简单，而是要知道经过的是第几号信标灯，并利用该灯的绝对坐标修正车体全局位置。
 
-CYT4bb7_Car\project\code\Estimation\Beacon_Detection\beacon_detection.h
-CYT4bb7_Car\project\code\Estimation\Beacon_Detection\beacon_detection.c
-```
+因此，后续优化必须把“信标检测”和“惯性导航/地图坐标”做互补融合：信标检测负责提供候选事件，惯性导航和地图负责确认灯号、过滤误检、校准位置。
 
-`odometer` 已经实现状态可用的惯性/编码器里程计，外部主要直接读取全局结构体 `g_odometer`，其中包含：
+## 2. 坐标系约定
 
-```c
-g_odometer.position[x]
-g_odometer.position[y]
-g_odometer.vel[x]
-g_odometer.vel[y]
-```
+全局坐标单位为米。
 
-`beacon_detection` 已经实现基础信标灯检测功能，外部主要读取全局结构体 `g_beacon_detection`。本任务 v1 只消费检测结果，不重新研究信标检测算法，不修改检测阈值和敏感度。
+- `x` 轴：车体初始朝向的右方为正。
+- `y` 轴：车体初始朝向的前方为正。
+- `g_odometer.position[x]` 表示当前估计全局 x 坐标。
+- `g_odometer.position[y]` 表示当前估计全局 y 坐标。
+- 信标灯坐标表示“车体中心位于信标灯中心时”的全局坐标。
+- 离线日志文件名中的“最终坐标a,b”表示该日志实际最终落点坐标，应作为最终位置误差验收真值。
 
-当前主循环调度位置在：
+## 3. 信标灯绝对坐标
 
-```text
-CYT4bb7_Car\project\code\Controller\car_loop.c
-```
-
-当前 100Hz 顺序大致为：
-
-```c
-encoder_update_100HZ();
-odometer_update_100HZ();
-beacon_detection_update_100HZ();
-```
-
-后续接入 `fixator` 时必须重新检查调度顺序。由于 v1 使用 `g_beacon_detection.enter_event` 触发修正，`fixator_update_100HZ()` 原则上应在 `beacon_detection_update_100HZ()` 之后运行，修正方案再由 `odometer` 应用，具体接入前必须读代码确认。
-
-## 信标灯物理信息
-
-赛道上的信标灯是固定在地面上的圆形凸起结构，不是平面标记，也不是长条障碍。
-
-物理参数：
-
-- 外形：圆形盘状。
-- 外径：`260 mm`。
-- 整体形态：微拱形。
-- 边缘厚度：`1.8 mm`。
-- 中心最高处总厚度：`15 mm`。
-
-对麦克纳姆轮小车的影响：
-
-- 小车经过信标灯时，轮子可能整体打滑。
-- 车身可能出现短时倾斜、俯仰、横滚冲击。
-- 平地标定得到的惯导/编码器里程计参数，在压过信标灯时容易失准。
-- 长期运行后，惯导位置可能产生严重漂移。
-
-因此，信标灯既是干扰源，也是可利用的固定地标。由于信标坐标可以提前登记，检测到“上信标灯”时可以用已知坐标修正当前全局惯导位置。
-
-## 坐标系与极性要求
-
-必须修正 `odometer` 对外坐标极性。最终语义固定为：
-
-- `g_odometer.vel[x] > 0`：小车向右移动。
-- `g_odometer.vel[y] > 0`：小车往前走。
-- `g_odometer.position[x] > 0`：小车位于原点右侧。
-- `g_odometer.position[y] > 0`：小车位于原点前方。
-
-注意：本轮不是单纯改某个轴的正负号，而是把对外二维坐标整体改为“X=右、Y=前/平面图向上”。改坐标系时不能只改注释，必须同步检查所有受影响位置。
-
-至少要全局搜索并检查：
+信标灯绝对坐标配置在：
 
 ```text
-g_odometer.vel[x]
-g_odometer.vel[y]
-g_odometer.position[x]
-g_odometer.position[y]
-g_beacon_detection.vel[1]
-body_vel[x]
-body_vel[y]
-horizontal_vel[x]
-horizontal_vel[y]
-strafe
-velocity_strafe_feedback_mps
+CYT4bb7_Car/project/code/Estimation/Position/beacon_config.c
 ```
 
-重点风险点：
+7 个信标灯从前往后依次为 1 号到 7 号：
 
-- `CYT4bb7_Car\project\code\Estimation\Position\odometer.c`
-  - 前进/横移速度分别写入 `body_vel[y]` 和 `body_vel[x]`。
-  - 机体坐标转水平坐标后的 X/Y 输出。
-  - `g_odometer.position[x/y]` 积分。
-- `CYT4bb7_Car\project\code\Estimation\Beacon_Detection\beacon_detection.c`
-  - 内部计算的 `g_beacon_detection.vel[0/1]` 是检测用 `forward/strafe`，不是新的全局 `x/y`。
-  - `beacon_detection_location_from_motion()` 使用横移速度判断 `FRONT / RIGHT / LEFT / REAR`。
-  - 不要为了全局坐标换轴把检测内部方向速度硬改反。
-- `CYT4bb7_Car\project\code\Controller\car_mode1.c`
-  - 前进闭环反馈应使用 `g_odometer.vel[y]`。
-  - 横移闭环反馈应使用 `g_odometer.vel[x]`。
-  - 目标前进/横移速度与反馈轴必须一致。
-- `CYT4bb7_Car\project\code\Menu\menu_config.c`
-  - 菜单显示 `Odo X/Y` 和速度显示语义要同步。
-- WiFi/日志语义
-  - 如果日志中输出 X/Y 速度或位置，说明必须跟随“X=右、Y=前”。
+| 信标编号 | x/m | y/m |
+| ---: | ---: | ---: |
+| 1 | 4.0 | 4.5 |
+| 2 | 3.0 | 4.5 |
+| 3 | 1.0 | 3.5 |
+| 4 | 2.0 | 2.0 |
+| 5 | 2.0 | 0.5 |
+| 6 | 4.0 | 2.0 |
+| 7 | 5.0 | 1.0 |
 
-## 本轮新增模块
+这些信标间距至少约 1 米，理论上可以利用惯性导航位置、速度方向、上一确认信标、地图坐标关系来区分编号。后续算法不允许只依赖单个检测事件本身来决定信标编号。
 
-在以下目录新增两个基础库：
+## 4. 必须分析的离线日志
+
+重点离线日志目录：
 
 ```text
-CYT4bb7_Car\project\code\Estimation\Position
+CYT4bb7_Car/project/code/Estimation/Position/惯导结合信标检测矫正
 ```
 
-### 1. beacon_config
+该目录下日志文件名已经说明：
 
-文件：
+- 是否真实经过信标灯。
+- 真实经过的信标灯编号序列。
+- 最终实际坐标。
+
+后续所有优化必须首先跑通该目录下全部 CSV 日志，不能只挑选部分样本验证。
+
+当前目录内已知样本包括：
 
 ```text
-beacon_config.h
-beacon_config.c
+实际上没有碰到信标灯-最终坐标1,4.csv
+实际上没有碰到信标灯-最终坐标3,3(第二次).csv
+实际上没有碰到信标灯-最终坐标3,3.csv
+实际上没有碰到信标灯-最终坐标5,2.csv
+慢速-实际上没有碰到信标灯-最终坐标5,3.csv
+经过2,3号信标灯-最终坐标1,3.csv
+经过3号信标灯-最终坐标3,2.csv
+经过4,3号信标灯-最终坐标0,3.csv
+经过4号信标灯-最终坐标1,3.csv
+经过6,3号信标灯-最终坐标5,2.csv
+经过6,3号信标灯-最终坐标5,3.csv
+经过6,4,3号信标灯-最终坐标1,4.csv
+经过6,4,3号信标灯-最终坐标3,2.csv
+经过6,4号信标灯-最终坐标0,2.csv
+经过7,6,4号信标灯-最终坐标2,1.csv
+经过7655443267信标-最终坐标5,2.csv
+经过7号信标灯-最终坐标3,2.csv
+经过7号信标灯-最终坐标4,1.csv
 ```
 
-职责：
+如果目录后续新增日志，也必须纳入同一套离线评估，不允许只用旧 18 份样本固定调参。
 
-- 保存赛道上信标灯总个数。
-- 保存每个信标灯的全局 XY 坐标，单位为 `m`。
-- 保存小车上电/初始化时的初始全局 XY 坐标，单位为 `m`。
-- 让小车上电后不再固定从 `(0, 0)` 开始，而是从配置值开始，便于统一“信标全局坐标”和“小车全局坐标”的坐标系。
+## 5. 28 通道定位融合日志定义
 
-配置形式固定为：
+`Position/惯导结合信标检测矫正` 中的 CSV 来自 `odometer.c` 中的 `wifi_justfloat` 输出，字段顺序如下：
 
-- 使用 C 源文件内的静态/常量数组登记信标坐标。
-- 不做文件系统。
-- 不做 Flash 持久化。
-- 不做菜单运行时改参。
-- 不做动态内存。
+| 通道 | 含义 |
+| ---: | --- |
+| I0 | `tick_1000us_cnt` |
+| I1 | `inertial_position[x]`，应用信标修正前的惯导 x |
+| I2 | `inertial_position[y]`，应用信标修正前的惯导 y |
+| I3 | `g_odometer.vel[x]` |
+| I4 | `g_odometer.vel[y]` |
+| I5 | `g_beacon_detection.enter_event` |
+| I6 | `g_beacon_detection.enter_count` |
+| I7 | `g_beacon_detection.on_beacon` |
+| I8 | `g_beacon_detection.location` |
+| I9 | `g_beacon_detection.confidence` |
+| I10 | `g_beacon_detection.score` |
+| I11 | `g_beacon_detection.speed_mps` |
+| I12 | `g_beacon_detection.vel[0]` |
+| I13 | `g_beacon_detection.vel[1]` |
+| I14 | `g_beacon_detection.impact_robust_z` |
+| I15 | `fix_applied` |
+| I16 | `g_fixator.pending_fix` |
+| I17 | `g_fixator.last_match_valid` |
+| I18 | `g_fixator.beacon_index`，0-based，`65535` 表示无有效匹配 |
+| I19 | `g_fixator.before_position[x]` |
+| I20 | `g_fixator.before_position[y]` |
+| I21 | `applied_fix_position[x]` |
+| I22 | `applied_fix_position[y]` |
+| I23 | `g_odometer.position[x]`，最终融合 x |
+| I24 | `g_odometer.position[y]`，最终融合 y |
+| I25 | `g_fixator.match_distance2_m2` |
+| I26 | `g_fixator.fix_count` |
+| I27 | `ODOMETER_BEACON_FIXATOR_ENABLE` |
 
-坐标含义固定为：
+注意：`I18` 是 C 代码内部 0-based 索引，验收报告必须转换成 1-based 信标编号。例如 `I18=2` 表示 3 号信标灯。
 
-- `beacon_config` 中登记的信标坐标表示“车体中心位于该信标中心时”的全局坐标。
-- 后续在 `beacon_config.c` 里填写 `{x, y}` 时，`x` 表示向右的距离，`y` 表示向前/平面图向上的距离，单位均为 `m`。
-- v1 不做轮组接触点偏置补偿。
-- v1 不根据 `FRONT / RIGHT / LEFT / REAR` 给车体几何补偿。
+## 6. 当前基线问题
 
-初始位姿范围固定为：
+当前 `fixator` 的基线逻辑大致为：
 
-- 本轮只配置初始 `position[x]` 和 `position[y]`。
-- 本轮不配置全局 yaw。
-- `odometer_reset()` 后仍以当前车头方向作为全局 Y 正方向的航向基准。
-- 当前车体右侧作为全局 X 正方向。
+1. 监听 `g_beacon_detection.enter_event`。
+2. 若 `enter_count` 增加，则读取当前 `g_odometer.position`。
+3. 在 `FIXATOR_MATCH_RADIUS_M` 半径内找最近信标。
+4. 找到则把当前位置直接修正到该信标坐标。
 
-对外接口必须极简。建议只保留初始化、reset、只读配置读取这类最少接口。不要为了未来乱加接口。
+该逻辑存在以下问题：
 
-### 2. fixator
+- 只使用单次事件时刻的位置，不使用速度方向、历史轨迹、上一信标、下一候选信标。
+- 固定 0.5m 半径过硬，真实经过信标时若惯导已漂移到 0.5m 外会漏配。
+- 放宽半径又容易把平地误检错误匹配到附近信标。
+- 没有重复命中抑制，可能同一个信标连续被判多次。
+- 没有候选评分，只要最近就硬匹配，可能把 3 号判成 4 号。
+- 没有基于地图序列的约束，无法利用信标之间至少 1m 间距的信息。
+- 无信标日志中即使底层检测产生 `enter_event`，也必须被地图/惯导融合层拒绝，不能应用校准。
 
-文件：
+后续不能只做“把 0.5m 改成 0.8m”这种小修小补，必须建立可解释、可离线复测的融合逻辑。
 
-```text
-fixator.h
-fixator.c
-```
+## 7. 融合优化总目标
 
-职责：
+最终目标：
 
-- 读取 `g_beacon_detection.enter_event`。
-- 读取当前 `g_odometer.position[x/y]`。
-- 读取 `beacon_config` 中登记的所有信标坐标。
-- 当检测到上信标灯事件时，以当前惯导坐标为圆心，在可调半径内寻找最近信标。
-- 如果范围内存在信标，则认为小车实际车体中心应位于该信标坐标，输出惯导位置修正方案。
-- 如果范围内没有信标，则不修正。
+1. 利用信标检测事件作为候选输入。
+2. 利用编码器惯性导航提供短期可信的位置和速度。
+3. 利用信标灯绝对坐标提供长期位置校准锚点。
+4. 结合检测置信度、地图位置、运动方向、历史确认信标，确认真实信标编号。
+5. 过滤平地误检。
+6. 对真实信标进行精确校准。
+7. 确保所有离线日志最终位置偏移不超过 0.5m。
 
-v1 基础算法固定为：
+后续算法必须体现“互补融合”：
 
-```text
-if enter_event:
-    找到距离当前 g_odometer.position 最近的信标
-    if 最近距离 <= FIXATOR_MATCH_RADIUS_M:
-        输出修正方案：position[x/y] = 该信标坐标
-    else:
-        不修正
-```
+- 检测模块不能单独决定灯号。
+- 惯导模块不能无条件相信积分结果。
+- 地图坐标不能无条件硬拉位置。
+- 修正必须有可追踪原因和可复测数据。
 
-默认参数：
+## 8. 推荐融合策略
 
-```c
-#define FIXATOR_MATCH_RADIUS_M (0.5f)
-```
+后续实现建议采用“事件候选 + 地图门控 + 候选评分 + 校准限幅”的结构。
 
-`0.5 m` 是初始值，后续必须通过实车日志再调。当前没有可用融合日志，不能把这个参数吹成最终最优值。
+### 8.1 事件候选
 
-重复修正策略：
+`g_beacon_detection.enter_event` 只表示“可能经过信标灯”，不表示已经确认灯号。
 
-- v1 不额外按信标 ID 去重。
-- v1 只依赖 `enter_event` 单脉冲触发一次修正。
-- 必须在文档或调试输出中说明风险：如果 `beacon_detection` 对同一信标产生重复 `enter_event`，`fixator` 也可能重复修正。
-- 后续如果实车发现重复修正，再增加冷却或上次信标 ID 去重，不要本轮提前复杂化。
+每次候选事件至少记录：
 
-检测联动策略：
+- 事件时间。
+- 事件发生时的惯导位置。
+- 当前速度。
+- 当前 `location`。
+- 当前 `confidence`。
+- 当前 `score`。
+- 当前 `impact_robust_z`。
+- 当前 `enter_count`。
 
-- v1 不反向修改 `beacon_detection` 阈值。
-- v1 不做“惯导可信度高时降低检测敏感度”的动态阈值。
-- 可以在设计说明中保留未来扩展方向：惯导可信区域内没有信标时，未来可降低检测触发敏感度或抑制误检。
-- 当前先完成单向闭环：检测到信标后修正惯导。
+### 8.2 地图门控
 
-## odometer 接入要求
+对每个候选事件，必须遍历 7 个信标灯并计算候选距离。
 
-`odometer.h` 最前面必须新增一个总开关宏，用于一键启停信标矫正功能，避免修正算法出错影响系统运行。
+建议采用两级门控：
 
-建议形式：
+- 严格门控半径：用于高置信直接确认，建议从 `0.55m` 附近开始离线扫描。
+- 宽松门控半径：用于漂移较大但仍可由地图/方向确认的事件，建议从 `0.90m - 1.00m` 范围扫描。
 
-```c
-#define ODOMETER_BEACON_FIXATOR_ENABLE (1U)
-```
+宽松门控不能单独生效，必须结合其他约束：
+
+- 运动方向合理。
+- 与上一确认信标不是无意义重复。
+- 与上一确认信标距离/时间关系合理。
+- 候选第一名和第二名距离差足够大，或有额外约束能区分。
+- 检测置信度和分数达到最低要求。
+
+### 8.3 候选评分
+
+不能只选最近信标。建议综合评分：
+
+- 当前惯导位置到信标坐标的距离。
+- 当前速度方向与“靠近该信标”的关系。
+- 当前事件与上一确认信标的时间间隔。
+- 当前事件与上一确认信标的空间间隔。
+- 是否短时间重复命中同一信标。
+- 检测置信度。
+- 检测 `score`。
+- `impact_robust_z` 强度。
+- `location` 与运动方向是否有明显冲突。
+
+评分输出必须能解释为什么选择某个信标，为什么拒绝其他候选。
+
+### 8.4 重复抑制
+
+必须避免同一个信标被连续误判多次。
 
 要求：
 
-- 宏关闭时，`odometer` 行为必须退回纯惯导/编码器里程计。
-- 宏开启时，`odometer` 才允许应用 `fixator` 给出的修正方案。
-- 初始全局坐标也应受 `beacon_config` 影响，但必须保证逻辑清晰：如果关闭矫正，是否仍启用初始坐标配置，需要在实现中写清楚。推荐：初始坐标配置属于 `beacon_config` 的地图坐标能力，可以独立于信标修正开关；但实现前必须让代码注释讲明白。
+- 同一信标在很短时间或很短距离内再次出现，应优先判定为重复事件。
+- 重复事件不得再次增加有效 `fix_count`。
+- 重复事件不得把位置再次硬拉到同一信标。
+- 如果实际路径允许重复经过同一信标，必须通过时间、位移和路径关系重新确认，不能一刀切禁止。
 
-`fixator` 与 `odometer` 的关系固定为：
+特别注意：`经过7655443267信标-最终坐标5,2.csv` 中真实序列包含 5 号连续两次、4 号连续两次，不能因为有重复抑制就错误删除真实重复经过。
 
-- `fixator` 负责判断是否需要修正，输出修正方案。
-- `odometer` 负责应用修正到 `g_odometer.position`。
-- 不要让多个模块随便直接改 `g_odometer`，否则后面调试会乱成一锅粥。
+### 8.5 误检拒绝
 
-可以采用最小接口，例如：
+无信标日志中，底层检测模块可能出现 `enter_event`。融合层必须能拒绝这些事件。
 
-```c
-void fixator_init(void);
-void fixator_reset(void);
-void fixator_update_100HZ(void);
-uint8 fixator_get_position_fix(float position[2]);
-```
+拒绝条件示例：
 
-这里只是建议，不要求逐字照抄。最终接口必须更少、更清楚，而不是更多。
+- 所有信标候选都超出宽松门控半径。
+- 最近信标虽然进入宽松半径，但方向、速度、历史轨迹不合理。
+- 候选距离太接近多个信标，无法唯一确定编号。
+- 检测置信度过低，且地图证据不足。
+- 事件发生后最终位置趋势与候选信标明显不一致。
 
-## 代码风格与工程约束
+被拒绝事件必须记录拒绝原因，方便离线复盘。
 
-必须遵守现有工程风格：
+### 8.6 位置校准
 
-- C 语言。
-- 4 空格缩进。
-- 函数和控制块大括号独占一行。
-- 模块内部状态用 `static` 文件作用域变量。
-- 不引入动态内存。
-- 不引入大数组。
-- 不引入复杂模型。
-- 不引入现在用不到的未来接口。
-- 对外函数越少越好，优先 `init`、`reset`、`update_100HZ`。
-- 注释使用中文，但不要写废话。
-- 算法必须简单、可解释、嵌入式实时可跑。
+确认信标编号后，位置校准应根据置信度决定强度。
 
-新增头文件规则：
+建议分级：
 
-- `beacon_config.h` 和 `fixator.h` 内部只能 include：
+- 高置信匹配：可直接修正到信标绝对坐标。
+- 中置信匹配：可做限幅修正，避免一次误判把位置拖飞。
+- 低置信匹配：只记录候选，不应用位置修正。
 
-```c
-#include "zf_common_headfile.h"
-```
+校准后必须更新：
 
-- 不要在业务头文件里私自 include 其他业务头。
-- 新增头文件必须加入：
-
-```text
-CYT4bb7_Car\libraries\zf_common\zf_common_headfile.h
-```
-
-新增 C 文件规则：
-
-- `.c` 文件优先 include 自己的同名头文件，例如：
-
-```c
-#include "fixator.h"
-```
-
-- 如果需要访问其他模块公开 API，应通过总头文件已经暴露的接口访问。
-
-IAR 工程规则：
-
-- 新增 `.c/.h` 必须加入：
-
-```text
-CYT4bb7_Car\project\iar\project_config\cyt4bb7_cm_7_0.ewp
-```
-
-- 推荐加入 `Estimation -> Position` 分组。
-- 当前 `cyt4bb7_cm_7_1.ewp` 暂未挂载这些估计模块，不要无脑改第二核工程。
-
-禁止事项：
-
-- 禁止执行 `git commit`、`git push`、`git reset`、`git checkout`，除非用户明确要求。
-- 禁止覆盖原始日志。
-- 禁止为了本任务大改 `beacon_detection` 算法。
-- 禁止添加 Flash、菜单、通信协议等超出 v1 的功能。
-- 禁止把复杂离线算法硬塞进车端 C 代码。
-
-## 具体任务拆分
-
-### 任务 1：读代码确认现状
-
-先读以下文件：
-
-```text
-CYT4bb7_Car\AGENTS.md
-CYT4bb7_Car\libraries\zf_common\zf_common_headfile.h
-CYT4bb7_Car\project\code\Estimation\Position\odometer.h
-CYT4bb7_Car\project\code\Estimation\Position\odometer.c
-CYT4bb7_Car\project\code\Estimation\Beacon_Detection\beacon_detection.h
-CYT4bb7_Car\project\code\Estimation\Beacon_Detection\beacon_detection.c
-CYT4bb7_Car\project\code\Controller\car_loop.c
-CYT4bb7_Car\project\code\Controller\car_mode1.c
-CYT4bb7_Car\project\code\Menu\menu_config.c
-CYT4bb7_Car\project\iar\project_config\cyt4bb7_cm_7_0.ewp
-```
-
-必须确认：
-
-- `g_odometer` 当前结构和更新逻辑。
-- `g_beacon_detection.enter_event` 的保持周期和清零方式。
-- `car_loop.c` 的 100Hz 调度顺序。
-- X/Y 轴语义交换会影响哪些模块。
-
-### 任务 2：修正 odometer 坐标极性
-
-把对外语义改为“X=右、Y=前”。
-
-必须同步更新：
-
-- `odometer.h` 坐标系注释。
-- `odometer.c` 前进/横移速度计算写入的轴，以及机体到水平坐标的旋转输出。
-- 与 `g_odometer.vel[x/y]` 闭环反馈相关的控制逻辑。
-- 与 `g_beacon_detection.vel[0/1]` 和方向判断相关的检测逻辑边界说明。
-- 菜单显示和日志说明。
-
-验收时必须能解释：
-
-- 为什么右移时 `g_odometer.vel[x] > 0`。
-- 为什么右移后 `g_odometer.position[x]` 增大。
-- 为什么前进时 `g_odometer.vel[y] > 0`。
-- 为什么前进后 `g_odometer.position[y]` 增大。
-- 为什么控制层 `strafe` 目标和反馈没有反号打架。
-- 为什么信标方向判断没有被全局 X/Y 换轴改反。
-
-### 任务 3：新增 beacon_config
-
-新增：
-
-```text
-CYT4bb7_Car\project\code\Estimation\Position\beacon_config.h
-CYT4bb7_Car\project\code\Estimation\Position\beacon_config.c
-```
-
-最低要求：
-
-- 定义信标坐标结构，包含 `x/y`，单位 `m`。
-- 定义信标总数。
-- 定义信标坐标数组。
-- 定义初始全局坐标。
-- 提供极简只读接口。
-- `beacon_config_reset()` 或等价接口必须能恢复默认配置状态。
-
-实现要点：
-
-- 坐标数组先填示例值或空配置都可以，但必须让用户能很容易在 `.c` 文件中登记比赛前的坐标。
-- 如果默认无信标，`fixator` 必须自然不修正。
-- 不要搞运行时增删信标接口。
-
-### 任务 4：新增 fixator
-
-新增：
-
-```text
-CYT4bb7_Car\project\code\Estimation\Position\fixator.h
-CYT4bb7_Car\project\code\Estimation\Position\fixator.c
-```
-
-最低要求：
-
-- `fixator_init()`。
-- `fixator_reset()`。
-- `fixator_update_100HZ()`。
-- 一个让 `odometer` 获取修正方案的最小接口。
-
-基础算法：
-
-- 只在 `g_beacon_detection.enter_event != 0U` 时尝试匹配。
-- 当前点为 `g_odometer.position[x/y]`。
-- 遍历 `beacon_config` 中所有信标。
-- 计算平方距离，避免不必要的 `sqrtf()`。
-- 找到 `FIXATOR_MATCH_RADIUS_M` 内最近信标。
-- 命中则输出修正方案：目标位置等于该信标坐标。
-- 未命中则不输出修正。
-
-建议输出状态至少能支持调试：
-
-- 是否有有效修正。
-- 命中的信标索引。
 - 修正前位置。
+- 修正目标位置。
 - 修正后位置。
-- 匹配距离或距离平方。
+- 匹配信标编号。
+- 匹配距离平方。
 - 修正次数。
+- 是否实际应用修正。
 
-这些调试字段可以放在一个全局状态结构里，也可以尽量少放。目标是能看懂，不是堆字段。
+## 9. 离线分析脚本要求
 
-### 任务 5：接入 odometer 和主循环
+后续实现前必须建立或更新离线分析脚本。建议目录：
+
+```text
+CYT4bb7_Car/project/code/Estimation/Position/analysis
+```
+
+脚本职责：
+
+1. 自动扫描 `Position/惯导结合信标检测矫正` 下全部 CSV。
+2. 从文件名解析真实信标序列和最终坐标。
+3. 按 28 通道定义读取日志。
+4. 复盘当前 C 输出：
+   - `enter_event` 次数。
+   - `fix_applied` 次数。
+   - `beacon_index` 序列。
+   - 最终融合位置。
+   - 最终误差。
+5. 模拟新融合算法。
+6. 输出每份日志的识别序列、拒绝事件、校准事件、最终误差。
+7. 输出总体验收表。
+
+输出文件建议包括：
+
+```text
+analysis/output/position_fix_summary.csv
+analysis/output/position_fix_events.csv
+analysis/output/position_fix_rejections.csv
+analysis/output/position_fix_report.md
+```
+
+禁止修改或覆盖原始 CSV 日志。
+
+## 10. 必须验收的核心指标
+
+### 10.1 信标编号识别
+
+所有有信标日志必须正确识别每一个真实经过的信标灯编号。
+
+硬性要求：
+
+- 经过 3 号信标灯，绝不能输出 4 号。
+- 经过 4 号信标灯，绝不能输出 3 号或 6 号。
+- 经过 6 号信标灯，绝不能连续误判成多个 6 号。
+- 经过 7 号信标灯，不能漏掉或误判为 6 号。
+- 多信标序列必须顺序正确。
+
+特别强验收样本：
+
+```text
+经过7655443267信标-最终坐标5,2.csv
+```
+
+该日志期望识别序列为：
+
+```text
+7,6,5,5,4,4,3,2,6,7
+```
+
+该样本不能少识别、不能多识别、不能串号。
+
+### 10.2 无信标日志
+
+文件名包含“没有碰到信标灯”的日志，融合层不得确认任何信标编号。
 
 要求：
 
-- `odometer_init()` 或 `odometer_reset()` 时应用 `beacon_config` 的初始全局坐标。
-- `ODOMETER_BEACON_FIXATOR_ENABLE` 开启时，`odometer` 才应用 `fixator` 修正方案。
-- `fixator_update_100HZ()` 必须被 100Hz 调度调用。
-- 调度顺序必须保证 `fixator` 能读到本周期有效的 `enter_event`。
-- 不要让 `fixator` 和 `odometer` 互相造成头文件循环依赖。
+- 可以允许底层 `Beacon_Detection` 出现候选 `enter_event`，但 `fixator` 必须拒绝。
+- `last_match_valid` 不应错误置为有效。
+- `fix_applied` 不应因为误检而触发。
+- `beacon_index` 不应输出 0 到 6 的有效编号。
+- 最终位置不得因误检被错误校准。
 
-推荐思路：
+### 10.3 最终位置误差
 
-- `car_loop.c` 中在 `beacon_detection_update_100HZ()` 后调用 `fixator_update_100HZ()`。
-- `odometer_update_100HZ()` 在积分完成后或下一周期读取 `fixator` 修正方案并应用。
-- 如果为了时序简单，也可以在 `fixator_update_100HZ()` 内只记录方案，下一次 `odometer_update_100HZ()` 应用；但必须注释说明这会有一个 100Hz 周期级延迟。
-
-具体采用哪种时序，以读完现有代码后的最小改动为准。
-
-### 任务 6：同步公共头文件和 IAR 工程
-
-必须修改：
+每份日志最终融合位置与文件名中真实最终坐标的欧氏距离必须满足：
 
 ```text
-CYT4bb7_Car\libraries\zf_common\zf_common_headfile.h
-CYT4bb7_Car\project\iar\project_config\cyt4bb7_cm_7_0.ewp
+sqrt((final_x - truth_x)^2 + (final_y - truth_y)^2) <= 0.5m
 ```
 
-要求：
+如果某份日志因为真实信标漏检导致无法校准，必须在报告中明确说明原因，不能把失败样本藏起来。
 
-- `zf_common_headfile.h` 的 Project Code 区域加入：
+### 10.4 校准行为
 
-```c
-#include "Estimation/Position/beacon_config.h"
-#include "Estimation/Position/fixator.h"
-```
+每次校准必须满足：
 
-- `cyt4bb7_cm_7_0.ewp` 的 `Position` 分组加入：
+- 校准目标必须是确认后的真实信标绝对坐标。
+- 校准前后位置必须可追踪。
+- 校准不能把最终误差扩大到 0.5m 以上。
+- 对低置信或歧义候选，不允许强行校准。
 
-```text
-$PROJ_DIR$\..\..\code\Estimation\Position\beacon_config.c
-$PROJ_DIR$\..\..\code\Estimation\Position\beacon_config.h
-$PROJ_DIR$\..\..\code\Estimation\Position\fixator.c
-$PROJ_DIR$\..\..\code\Estimation\Position\fixator.h
-```
+### 10.5 报告透明度
 
-## 验收标准
+每次离线验收报告必须明确回答：
 
-### 代码结构验收
+- 是否跑通全部离线日志。
+- 每份日志期望信标序列是什么。
+- 每份日志实际识别序列是什么。
+- 每份日志是否存在误检、漏检、重复识别、串号。
+- 每份日志最终坐标真值是什么。
+- 每份日志最终融合坐标是什么。
+- 每份日志最终误差是多少。
+- 哪些候选事件被拒绝，拒绝原因是什么。
+- 哪些样本仍需要人工复核。
 
-- 新增 `beacon_config.c/h`。
-- 新增 `fixator.c/h`。
-- 新增模块位于 `Estimation/Position`。
-- 新增头文件加入总头文件。
-- 新增 C/H 文件加入 IAR CM7_0 工程。
-- 对外函数保持极简，没有无意义接口。
+## 11. 代码实现约束
 
-### 极性验收
+后续如果进入代码实现阶段，必须遵守以下约束：
 
-必须能通过代码检查确认：
+- 不引入动态内存。
+- 不引入复杂大模型。
+- 不引入大数组或不可控缓存。
+- 保持嵌入式实时可运行。
+- 优先使用少量静态状态变量。
+- 保持 `100Hz` 位置更新结构。
+- 不破坏 `Beacon_Detection` 已有检测职责。
+- 不让 `Beacon_Detection` 直接依赖地图坐标。
+- 地图匹配和校准职责应保留在 `Position/fixator` 或独立的 Position 子模块中。
+- 修改前必须先用离线脚本证明策略有效。
+- 修改后必须用同一批日志复测。
 
-- 右移：`g_odometer.vel[x] > 0`。
-- 前进：`g_odometer.vel[y] > 0`。
-- 原点右侧：`g_odometer.position[x] > 0`。
-- 原点前方：`g_odometer.position[y] > 0`。
+## 12. 后续推荐工作顺序
 
-必须检查控制层和信标检测方向判断没有因为全局 X/Y 换轴出现反号或读错轴问题。
+1. 扫描全部 `Position/惯导结合信标检测矫正` 日志。
+2. 从文件名解析真实信标序列和最终坐标。
+3. 建立当前 `fixator` 基线评估。
+4. 输出旧逻辑的漏检、误检、串号和最终误差。
+5. 设计候选评分和地图门控规则。
+6. 离线扫描严格半径、宽松半径、重复抑制时间、校准限幅参数。
+7. 选择能跑通全部日志且最终误差小于 0.5m 的最简规则。
+8. 再考虑是否同步到 C 代码。
+9. C 代码修改后重新生成离线日志并复测。
+10. 上车前必须在 IAR 工程完整编译，并补采新日志复核。
 
-### 算法验收
+## 13. 禁止事项
 
-至少用人工构造或静态逻辑检查覆盖：
+- 禁止只看单份日志调参。
+- 禁止只看有信标日志，不看无信标日志。
+- 禁止只追求最终坐标误差而忽略信标编号串号。
+- 禁止把 3 号灯误判成 4 号灯后仍算通过。
+- 禁止把平地误检强行匹配到最近信标。
+- 禁止无条件放大匹配半径。
+- 禁止没有离线报告就改 C 代码。
+- 禁止覆盖原始 CSV。
+- 禁止在用户未要求时执行 `git commit`、`git push`、`git reset`、`git checkout`。
 
-1. `beacon_config` 信标数量为 0 时，`fixator` 不输出修正。
-2. `enter_event == 0` 时，`fixator` 不输出修正。
-3. `enter_event != 0` 且 `0.5 m` 内无信标时，不输出修正。
-4. `enter_event != 0` 且 `0.5 m` 内有一个信标时，输出该信标坐标。
-5. `enter_event != 0` 且 `0.5 m` 内有多个信标时，选择最近信标。
-6. `ODOMETER_BEACON_FIXATOR_ENABLE == 0U` 时，`odometer` 不应用信标修正。
-7. `odometer_reset()` 后初始 `position[x/y]` 来自 `beacon_config` 配置。
+## 14. 最终验收一句话标准
 
-### 构建验收
-
-优先使用 IAR 完整构建 `cyt4bb7_cm_7_0`。
-
-如果当前环境没有 IAR，只能做以下替代检查，并必须如实说明：
-
-- `git diff --check`。
-- 可行时使用 `arm-none-eabi-gcc -fsyntax-only` 做语法检查。
-- 不能声称 IAR 已通过。
-
-## 风险与后续优化方向
-
-当前没有专门用于“信标坐标修正惯导”的实车日志，所以 v1 只能先搭框架。
-
-已知风险：
-
-- `0.5 m` 匹配半径可能过大或过小。
-- 信标密集时，最近信标匹配可能误选。
-- `beacon_detection` 如果重复产生 `enter_event`，v1 可能重复修正。
-- 小车压过信标时，车体中心不一定精确位于信标圆心；v1 暂不做轮组/车体几何偏置补偿。
-- 只修正 XY，不修正 yaw。
-- 不根据累计里程、打滑程度动态估计惯导可信半径。
-
-后续可优化，但本轮不要提前实现：
-
-- 按信标 ID 去重或冷却。
-- 结合累计行驶距离估计惯导可信半径。
-- 结合 `g_beacon_detection.location` 做车体几何偏置补偿。
-- 使用信标坐标反向抑制误检。
-- 根据地图信标分布动态调整检测敏感度。
-- 增加日志通道记录修正前后位置、命中信标 ID、匹配距离。
-
-## 最终交付说明要求
-
-完成任务后，必须用简体中文说明：
-
-- 新增了哪些文件。
-- 修改了哪些已有文件。
-- `ODOMETER_BEACON_FIXATOR_ENABLE` 在哪里。
-- X/Y 坐标语义改了哪些地方。
-- `beacon_config` 如何登记信标坐标和初始坐标。
-- `fixator` 何时触发，如何选择信标。
-- `odometer` 如何应用修正。
-- 是否同步了 `zf_common_headfile.h` 和 IAR 工程。
-- 跑了哪些检查或构建。
-- 哪些风险需要实车日志继续验证。
-
-不要提交 git。不要声称没有实际跑过的验证已经通过。
+全部离线日志必须跑通；无信标日志不得确认任何灯；有信标日志必须按文件名精确识别每一个信标编号；校准后最终位置偏移不得超过 `0.5m`；任何串号、漏号、误校准都视为失败。
