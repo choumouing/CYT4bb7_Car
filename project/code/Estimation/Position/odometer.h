@@ -54,7 +54,7 @@
 /* ---- 周期与标定常量 ---- */
 
 #define ODOMETER_UPDATE_DT_S                (0.01f)     /* 更新周期 10ms（100Hz 调用） */
-#define ODOMETER_FORWARD_COUNT_PER_METER    (14750.0f)  /* 前进方向：每米对应的编码器脉冲数 */
+#define ODOMETER_FORWARD_COUNT_PER_METER    (13915.0f)  /* 离线融合扫参标定：14750 / 1.06 */
 #define ODOMETER_STRAFE_COUNT_PER_METER_ABS (14000.0f)  /* 横移方向：每米对应的编码器脉冲数（绝对值） */
                                                         /* 横移标定值略小于前进，因麦轮 45° 滚子滑移率不同 */
 

@@ -8,13 +8,17 @@
 
 typedef struct
 {
-    uint8 pending_fix;              /* odometer 尚未消费的修正方案 */
-    uint8 last_match_valid;         /* 最近一次 enter 边沿是否命中信标 */
-    uint16 beacon_index;            /* 最近命中的信标索引 */
-    float before_position[2];       /* 修正前位置 [m]，[x]=右，[y]=前 */
-    float fixed_position[2];        /* 修正目标位置 [m]，[x]=右，[y]=前 */
-    float match_distance2_m2;       /* 匹配距离平方 [m^2] */
-    uint32 fix_count;               /* 已输出修正次数 */
+    uint8 pending_fix;
+    uint8 last_match_valid;
+    uint8 counts_in_sequence;       /* 1=计入信标序列，0=只做位置校准 */
+    uint8 fix_source;               /* 0=无，1=enter 事件，2=轨迹近邻 */
+    uint16 beacon_index;
+    uint16 previous_beacon_index;
+    float before_position[2];
+    float fixed_position[2];
+    float match_distance2_m2;
+    uint32 fix_count;
+    uint32 sequence_count;
 } fixator_data_t;
 
 extern fixator_data_t g_fixator;
