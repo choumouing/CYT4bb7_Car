@@ -40,9 +40,10 @@ volatile float g_air_crsf_std_ch4;
 volatile float g_air_crsf_std_ch5;
 volatile float g_air_crsf_std_ch6;
 volatile float g_air_crsf_std_ch7;
+volatile float g_air_crsf_std_ch8;
 
 #define AIR_RUN_DATA_BASE_COUNT (7U)
-#define AIR_RUN_DATA_CRSF_COUNT (15U)
+#define AIR_RUN_DATA_CRSF_COUNT (16U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -94,6 +95,7 @@ static void on_air_data(const float *data, uint8 count)
     g_air_crsf_std_ch5 = data[12];
     g_air_crsf_std_ch6 = data[13];
     g_air_crsf_std_ch7 = data[14];
+    g_air_crsf_std_ch8 = data[15];
 }
 
 static void car_loop_camera_spi_send_100HZ(void)

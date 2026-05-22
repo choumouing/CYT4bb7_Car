@@ -33,6 +33,7 @@ extern volatile float g_air_crsf_std_ch4;
 extern volatile float g_air_crsf_std_ch5;
 extern volatile float g_air_crsf_std_ch6;
 extern volatile float g_air_crsf_std_ch7;
+extern volatile float g_air_crsf_std_ch8;
 
 typedef struct
 {

@@ -1,4 +1,5 @@
 #include "beacon_detection.h"
+#include "Controller/car_loop.h"
 
 #define BEACON_DETECTION_IMU_DT_S                 (0.001f)
 #define BEACON_DETECTION_IMU_WINDOW_SIZE          (24U)
@@ -2312,7 +2313,7 @@ void beacon_detection_update_1000HZ(void)
       g_beacon_detection.exit_event,
       g_beacon_detection.on_beacon,
       g_beacon_detection.impact_robust_z,
-      g_beacon_detection.speed_mps,
+      g_air_crsf_std_ch8,
       g_beacon_detection.vel[0],
       g_beacon_detection.vel[1],
       g_beacon_detection.wheel_highpass_count
