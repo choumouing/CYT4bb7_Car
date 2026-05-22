@@ -43,19 +43,24 @@ typedef struct
     uint32_t event_count;
     uint32_t enter_count;
     uint32_t exit_count;
+    uint32_t event_tick_ms;
+    uint32_t enter_tick_ms;
+    uint32_t exit_tick_ms;
 
     float score;
     float impact_baseline;
     float impact_robust_z;
     float speed_mps;
     float vel[2];
-
+    float projected_gyro_dps;
     float gyro_xy_dps;
     float gyro_z_abs_dps;
-    float tilt_rate_dps;
     float tilt_deg;
     float accel_norm_error_g;
+    float accel_horizontal_g;
+    float accel_along_g;
     float wheel_highpass_count;
+    float group_distance_m;
 } beacon_detection_data_t;
 
 extern beacon_detection_data_t g_beacon_detection;
