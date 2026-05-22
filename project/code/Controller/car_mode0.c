@@ -31,6 +31,6 @@ void car_mode0_update_25HZ(uint32 now_ms)
 
     car_forward_target = car_math_soft_deadband(g_air_crsf_std_ch1, MODE0_STICK_DEADBAND) *
                          (MODE0_MAX_CONTROL_SPEED / 1000.0f);
-    car_strafe_target  = -car_math_soft_deadband(g_air_crsf_std_ch0, MODE0_STICK_DEADBAND) *
+    car_strafe_target  = car_math_soft_deadband(g_air_crsf_std_ch0, MODE0_STICK_DEADBAND) *
                          (MODE0_MAX_CONTROL_SPEED / 1000.0f);
 }

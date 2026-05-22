@@ -108,7 +108,7 @@ void car_mode1_update_100HZ(uint32 now_ms)
     car_mode1_pid_apply_params();
 
     g_car_mode1_state.raw_forward_mps = car_mode1_stick_to_velocity(g_air_crsf_std_ch1);
-    g_car_mode1_state.raw_strafe_mps = car_mode1_stick_to_velocity(-g_air_crsf_std_ch0);
+    g_car_mode1_state.raw_strafe_mps = car_mode1_stick_to_velocity(g_air_crsf_std_ch0);
 
     g_car_mode1_state.velocity_forward_target_mps =
         car_filter_lpf1_apply(g_car_mode1_state.velocity_forward_target_mps,
