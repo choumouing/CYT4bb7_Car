@@ -131,8 +131,10 @@
 
 #include "Estimation/Attitude/IMU_TOP.h"
 #include "Estimation/Attitude/Accel_Calibration.h"
+#include "Estimation/Position/beacon_config.h"
 #include "Estimation/Position/odometer.h"
 #include "Estimation/Beacon_Detection/beacon_detection.h"
+#include "Estimation/Position/fixator.h"
 #include "Estimation/Image/beacon_fusion.h"
 
 #include "Menu/menu_air_support.h"

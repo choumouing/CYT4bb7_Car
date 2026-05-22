@@ -1,7 +1,7 @@
 /* Mode1: remote horizontal velocity closed loop.
- * Remote gives horizontal forward/strafe velocity targets in m/s.
- * Odometer gives horizontal velocity feedback in m/s.
- * Output is still encoder-count target for Control_100Hz().
+ * Remote gives horizontal forward/right velocity targets in m/s.
+ * Odometer gives horizontal velocity feedback in m/s, X positive means right, Y positive means forward.
+ * Output converts right-positive velocity to the wheel-space strafe command.
  */
 #include "car_mode.h"
 #include "car_loop.h"
@@ -121,15 +121,15 @@ void car_mode1_update_100HZ(uint32 now_ms)
                               ODOMETER_UPDATE_DT_S,
                               mode1_velocity_smooth_tau_s);
 
-    g_car_mode1_state.velocity_forward_feedback_mps = g_odometer.vel[x];
-    g_car_mode1_state.velocity_strafe_feedback_mps = g_odometer.vel[y];
+    g_car_mode1_state.velocity_forward_feedback_mps = g_odometer.vel[y];
+    g_car_mode1_state.velocity_strafe_feedback_mps = g_odometer.vel[x];
 
     g_car_mode1_state.forward_feedforward =
         g_car_mode1_state.velocity_forward_target_mps *
         ODOMETER_FORWARD_COUNT_PER_METER *
         ODOMETER_UPDATE_DT_S;
     g_car_mode1_state.strafe_feedforward =
-        g_car_mode1_state.velocity_strafe_target_mps *
+        -g_car_mode1_state.velocity_strafe_target_mps *
         ODOMETER_STRAFE_COUNT_PER_METER_ABS *
         ODOMETER_UPDATE_DT_S;
 
@@ -146,7 +146,7 @@ void car_mode1_update_100HZ(uint32 now_ms)
         car_mode1_limit_output(g_car_mode1_state.forward_feedforward +
                                g_car_mode1_state.forward_pid_output);
     g_car_mode1_state.strafe_target =
-        car_mode1_limit_output(g_car_mode1_state.strafe_feedforward +
+        car_mode1_limit_output(g_car_mode1_state.strafe_feedforward -
                                g_car_mode1_state.strafe_pid_output);
 
     g_car_mode1_state.forward_pid_p_term = s_mode1_forward_pid.p_term;

@@ -72,20 +72,24 @@ beacon_detection_update_100HZ();
 
 必须修正 `odometer` 对外坐标极性。最终语义固定为：
 
-- `g_odometer.vel[x] > 0`：小车往前走。
-- `g_odometer.vel[y] > 0`：小车向右移动。
-- `g_odometer.position[x] > 0`：小车位于原点前方。
-- `g_odometer.position[y] > 0`：小车位于原点右侧。
+- `g_odometer.vel[x] > 0`：小车向右移动。
+- `g_odometer.vel[y] > 0`：小车往前走。
+- `g_odometer.position[x] > 0`：小车位于原点右侧。
+- `g_odometer.position[y] > 0`：小车位于原点前方。
 
-注意：当前 `odometer.h` 注释和 `odometer.c` 横移公式原先表达的是“左为正”。改极性时不能只改注释，必须同步检查所有受影响位置。
+注意：本轮不是单纯改某个轴的正负号，而是把对外二维坐标整体改为“X=右、Y=前/平面图向上”。改坐标系时不能只改注释，必须同步检查所有受影响位置。
 
 至少要全局搜索并检查：
 
 ```text
+g_odometer.vel[x]
 g_odometer.vel[y]
+g_odometer.position[x]
 g_odometer.position[y]
 g_beacon_detection.vel[1]
+body_vel[x]
 body_vel[y]
+horizontal_vel[x]
 horizontal_vel[y]
 strafe
 velocity_strafe_feedback_mps
@@ -94,20 +98,21 @@ velocity_strafe_feedback_mps
 重点风险点：
 
 - `CYT4bb7_Car\project\code\Estimation\Position\odometer.c`
-  - 横移速度公式。
-  - 机体坐标转水平坐标后的 Y 输出。
-  - `g_odometer.position[y]` 积分。
+  - 前进/横移速度分别写入 `body_vel[y]` 和 `body_vel[x]`。
+  - 机体坐标转水平坐标后的 X/Y 输出。
+  - `g_odometer.position[x/y]` 积分。
 - `CYT4bb7_Car\project\code\Estimation\Beacon_Detection\beacon_detection.c`
-  - 内部也计算 `g_beacon_detection.vel[1]`。
+  - 内部计算的 `g_beacon_detection.vel[0/1]` 是检测用 `forward/strafe`，不是新的全局 `x/y`。
   - `beacon_detection_location_from_motion()` 使用横移速度判断 `FRONT / RIGHT / LEFT / REAR`。
-  - 如果只改 `odometer` 不改这里，方向判断可能反。
+  - 不要为了全局坐标换轴把检测内部方向速度硬改反。
 - `CYT4bb7_Car\project\code\Controller\car_mode1.c`
-  - 速度闭环反馈使用 `g_odometer.vel[y]`。
-  - 目标横移速度 `velocity_strafe_target_mps` 与反馈极性必须一致。
+  - 前进闭环反馈应使用 `g_odometer.vel[y]`。
+  - 横移闭环反馈应使用 `g_odometer.vel[x]`。
+  - 目标前进/横移速度与反馈轴必须一致。
 - `CYT4bb7_Car\project\code\Menu\menu_config.c`
-  - 菜单显示 `Odo Y` 和速度显示语义要同步。
+  - 菜单显示 `Odo X/Y` 和速度显示语义要同步。
 - WiFi/日志语义
-  - 如果日志中输出 Y 速度或位置，说明必须跟随“右为正”。
+  - 如果日志中输出 X/Y 速度或位置，说明必须跟随“X=右、Y=前”。
 
 ## 本轮新增模块
 
@@ -144,6 +149,7 @@ beacon_config.c
 坐标含义固定为：
 
 - `beacon_config` 中登记的信标坐标表示“车体中心位于该信标中心时”的全局坐标。
+- 后续在 `beacon_config.c` 里填写 `{x, y}` 时，`x` 表示向右的距离，`y` 表示向前/平面图向上的距离，单位均为 `m`。
 - v1 不做轮组接触点偏置补偿。
 - v1 不根据 `FRONT / RIGHT / LEFT / REAR` 给车体几何补偿。
 
@@ -151,7 +157,8 @@ beacon_config.c
 
 - 本轮只配置初始 `position[x]` 和 `position[y]`。
 - 本轮不配置全局 yaw。
-- `odometer_reset()` 后仍以当前车头方向作为全局 X 正方向的航向基准。
+- `odometer_reset()` 后仍以当前车头方向作为全局 Y 正方向的航向基准。
+- 当前车体右侧作为全局 X 正方向。
 
 对外接口必须极简。建议只保留初始化、reset、只读配置读取这类最少接口。不要为了未来乱加接口。
 
@@ -323,26 +330,28 @@ CYT4bb7_Car\project\iar\project_config\cyt4bb7_cm_7_0.ewp
 - `g_odometer` 当前结构和更新逻辑。
 - `g_beacon_detection.enter_event` 的保持周期和清零方式。
 - `car_loop.c` 的 100Hz 调度顺序。
-- Y 轴极性修改会影响哪些模块。
+- X/Y 轴语义交换会影响哪些模块。
 
 ### 任务 2：修正 odometer 坐标极性
 
-把对外语义改为“右为正”。
+把对外语义改为“X=右、Y=前”。
 
 必须同步更新：
 
 - `odometer.h` 坐标系注释。
-- `odometer.c` 横移速度计算或最终输出符号。
-- 与 `g_odometer.vel[y]` 闭环反馈相关的控制逻辑。
-- 与 `g_beacon_detection.vel[1]` 和方向判断相关的检测逻辑。
+- `odometer.c` 前进/横移速度计算写入的轴，以及机体到水平坐标的旋转输出。
+- 与 `g_odometer.vel[x/y]` 闭环反馈相关的控制逻辑。
+- 与 `g_beacon_detection.vel[0/1]` 和方向判断相关的检测逻辑边界说明。
 - 菜单显示和日志说明。
 
 验收时必须能解释：
 
-- 为什么右移时 `g_odometer.vel[y] > 0`。
-- 为什么右移后 `g_odometer.position[y]` 增大。
+- 为什么右移时 `g_odometer.vel[x] > 0`。
+- 为什么右移后 `g_odometer.position[x]` 增大。
+- 为什么前进时 `g_odometer.vel[y] > 0`。
+- 为什么前进后 `g_odometer.position[y]` 增大。
 - 为什么控制层 `strafe` 目标和反馈没有反号打架。
-- 为什么信标方向判断没有被 Y 极性改反。
+- 为什么信标方向判断没有被全局 X/Y 换轴改反。
 
 ### 任务 3：新增 beacon_config
 
@@ -465,12 +474,12 @@ $PROJ_DIR$\..\..\code\Estimation\Position\fixator.h
 
 必须能通过代码检查确认：
 
-- 前进：`g_odometer.vel[x] > 0`。
-- 右移：`g_odometer.vel[y] > 0`。
-- 原点前方：`g_odometer.position[x] > 0`。
-- 原点右侧：`g_odometer.position[y] > 0`。
+- 右移：`g_odometer.vel[x] > 0`。
+- 前进：`g_odometer.vel[y] > 0`。
+- 原点右侧：`g_odometer.position[x] > 0`。
+- 原点前方：`g_odometer.position[y] > 0`。
 
-必须检查控制层和信标检测方向判断没有因为 Y 极性变更出现反号问题。
+必须检查控制层和信标检测方向判断没有因为全局 X/Y 换轴出现反号或读错轴问题。
 
 ### 算法验收
 
@@ -523,7 +532,7 @@ $PROJ_DIR$\..\..\code\Estimation\Position\fixator.h
 - 新增了哪些文件。
 - 修改了哪些已有文件。
 - `ODOMETER_BEACON_FIXATOR_ENABLE` 在哪里。
-- Y 轴极性改了哪些地方。
+- X/Y 坐标语义改了哪些地方。
 - `beacon_config` 如何登记信标坐标和初始坐标。
 - `fixator` 何时触发，如何选择信标。
 - `odometer` 如何应用修正。

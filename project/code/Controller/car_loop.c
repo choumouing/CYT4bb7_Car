@@ -222,6 +222,7 @@ static void car_loop_runtime_reset(void)
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
     memset((void *)&g_image_spi, 0, sizeof(g_image_spi));
+    beacon_config_init();
     beacon_fusion_init();
 }
 
@@ -236,6 +237,7 @@ void car_loop_init(void)
     odometer_init();
     CameraSpi_Init();
     beacon_detection_reset();
+    fixator_init();
     IMU_Init_All();
     AccelCalibration_Init();
     IMUCalib_Init();
@@ -266,6 +268,7 @@ static void car_loop_100HZ(void)
     encoder_update_100HZ();
     odometer_update_100HZ();
     beacon_detection_update_100HZ();
+    fixator_update_100HZ();
 
     if (g_beacon_detection.bump_detected != 0U)
     {

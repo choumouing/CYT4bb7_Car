@@ -1222,6 +1222,18 @@
             <group>
                 <name>Position</name>
                 <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\Position\beacon_config.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\Position\beacon_config.h</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\Position\fixator.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\Position\fixator.h</name>
+                </file>
+                <file>
                     <name>$PROJ_DIR$\..\..\code\Estimation\Position\odometer.c</name>
                 </file>
                 <file>

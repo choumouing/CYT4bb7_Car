@@ -21,6 +21,7 @@ extern volatile uint16 g_tick_1000HZ;
 extern volatile uint32 tick_1000us_cnt; /* 1000us tick counter */
 
 extern float car_forward_target;
+/* 底层麦轮横移命令，闭环速度模式会从右正 m/s 目标转换到该符号。 */
 extern float car_strafe_target;
 extern uint8 car_control_enabled;
 extern uint8 car_emergency_stop_active;

@@ -96,7 +96,12 @@ void odometer_init(void)
 
 void odometer_reset(void)
 {
+    float initial_position[ODOMETER_AXIS_NUM];
+
     g_odometer = (odometer_data_t){0};
+    beacon_config_get_initial_position(initial_position);
+    g_odometer.position[x] = initial_position[x];
+    g_odometer.position[y] = initial_position[y];
     s_yaw_zero_rad = 0.0f;
     s_yaw_ready = 0U;
     s_wheel_gate_hold_ticks = 0U;
@@ -106,6 +111,9 @@ void odometer_update_100HZ(void)
 {
     float body_vel[ODOMETER_AXIS_NUM];
     float horizontal_vel[ODOMETER_AXIS_NUM];
+    float inertial_position[ODOMETER_AXIS_NUM];
+    float applied_fix_position[ODOMETER_AXIS_NUM];
+    uint8 fix_applied = 0U;
     float left_front = encoder_get_left_front_filtered_count();
     float right_front = encoder_get_right_front_filtered_count();
     float left_rear = encoder_get_left_rear_filtered_count();
@@ -113,11 +121,11 @@ void odometer_update_100HZ(void)
     float wheel_q = fabsf(left_front + right_front - left_rear - right_rear);
 
     body_vel[x] =
+        (left_front - right_front - left_rear + right_rear) *
+        (0.25f / ODOMETER_STRAFE_COUNT_PER_METER_ABS / ODOMETER_UPDATE_DT_S);
+    body_vel[y] =
         (left_front + right_front + left_rear + right_rear) *
         (0.25f / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S);
-    body_vel[y] =
-        (-left_front + right_front + left_rear - right_rear) *
-        (0.25f / ODOMETER_STRAFE_COUNT_PER_METER_ABS / ODOMETER_UPDATE_DT_S);
 
     if (wheel_q > ODOMETER_WHEEL_Q_THRESH)
     {
@@ -129,11 +137,11 @@ void odometer_update_100HZ(void)
         float robust_body_vel[ODOMETER_AXIS_NUM];
 
         robust_body_vel[x] =
+            odometer_mid2_average4(left_front, -right_front, -left_rear, right_rear) *
+            (1.0f / ODOMETER_STRAFE_COUNT_PER_METER_ABS / ODOMETER_UPDATE_DT_S);
+        robust_body_vel[y] =
             odometer_mid2_average4(left_front, right_front, left_rear, right_rear) *
             (1.0f / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S);
-        robust_body_vel[y] =
-            odometer_mid2_average4(-left_front, right_front, left_rear, -right_rear) *
-            (1.0f / ODOMETER_STRAFE_COUNT_PER_METER_ABS / ODOMETER_UPDATE_DT_S);
         body_vel[x] += ODOMETER_WHEEL_ROBUST_BLEND * (robust_body_vel[x] - body_vel[x]);
         body_vel[y] += ODOMETER_WHEEL_ROBUST_BLEND * (robust_body_vel[y] - body_vel[y]);
         s_wheel_gate_hold_ticks--;
@@ -151,4 +159,56 @@ void odometer_update_100HZ(void)
     g_odometer.vel[y] = horizontal_vel[y];
     g_odometer.position[x] += g_odometer.vel[x] * ODOMETER_UPDATE_DT_S;
     g_odometer.position[y] += g_odometer.vel[y] * ODOMETER_UPDATE_DT_S;
+    inertial_position[x] = g_odometer.position[x];
+    inertial_position[y] = g_odometer.position[y];
+    applied_fix_position[x] = inertial_position[x];
+    applied_fix_position[y] = inertial_position[y];
+
+#if (ODOMETER_BEACON_FIXATOR_ENABLE != 0U)
+    {
+        float fixed_position[ODOMETER_AXIS_NUM];
+
+        /* fixator 在本周期信标检测后产出方案，这里通常消费上一 100Hz 周期的修正。 */
+        if(fixator_get_position_fix(fixed_position) != 0U)
+        {
+            g_odometer.position[x] = fixed_position[x];
+            g_odometer.position[y] = fixed_position[y];
+            applied_fix_position[x] = fixed_position[x];
+            applied_fix_position[y] = fixed_position[y];
+            fix_applied = 1U;
+        }
+    }
+#endif
+
+    wifi_justfloat(
+        tick_1000us_cnt,
+        inertial_position[x],
+        inertial_position[y],
+        g_odometer.vel[x],
+        g_odometer.vel[y],
+        g_beacon_detection.enter_event,
+        g_beacon_detection.enter_count,
+        g_beacon_detection.on_beacon,
+        g_beacon_detection.location,
+        g_beacon_detection.confidence,
+        g_beacon_detection.score,
+        g_beacon_detection.speed_mps,
+        g_beacon_detection.vel[0],
+        g_beacon_detection.vel[1],
+        g_beacon_detection.impact_robust_z,
+        fix_applied,
+        g_fixator.pending_fix,
+        g_fixator.last_match_valid,
+        g_fixator.beacon_index,
+        g_fixator.before_position[x],
+        g_fixator.before_position[y],
+        applied_fix_position[x],
+        applied_fix_position[y],
+        g_odometer.position[x],
+        g_odometer.position[y],
+        g_fixator.match_distance2_m2,
+        g_fixator.fix_count,
+        ODOMETER_BEACON_FIXATOR_ENABLE);
+    wifi_core_Poll();
+
 }

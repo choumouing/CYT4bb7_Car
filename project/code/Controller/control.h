@@ -28,6 +28,7 @@ extern float control_yaw_rate_output;
 void  Control_Init(void);
 void  Control_Reset(void);
 void  Control_Stop(void);
+/* strafe 是底层麦轮解算命令符号，Mode1 会从右正速度目标转换到该符号。 */
 void  Control_100Hz(float forward, float strafe);
 float Control_GetYawAngle(void);
 
