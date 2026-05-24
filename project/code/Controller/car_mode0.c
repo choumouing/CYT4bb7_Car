@@ -7,7 +7,7 @@
 #include "car_loop.h"
 #include "Common/car_math.h"
 
-#define MODE0_MAX_CONTROL_SPEED (250.0f)
+#define MODE0_MAX_CONTROL_SPEED (200.0f)
 #define MODE0_STICK_DEADBAND    (50.0f)
 
 void car_mode0_init(void)
