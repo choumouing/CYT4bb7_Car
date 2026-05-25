@@ -88,6 +88,10 @@ typedef struct
     float max_wheel_highpass_count;
     float distance_m;
     float vel_sum[2];
+
+    uint8_t stats_valid;
+    uint32_t stats_first_tick_ms;
+    uint32_t stats_next_validate_tick_ms;
 } beacon_detection_group_t;
 
 typedef struct
@@ -237,27 +241,13 @@ static void beacon_detection_window_max(beacon_detection_feature_sample_t *outpu
     }
 }
 
-static uint16_t beacon_detection_history_prev_index(uint16_t index)
-{
-    return (index == 0U) ? (BEACON_DETECTION_HISTORY_SIZE - 1U) : (uint16_t)(index - 1U);
-}
-
 static uint16_t beacon_detection_history_index_by_age(uint16_t age)
 {
-    uint16_t index;
+    uint32_t index;
 
-    index = s_history_index;
-    do
-    {
-        index = beacon_detection_history_prev_index(index);
-        if(age == 0U)
-        {
-            break;
-        }
-        age--;
-    } while(1);
-
-    return index;
+    index = (uint32_t)s_history_index +
+            (uint32_t)BEACON_DETECTION_HISTORY_SIZE - 1U - (uint32_t)age;
+    return (uint16_t)(index % (uint32_t)BEACON_DETECTION_HISTORY_SIZE);
 }
 
 static void beacon_detection_history_push(const beacon_detection_history_sample_t *sample)
@@ -285,57 +275,144 @@ static const beacon_detection_history_sample_t *beacon_detection_history_get_by_
     return &s_history[beacon_detection_history_index_by_age(age)];
 }
 
-static void beacon_detection_history_window_stats(uint32_t start_tick_ms,
+static uint32_t beacon_detection_history_oldest_tick(void)
+{
+    if(s_history_count == 0U)
+    {
+        return s_tick_ms + 1U;
+    }
+
+    return s_tick_ms - (uint32_t)s_history_count + 1U;
+}
+
+static uint8_t beacon_detection_history_age_range(uint32_t start_tick_ms,
                                              uint32_t end_tick_ms,
-                                             float *base_roll_deg,
-                                             float *base_pitch_deg,
-                                             float *max_tilt_deg,
-                                             float *distance_m,
-                                             float *max_wheel_highpass_count)
+                                             uint8_t end_inclusive,
+                                             uint16_t *first_age,
+                                             uint16_t *last_age)
+{
+    uint32_t newest_tick_ms;
+    uint32_t newest_age;
+    uint32_t oldest_age;
+    uint32_t history_last_age;
+
+    if((s_history_count == 0U) || (first_age == 0) || (last_age == 0))
+    {
+        return 0U;
+    }
+
+    if(end_inclusive == 0U)
+    {
+        if(end_tick_ms <= start_tick_ms)
+        {
+            return 0U;
+        }
+        newest_tick_ms = end_tick_ms - 1U;
+    }
+    else
+    {
+        if(end_tick_ms < start_tick_ms)
+        {
+            return 0U;
+        }
+        newest_tick_ms = end_tick_ms;
+    }
+
+    if(newest_tick_ms > s_tick_ms)
+    {
+        newest_tick_ms = s_tick_ms;
+    }
+    if((s_tick_ms < start_tick_ms) || (newest_tick_ms < start_tick_ms))
+    {
+        return 0U;
+    }
+
+    newest_age = s_tick_ms - newest_tick_ms;
+    oldest_age = s_tick_ms - start_tick_ms;
+    history_last_age = (uint32_t)s_history_count - 1U;
+    if(newest_age > history_last_age)
+    {
+        return 0U;
+    }
+    if(oldest_age > history_last_age)
+    {
+        oldest_age = history_last_age;
+    }
+
+    *first_age = (uint16_t)newest_age;
+    *last_age = (uint16_t)oldest_age;
+    return 1U;
+}
+
+static uint32_t beacon_detection_base_start_tick(uint32_t start_tick_ms)
+{
+    return (start_tick_ms > BEACON_DETECTION_BASE_PRE_TICKS) ?
+           (start_tick_ms - BEACON_DETECTION_BASE_PRE_TICKS) : 0U;
+}
+
+static uint32_t beacon_detection_base_end_tick(uint32_t start_tick_ms)
+{
+    return (start_tick_ms > BEACON_DETECTION_BASE_GAP_TICKS) ?
+           (start_tick_ms - BEACON_DETECTION_BASE_GAP_TICKS) : start_tick_ms;
+}
+
+static uint32_t beacon_detection_validate_start_tick(uint32_t start_tick_ms)
+{
+    return (start_tick_ms > BEACON_DETECTION_VALIDATE_PRE_TICKS) ?
+           (start_tick_ms - BEACON_DETECTION_VALIDATE_PRE_TICKS) : 0U;
+}
+
+static uint32_t beacon_detection_validate_end_tick(uint32_t end_tick_ms)
+{
+    return end_tick_ms + BEACON_DETECTION_VALIDATE_POST_TICKS;
+}
+
+static void beacon_detection_update_group_base_stats(float *base_roll_deg,
+                                                     float *base_pitch_deg)
 {
     const beacon_detection_history_sample_t *sample;
     uint16_t age;
+    uint16_t first_age;
+    uint16_t last_age;
     uint16_t base_count;
-    uint16_t validate_count;
     uint32_t base_start_tick_ms;
     uint32_t base_end_tick_ms;
-    uint32_t validate_start_tick_ms;
-    uint32_t validate_end_tick_ms;
     float roll_sum;
     float pitch_sum;
-    float tilt_deg;
 
-    base_start_tick_ms = (start_tick_ms > BEACON_DETECTION_BASE_PRE_TICKS) ?
-                         (start_tick_ms - BEACON_DETECTION_BASE_PRE_TICKS) : 0U;
-    base_end_tick_ms = (start_tick_ms > BEACON_DETECTION_BASE_GAP_TICKS) ?
-                       (start_tick_ms - BEACON_DETECTION_BASE_GAP_TICKS) : start_tick_ms;
-    validate_start_tick_ms = (start_tick_ms > BEACON_DETECTION_VALIDATE_PRE_TICKS) ?
-                             (start_tick_ms - BEACON_DETECTION_VALIDATE_PRE_TICKS) : 0U;
-    validate_end_tick_ms = end_tick_ms + BEACON_DETECTION_VALIDATE_POST_TICKS;
+    base_start_tick_ms = beacon_detection_base_start_tick(s_group.first_tick_ms);
+    base_end_tick_ms = beacon_detection_base_end_tick(s_group.first_tick_ms);
 
     roll_sum = 0.0f;
     pitch_sum = 0.0f;
     base_count = 0U;
 
-    for(age = 0U; age < s_history_count; age++)
+    if(beacon_detection_history_age_range(base_start_tick_ms,
+                                          base_end_tick_ms,
+                                          0U,
+                                          &first_age,
+                                          &last_age) != 0U)
     {
-        sample = beacon_detection_history_get_by_age(age);
-        if((sample == 0) || (sample->valid == 0U))
+        for(age = first_age; age <= last_age; age++)
         {
-            continue;
-        }
+            sample = beacon_detection_history_get_by_age(age);
+            if((sample == 0) || (sample->valid == 0U))
+            {
+                continue;
+            }
 
-        if(sample->tick_ms < base_start_tick_ms)
-        {
-            break;
-        }
+            if((sample->tick_ms >= base_start_tick_ms) &&
+               (sample->tick_ms < base_end_tick_ms))
+            {
+                roll_sum += sample->roll_deg;
+                pitch_sum += sample->pitch_deg;
+                base_count++;
+            }
 
-        if((sample->tick_ms >= base_start_tick_ms) &&
-           (sample->tick_ms < base_end_tick_ms))
-        {
-            roll_sum += sample->roll_deg;
-            pitch_sum += sample->pitch_deg;
-            base_count++;
+            if(age == last_age)
+            {
+                break;
+            }
         }
     }
 
@@ -344,42 +421,164 @@ static void beacon_detection_history_window_stats(uint32_t start_tick_ms,
         *base_roll_deg = roll_sum / (float)base_count;
         *base_pitch_deg = pitch_sum / (float)base_count;
     }
+}
 
-    *max_tilt_deg = 0.0f;
-    *distance_m = 0.0f;
-    *max_wheel_highpass_count = 0.0f;
+static void beacon_detection_process_group_validate_stats(uint32_t start_tick_ms,
+                                                          uint32_t end_tick_ms)
+{
+    const beacon_detection_history_sample_t *sample;
+    uint16_t age;
+    uint16_t first_age;
+    uint16_t last_age;
+    float tilt_deg;
+
+    if(end_tick_ms < start_tick_ms)
+    {
+        return;
+    }
+
+    if(beacon_detection_history_age_range(start_tick_ms,
+                                          end_tick_ms,
+                                          1U,
+                                          &first_age,
+                                          &last_age) != 0U)
+    {
+        for(age = first_age; age <= last_age; age++)
+        {
+            sample = beacon_detection_history_get_by_age(age);
+            if((sample == 0) || (sample->valid == 0U))
+            {
+                continue;
+            }
+
+            if((sample->tick_ms >= start_tick_ms) &&
+               (sample->tick_ms <= end_tick_ms))
+            {
+                tilt_deg = beacon_detection_norm2(sample->roll_deg - s_group.base_roll_deg,
+                                             sample->pitch_deg - s_group.base_pitch_deg);
+                s_group.max_tilt_deg = beacon_detection_maxf(s_group.max_tilt_deg, tilt_deg);
+                s_group.distance_m += sample->speed_mps * BEACON_DETECTION_IMU_DT_S;
+                s_group.max_wheel_highpass_count =
+                    beacon_detection_maxf(s_group.max_wheel_highpass_count,
+                                          sample->wheel_highpass_count);
+            }
+
+            if(age == last_age)
+            {
+                break;
+            }
+        }
+    }
+}
+
+static void beacon_detection_update_group_window_stats_exact(void)
+{
+    const beacon_detection_history_sample_t *sample;
+    uint16_t age;
+    uint16_t first_age;
+    uint16_t last_age;
+    uint16_t base_count;
+    uint16_t validate_count;
+    uint32_t base_start_tick_ms;
+    uint32_t base_end_tick_ms;
+    uint32_t validate_start_tick_ms;
+    uint32_t validate_end_tick_ms;
+    float base_roll_deg;
+    float base_pitch_deg;
+    float roll_sum;
+    float pitch_sum;
+    float tilt_deg;
+
+    base_start_tick_ms = beacon_detection_base_start_tick(s_group.first_tick_ms);
+    base_end_tick_ms = beacon_detection_base_end_tick(s_group.first_tick_ms);
+    validate_start_tick_ms = beacon_detection_validate_start_tick(s_group.first_tick_ms);
+    validate_end_tick_ms = beacon_detection_validate_end_tick(s_group.last_tick_ms);
+
+    base_roll_deg = s_group.base_roll_deg;
+    base_pitch_deg = s_group.base_pitch_deg;
+    roll_sum = 0.0f;
+    pitch_sum = 0.0f;
+    base_count = 0U;
+
+    if(beacon_detection_history_age_range(base_start_tick_ms,
+                                          base_end_tick_ms,
+                                          0U,
+                                          &first_age,
+                                          &last_age) != 0U)
+    {
+        for(age = first_age; age <= last_age; age++)
+        {
+            sample = beacon_detection_history_get_by_age(age);
+            if((sample == 0) || (sample->valid == 0U))
+            {
+                continue;
+            }
+
+            if((sample->tick_ms >= base_start_tick_ms) &&
+               (sample->tick_ms < base_end_tick_ms))
+            {
+                roll_sum += sample->roll_deg;
+                pitch_sum += sample->pitch_deg;
+                base_count++;
+            }
+
+            if(age == last_age)
+            {
+                break;
+            }
+        }
+    }
+
+    if(base_count != 0U)
+    {
+        base_roll_deg = roll_sum / (float)base_count;
+        base_pitch_deg = pitch_sum / (float)base_count;
+    }
+
+    s_group.base_roll_deg = base_roll_deg;
+    s_group.base_pitch_deg = base_pitch_deg;
+    s_group.max_tilt_deg = 0.0f;
+    s_group.distance_m = 0.0f;
+    s_group.max_wheel_highpass_count = 0.0f;
     validate_count = 0U;
 
-    for(age = 0U; age < s_history_count; age++)
+    if(beacon_detection_history_age_range(validate_start_tick_ms,
+                                          validate_end_tick_ms,
+                                          1U,
+                                          &first_age,
+                                          &last_age) != 0U)
     {
-        sample = beacon_detection_history_get_by_age(age);
-        if((sample == 0) || (sample->valid == 0U))
+        for(age = first_age; age <= last_age; age++)
         {
-            continue;
-        }
+            sample = beacon_detection_history_get_by_age(age);
+            if((sample == 0) || (sample->valid == 0U))
+            {
+                continue;
+            }
 
-        if(sample->tick_ms < validate_start_tick_ms)
-        {
-            break;
-        }
+            if((sample->tick_ms >= validate_start_tick_ms) &&
+               (sample->tick_ms <= validate_end_tick_ms))
+            {
+                tilt_deg = beacon_detection_norm2(sample->roll_deg - s_group.base_roll_deg,
+                                                  sample->pitch_deg - s_group.base_pitch_deg);
+                s_group.max_tilt_deg = beacon_detection_maxf(s_group.max_tilt_deg, tilt_deg);
+                s_group.distance_m += sample->speed_mps * BEACON_DETECTION_IMU_DT_S;
+                s_group.max_wheel_highpass_count =
+                    beacon_detection_maxf(s_group.max_wheel_highpass_count,
+                                          sample->wheel_highpass_count);
+                validate_count++;
+            }
 
-        if((sample->tick_ms >= validate_start_tick_ms) &&
-           (sample->tick_ms <= validate_end_tick_ms))
-        {
-            tilt_deg = beacon_detection_norm2(sample->roll_deg - *base_roll_deg,
-                                         sample->pitch_deg - *base_pitch_deg);
-            *max_tilt_deg = beacon_detection_maxf(*max_tilt_deg, tilt_deg);
-            *distance_m += sample->speed_mps * BEACON_DETECTION_IMU_DT_S;
-            *max_wheel_highpass_count =
-                beacon_detection_maxf(*max_wheel_highpass_count,
-                                 sample->wheel_highpass_count);
-            validate_count++;
+            if(age == last_age)
+            {
+                break;
+            }
         }
     }
 
     if(validate_count == 0U)
     {
-        *distance_m = 0.0f;
+        s_group.distance_m = 0.0f;
     }
 }
 
@@ -496,29 +695,50 @@ static void beacon_detection_update_group_stats(void)
 {
     float base_roll_deg;
     float base_pitch_deg;
-    float max_tilt_deg;
-    float distance_m;
-    float max_wheel_highpass_count;
+    uint32_t base_start_tick_ms;
+    uint32_t validate_end_tick_ms;
+    uint32_t validate_until_tick_ms;
 
     if(s_group.active == 0U)
     {
         return;
     }
 
-    base_roll_deg = s_group.base_roll_deg;
-    base_pitch_deg = s_group.base_pitch_deg;
-    beacon_detection_history_window_stats(s_group.first_tick_ms,
-                                     s_group.last_tick_ms,
-                                     &base_roll_deg,
-                                     &base_pitch_deg,
-                                     &max_tilt_deg,
-                                     &distance_m,
-                                     &max_wheel_highpass_count);
-    s_group.base_roll_deg = base_roll_deg;
-    s_group.base_pitch_deg = base_pitch_deg;
-    s_group.max_tilt_deg = max_tilt_deg;
-    s_group.distance_m = distance_m;
-    s_group.max_wheel_highpass_count = max_wheel_highpass_count;
+    base_start_tick_ms = beacon_detection_base_start_tick(s_group.first_tick_ms);
+    if(beacon_detection_history_oldest_tick() > base_start_tick_ms)
+    {
+        beacon_detection_update_group_window_stats_exact();
+        return;
+    }
+
+    if((s_group.stats_valid == 0U) ||
+       (s_group.stats_first_tick_ms != s_group.first_tick_ms))
+    {
+        base_roll_deg = s_group.base_roll_deg;
+        base_pitch_deg = s_group.base_pitch_deg;
+        beacon_detection_update_group_base_stats(&base_roll_deg, &base_pitch_deg);
+        s_group.base_roll_deg = base_roll_deg;
+        s_group.base_pitch_deg = base_pitch_deg;
+        s_group.max_tilt_deg = 0.0f;
+        s_group.distance_m = 0.0f;
+        s_group.max_wheel_highpass_count = 0.0f;
+        s_group.stats_valid = 1U;
+        s_group.stats_first_tick_ms = s_group.first_tick_ms;
+        s_group.stats_next_validate_tick_ms =
+            beacon_detection_validate_start_tick(s_group.first_tick_ms);
+    }
+
+    validate_end_tick_ms = beacon_detection_validate_end_tick(s_group.last_tick_ms);
+    validate_until_tick_ms = (validate_end_tick_ms > s_tick_ms) ?
+                             s_tick_ms : validate_end_tick_ms;
+    if(validate_until_tick_ms < s_group.stats_next_validate_tick_ms)
+    {
+        return;
+    }
+
+    beacon_detection_process_group_validate_stats(s_group.stats_next_validate_tick_ms,
+                                                  validate_until_tick_ms);
+    s_group.stats_next_validate_tick_ms = validate_until_tick_ms + 1U;
 }
 
 static void beacon_detection_latch_event(const beacon_detection_event_item_t *item)
