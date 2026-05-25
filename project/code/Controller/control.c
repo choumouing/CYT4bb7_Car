@@ -34,6 +34,18 @@ float control_yaw_angle_output = 0.0f;
 float control_yaw_rate_target = 0.0f;
 float control_yaw_rate_current = 0.0f;
 float control_yaw_rate_output = 0.0f;
+float control_wheel_lf_target = 0.0f;
+float control_wheel_rf_target = 0.0f;
+float control_wheel_lr_target = 0.0f;
+float control_wheel_rr_target = 0.0f;
+float control_wheel_lf_feedback = 0.0f;
+float control_wheel_rf_feedback = 0.0f;
+float control_wheel_lr_feedback = 0.0f;
+float control_wheel_rr_feedback = 0.0f;
+float control_wheel_lf_pwm = 0.0f;
+float control_wheel_rf_pwm = 0.0f;
+float control_wheel_lr_pwm = 0.0f;
+float control_wheel_rr_pwm = 0.0f;
 
 static float control_wheel_ff(float target, float feedback, float ks, float kv, float kstart)
 {
@@ -117,6 +129,12 @@ void Control_Reset(void)
     control_pid_init_all();
     control_yaw_angle_current = control_yaw_angle_output = 0.0f;
     control_yaw_rate_target = control_yaw_rate_current = control_yaw_rate_output = 0.0f;
+    control_wheel_lf_target = control_wheel_rf_target = 0.0f;
+    control_wheel_lr_target = control_wheel_rr_target = 0.0f;
+    control_wheel_lf_feedback = control_wheel_rf_feedback = 0.0f;
+    control_wheel_lr_feedback = control_wheel_rr_feedback = 0.0f;
+    control_wheel_lf_pwm = control_wheel_rf_pwm = 0.0f;
+    control_wheel_lr_pwm = control_wheel_rr_pwm = 0.0f;
 }
 
 void Control_Stop(void)
@@ -140,6 +158,7 @@ void Control_100Hz(float forward, float strafe)
     float rot, lf, rf, lr, rr;
     float lf_feedback, rf_feedback, lr_feedback, rr_feedback;
     float lf_ff, rf_ff, lr_ff, rr_ff;
+    int16_t lf_pwm, rf_pwm, lr_pwm, rr_pwm;
 
     control_pid_apply_all();
 
@@ -164,11 +183,25 @@ void Control_100Hz(float forward, float strafe)
     lr_ff = control_wheel_ff(lr, lr_feedback, CONTROL_WHEEL_FF_KS_LR, CONTROL_WHEEL_FF_KV_LR, CONTROL_WHEEL_FF_KSTART_LR);
     rr_ff = control_wheel_ff(rr, rr_feedback, CONTROL_WHEEL_FF_KS_RR, CONTROL_WHEEL_FF_KV_RR, CONTROL_WHEEL_FF_KSTART_RR);
 
-    mecanum_motor_set_all(
-        (int16_t)(lf_ff + PositionalPID_Update(&wheel_left_front_pid, lf, lf_feedback)),
-        (int16_t)(rf_ff + PositionalPID_Update(&wheel_right_front_pid, rf, rf_feedback)),
-        (int16_t)(lr_ff + PositionalPID_Update(&wheel_left_rear_pid, lr, lr_feedback)),
-        (int16_t)(rr_ff + PositionalPID_Update(&wheel_right_rear_pid, rr, rr_feedback)));
+    lf_pwm = speed_limit((int16_t)(lf_ff + PositionalPID_Update(&wheel_left_front_pid, lf, lf_feedback)));
+    rf_pwm = speed_limit((int16_t)(rf_ff + PositionalPID_Update(&wheel_right_front_pid, rf, rf_feedback)));
+    lr_pwm = speed_limit((int16_t)(lr_ff + PositionalPID_Update(&wheel_left_rear_pid, lr, lr_feedback)));
+    rr_pwm = speed_limit((int16_t)(rr_ff + PositionalPID_Update(&wheel_right_rear_pid, rr, rr_feedback)));
+
+    control_wheel_lf_target = lf;
+    control_wheel_rf_target = rf;
+    control_wheel_lr_target = lr;
+    control_wheel_rr_target = rr;
+    control_wheel_lf_feedback = lf_feedback;
+    control_wheel_rf_feedback = rf_feedback;
+    control_wheel_lr_feedback = lr_feedback;
+    control_wheel_rr_feedback = rr_feedback;
+    control_wheel_lf_pwm = (float)lf_pwm;
+    control_wheel_rf_pwm = (float)rf_pwm;
+    control_wheel_lr_pwm = (float)lr_pwm;
+    control_wheel_rr_pwm = (float)rr_pwm;
+
+    mecanum_motor_set_all(lf_pwm, rf_pwm, lr_pwm, rr_pwm);
 
     // wifi_justfloat(lf, lf_feedback, lf_ff, wheel_left_front_pid.p_term, wheel_left_front_pid.i_term,
     //                rf, rf_feedback, rf_ff, wheel_right_front_pid.p_term, wheel_right_front_pid.i_term,

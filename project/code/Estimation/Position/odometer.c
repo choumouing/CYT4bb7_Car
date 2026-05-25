@@ -180,35 +180,11 @@ void odometer_update_100HZ(void)
     }
 #endif
 
-    wifi_justfloat(
-        tick_1000us_cnt,
-        inertial_position[x],
-        inertial_position[y],
-        g_odometer.vel[x],
-        g_odometer.vel[y],
-        g_beacon_detection.enter_event,
-        g_beacon_detection.enter_count,
-        g_beacon_detection.on_beacon,
-        g_beacon_detection.location,
-        g_beacon_detection.confidence,
-        g_beacon_detection.score,
-        g_beacon_detection.speed_mps,
-        g_beacon_detection.vel[0],
-        g_beacon_detection.vel[1],
-        g_beacon_detection.impact_robust_z,
-        fix_applied,
-        g_fixator.pending_fix,
-        g_fixator.last_match_valid,
-        g_fixator.beacon_index,
-        g_fixator.before_position[x],
-        g_fixator.before_position[y],
-        applied_fix_position[x],
-        applied_fix_position[y],
-        g_odometer.position[x],
-        g_odometer.position[y],
-        g_fixator.match_distance2_m2,
-        g_fixator.fix_count,
-        ODOMETER_BEACON_FIXATOR_ENABLE);
+    (void)fix_applied;
+    (void)inertial_position[x];
+    (void)inertial_position[y];
+    (void)applied_fix_position[x];
+    (void)applied_fix_position[y];
     wifi_core_Poll();
 
 }

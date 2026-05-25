@@ -19,6 +19,8 @@ uint8 car_emergency_stop_active = 1U;
 
 static uint32 s_telemetry_timestamp_count = 0U;
 static uint32 s_system_time_ms = 0U;
+static uint32 s_air_run_data_last_ms = 0U;
+static uint8 s_air_run_data_seen = 0U;
 
 volatile car_image_spi_state_t g_image_spi;
 
@@ -77,7 +79,10 @@ static float car_loop_read_float_le(const uint8 *data)
 
 static void on_air_data(const float *data, uint8 count)
 {
-    (void)count;
+    if((data == NULL) || (count < AIR_RUN_DATA_CRSF_COUNT))
+    {
+        return;
+    }
 
     g_air_tof_fused_height_mm = data[0];
     g_air_euler_roll = data[1];
@@ -94,6 +99,8 @@ static void on_air_data(const float *data, uint8 count)
     g_air_crsf_std_ch5 = data[12];
     g_air_crsf_std_ch6 = data[13];
     g_air_crsf_std_ch7 = data[14];
+    s_air_run_data_last_ms = air_comm_car_get_tick();
+    s_air_run_data_seen = 1U;
 }
 
 static void car_loop_camera_spi_send_100HZ(void)
@@ -221,6 +228,8 @@ static void car_loop_runtime_reset(void)
     car_emergency_stop_active = 1U;
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
+    s_air_run_data_last_ms = 0U;
+    s_air_run_data_seen = 0U;
     memset((void *)&g_image_spi, 0, sizeof(g_image_spi));
     beacon_config_init();
     beacon_fusion_init();
@@ -230,8 +239,8 @@ void car_loop_init(void)
 {
     car_loop_runtime_reset();
 
-    // menu_init();
-    // menu_config_init();
+    menu_init();
+    menu_config_init();
     mecanum_motor_init();
     encoder_control_init();
     odometer_init();
@@ -261,6 +270,7 @@ static void car_loop_1000HZ(void)
 static void car_loop_100HZ(void)
 {
     float car_data[10];
+    float air_data_age_ms;
 
     s_telemetry_timestamp_count++;
     s_system_time_ms = s_telemetry_timestamp_count * 10U;
@@ -287,18 +297,18 @@ static void car_loop_100HZ(void)
 
     if ((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
     {
-        // menu_air_stop_param_sync();
+        menu_air_stop_param_sync();
     }
     air_comm_car_update_100HZ();
 
     if ((car_control_enabled == 0U) || (car_emergency_stop_active != 0U))
     {
-        // menu_air_update_100HZ();
-        // menu_update_100HZ();
+        menu_air_update_100HZ();
+        menu_update_100HZ();
     }
     else
     {
-        // menu_discard_key_events();
+        menu_discard_key_events();
     }
 
     car_mode_update_100HZ(s_system_time_ms);
@@ -313,6 +323,34 @@ static void car_loop_100HZ(void)
     {
         Control_Stop();
     }
+
+    air_data_age_ms = (s_air_run_data_seen != 0U) ?
+                      (float)(air_comm_car_get_tick() - s_air_run_data_last_ms) :
+                      -1.0f;
+    wifi_justfloat(g_air_crsf_std_ch0,
+                   g_air_crsf_std_ch1,
+                   g_air_crsf_std_ch4,
+                   g_air_crsf_std_ch6,
+                   car_control_enabled,
+                   car_mode_get(),
+                   car_forward_target,
+                   car_strafe_target,
+                   control_yaw_angle_current,
+                   control_yaw_rate_output,
+                   control_wheel_lf_target,
+                   control_wheel_rf_target,
+                   control_wheel_lr_target,
+                   control_wheel_rr_target,
+                   control_wheel_lf_feedback,
+                   control_wheel_rf_feedback,
+                   control_wheel_lr_feedback,
+                   control_wheel_rr_feedback,
+                   control_wheel_lf_pwm,
+                   control_wheel_rf_pwm,
+                   control_wheel_lr_pwm,
+                   control_wheel_rr_pwm,
+                   air_comm_car_is_online(),
+                   air_data_age_ms);
 
     car_data[0] = encoder_left_front.count_raw;
     car_data[1] = encoder_right_front.count_raw;

@@ -25,6 +25,19 @@ extern float control_yaw_rate_target;
 extern float control_yaw_rate_current;
 extern float control_yaw_rate_output;
 
+extern float control_wheel_lf_target;
+extern float control_wheel_rf_target;
+extern float control_wheel_lr_target;
+extern float control_wheel_rr_target;
+extern float control_wheel_lf_feedback;
+extern float control_wheel_rf_feedback;
+extern float control_wheel_lr_feedback;
+extern float control_wheel_rr_feedback;
+extern float control_wheel_lf_pwm;
+extern float control_wheel_rf_pwm;
+extern float control_wheel_lr_pwm;
+extern float control_wheel_rr_pwm;
+
 void  Control_Init(void);
 void  Control_Reset(void);
 void  Control_Stop(void);
