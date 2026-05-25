@@ -195,7 +195,7 @@ void odometer_update_100HZ(void)
         g_beacon_detection.speed_mps,
         g_beacon_detection.vel[0],
         g_beacon_detection.vel[1],
-        g_beacon_detection.impact_robust_z,
+        0.0f,
         fix_applied,
         g_fixator.pending_fix,
         g_fixator.last_match_valid,
