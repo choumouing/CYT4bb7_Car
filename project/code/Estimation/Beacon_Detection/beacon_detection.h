@@ -48,10 +48,9 @@ typedef struct
     uint32_t exit_tick_ms;
 
     float score;
-    float impact_baseline;
-    float impact_robust_z;
     float speed_mps;
     float vel[2];
+
     float projected_gyro_dps;
     float gyro_xy_dps;
     float gyro_z_abs_dps;
