@@ -11,9 +11,9 @@
 
 #define CAMERA_SPI_IMAGE_TARGET_COUNT           (5U)
 #define CAMERA_SPI_IMAGE_TARGET_VALID_OFFSET    (0U)
-#define CAMERA_SPI_IMAGE_TARGET_X_OFFSET        (1U)
-#define CAMERA_SPI_IMAGE_TARGET_Y_OFFSET        (5U)
-#define CAMERA_SPI_IMAGE_TARGET_RADIUS_OFFSET   (9U)
+#define CAMERA_SPI_IMAGE_TARGET_X_OFFSET        (1U)  /* float LE: circle center column, top-left origin */
+#define CAMERA_SPI_IMAGE_TARGET_Y_OFFSET        (5U)  /* float LE: circle center row, top-left origin */
+#define CAMERA_SPI_IMAGE_TARGET_RADIUS_OFFSET   (9U)  /* float LE: equivalent radius in pixels */
 #define CAMERA_SPI_IMAGE_TARGET_RESERVED_OFFSET (13U)
 #define CAMERA_SPI_IMAGE_TARGET_RESERVED_SIZE   (4U)
 #define CAMERA_SPI_IMAGE_TARGET_SLOT_SIZE       (17U)

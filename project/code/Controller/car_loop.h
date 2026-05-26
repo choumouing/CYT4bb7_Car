@@ -38,9 +38,9 @@ extern volatile float g_air_crsf_std_ch7;
 typedef struct
 {
     volatile uint8 valid;
-    volatile float x;
-    volatile float y;
-    volatile float radius;
+    volatile float x;      /* Image pixel column, top-left origin. */
+    volatile float y;      /* Image pixel row, top-left origin. */
+    volatile float radius; /* Equivalent connected-component radius in pixels. */
 } car_image_spi_target_t;
 
 typedef struct

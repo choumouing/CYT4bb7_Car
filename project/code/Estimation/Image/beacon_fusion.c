@@ -4,6 +4,8 @@
 #include <string.h>
 
 #define BEACON_FUSION_PI                         (3.1415926f)
+#define BEACON_FUSION_TARGET_PIXEL_X             (94.0f)
+#define BEACON_FUSION_TARGET_PIXEL_Y             (100.0f)
 #define BEACON_FUSION_NEAR_X                     (0.0f)
 #define BEACON_FUSION_NEAR_Y                     (16.0f)
 #define BEACON_FUSION_MIN_RADIUS_PX              (1.0f)
@@ -128,6 +130,16 @@ static float beacon_fusion_target_weight(float radius, uint8 target_id)
     return weight;
 }
 
+static float beacon_fusion_pixel_to_offset_x(float pixel_x)
+{
+    return BEACON_FUSION_TARGET_PIXEL_X - pixel_x;
+}
+
+static float beacon_fusion_pixel_to_offset_y(float pixel_y)
+{
+    return pixel_y - BEACON_FUSION_TARGET_PIXEL_Y;
+}
+
 static uint8 beacon_fusion_target_valid(const beacon_fusion_camera_target_t *target, uint8 target_id)
 {
     if(target->radius < BEACON_FUSION_MIN_RADIUS_PX)
@@ -175,11 +187,13 @@ static uint8 beacon_fusion_collect_observations(
             observation[count].camera_id = camera_id;
             observation[count].target_id = target_id;
             observation[count].source_camera_mask = (uint8)(1U << camera_id);
-            observation[count].image_x = target->x;
-            observation[count].image_y = target->y;
+            observation[count].image_x = beacon_fusion_pixel_to_offset_x(target->x);
+            observation[count].image_y = beacon_fusion_pixel_to_offset_y(target->y);
             observation[count].radius = target->radius;
-            observation[count].range_proxy = beacon_fusion_target_range_proxy(target->x, target->y);
-            observation[count].bearing_deg = beacon_fusion_target_bearing_deg(camera_id, target->x);
+            observation[count].range_proxy = beacon_fusion_target_range_proxy(observation[count].image_x,
+                                                                              observation[count].image_y);
+            observation[count].bearing_deg = beacon_fusion_target_bearing_deg(camera_id,
+                                                                              observation[count].image_x);
             observation[count].weight = beacon_fusion_target_weight(target->radius, target_id);
             count++;
         }
