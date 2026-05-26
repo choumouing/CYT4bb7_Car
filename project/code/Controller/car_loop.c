@@ -191,7 +191,6 @@ static void car_loop_beacon_fusion_update_100HZ(void)
     uint8 board_id;
     uint8 target_index;
     beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT];
-    beacon_fusion_pose_t pose;
 
     memset(camera, 0, sizeof(camera));
     for (board_id = 0U; board_id < BEACON_FUSION_CAMERA_COUNT; board_id++)
@@ -209,14 +208,7 @@ static void car_loop_beacon_fusion_update_100HZ(void)
         }
     }
 
-    pose.valid = ((g_air_tof_fused_height_mm >= AIR_RUN_DATA_HEIGHT_MIN_MM) &&
-                  (g_air_tof_fused_height_mm <= AIR_RUN_DATA_HEIGHT_MAX_MM)) ? 1U : 0U;
-    pose.height_mm = g_air_tof_fused_height_mm;
-    pose.roll_deg = g_air_euler_roll;
-    pose.pitch_deg = g_air_euler_pitch;
-    pose.yaw_deg = g_air_euler_yaw;
-
-    beacon_fusion_update_100HZ(camera, &pose);
+    beacon_fusion_update_100HZ(camera);
 }
 
 static void car_loop_runtime_reset(void)
@@ -322,51 +314,44 @@ static void car_loop_100HZ(void)
 
 
 
-    wifi_justfloat(g_air_tof_fused_height_mm,
-                g_air_euler_roll,
-                g_air_euler_pitch,
-                g_air_euler_yaw,
-                g_air_pos_est_vel_x,
-                g_air_pos_est_vel_y,
-                g_air_state,
-                g_air_crsf_std_ch0,
-                g_air_crsf_std_ch1,
-                g_air_crsf_std_ch2,
-                g_air_crsf_std_ch3,
-                g_air_crsf_std_ch4,
-                g_air_crsf_std_ch5,
-                g_air_crsf_std_ch6,
-                g_air_crsf_std_ch7);
-
-    // wifi_justfloat(g_image_spi.board[0].target[0].x,
-    //                g_image_spi.board[0].target[0].y,
-    //                g_image_spi.board[0].target[0].radius,
-    //                g_image_spi.board[0].target[1].x,
-    //                g_image_spi.board[0].target[1].y,
-    //                g_image_spi.board[0].target[1].radius,
-    //                g_image_spi.board[1].target[0].x,
-    //                g_image_spi.board[1].target[0].y,
-    //                g_image_spi.board[1].target[0].radius,
-    //                g_image_spi.board[1].target[1].x,
-    //                g_image_spi.board[1].target[1].y,
-    //                g_image_spi.board[1].target[1].radius,
-    //                g_image_spi.board[2].target[0].x,
-    //                g_image_spi.board[2].target[0].y,
-    //                g_image_spi.board[2].target[0].radius,
-    //                g_image_spi.board[2].target[1].x,
-    //                g_image_spi.board[2].target[1].y,
-    //                g_image_spi.board[2].target[1].radius,
-    //                g_beacon_fusion_result.beacon_count,
-    //                g_beacon_fusion_result.beacon[0].bearing_deg,
-    //                g_beacon_fusion_result.beacon[0].x_body,
-    //                g_beacon_fusion_result.beacon[0].y_body,
-    //                g_beacon_fusion_result.beacon[0].range_proxy,
-    //                g_beacon_fusion_result.beacon[0].confidence,
-    //                g_beacon_fusion_result.beacon[1].bearing_deg,
-    //                g_beacon_fusion_result.beacon[1].x_body,
-    //                g_beacon_fusion_result.beacon[1].y_body,
-    //                g_beacon_fusion_result.beacon[1].range_proxy,
-    //                g_beacon_fusion_result.beacon[1].confidence);
+    wifi_justfloat(g_image_spi.board[0].target[0].x,
+                   g_image_spi.board[0].target[0].y,
+                   g_image_spi.board[0].target[0].radius,
+                   g_image_spi.board[0].target[1].x,
+                   g_image_spi.board[0].target[1].y,
+                   g_image_spi.board[0].target[1].radius,
+                   g_image_spi.board[0].target[2].x,
+                   g_image_spi.board[0].target[2].y,
+                   g_image_spi.board[0].target[2].radius,
+                   g_image_spi.board[1].target[0].x,
+                   g_image_spi.board[1].target[0].y,
+                   g_image_spi.board[1].target[0].radius,
+                   g_image_spi.board[1].target[1].x,
+                   g_image_spi.board[1].target[1].y,
+                   g_image_spi.board[1].target[1].radius,
+                   g_image_spi.board[1].target[2].x,
+                   g_image_spi.board[1].target[2].y,
+                   g_image_spi.board[1].target[2].radius,
+                   g_image_spi.board[2].target[0].x,
+                   g_image_spi.board[2].target[0].y,
+                   g_image_spi.board[2].target[0].radius,
+                   g_image_spi.board[2].target[1].x,
+                   g_image_spi.board[2].target[1].y,
+                   g_image_spi.board[2].target[1].radius,
+                   g_image_spi.board[2].target[2].x,
+                   g_image_spi.board[2].target[2].y,
+                   g_image_spi.board[2].target[2].radius,
+                   g_beacon_fusion_result.beacon_count,
+                   g_beacon_fusion_result.beacon[0].bearing_deg,
+                   g_beacon_fusion_result.beacon[0].range_proxy,
+                   g_beacon_fusion_result.beacon[1].bearing_deg,
+                   g_beacon_fusion_result.beacon[1].range_proxy,
+                   g_beacon_fusion_result.beacon[2].bearing_deg,
+                   g_beacon_fusion_result.beacon[2].range_proxy,
+                   g_beacon_fusion_result.beacon[3].bearing_deg,
+                   g_beacon_fusion_result.beacon[3].range_proxy,
+                   g_beacon_fusion_result.beacon[4].bearing_deg,
+                   g_beacon_fusion_result.beacon[4].range_proxy);
 }
 
 static void car_loop_50HZ(void)
