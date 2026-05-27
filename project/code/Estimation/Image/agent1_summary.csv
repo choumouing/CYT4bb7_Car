@@ -1,0 +1,4 @@
+﻿dataset,file,expected_count,total_frames,accepted_frames,discarded_overcount_frames,accepted_rate,output_count_exact_frames,output_count_exact_rate_on_accepted,output_overcount_frames,output_undercount_frames,mean_output_count_on_accepted,mean_abs_count_error_on_accepted,matched_pairs,mean_abs_angle_error_deg,mean_abs_range_error_mm,max_camera0_raw_count,max_camera1_raw_count,max_camera2_raw_count,overcount_camera0_frames,overcount_camera1_frames,overcount_camera2_frames
+100cm_1灯,100cm_1灯.csv,1,7176,7169,7,99.90%,5212,72.70%,6,1951,0.729,0.273,5218,79.227,1625.774,1,1,2,0,0,7
+"2灯_(-175,50)_(-40,-100)","2灯_(-175,50)_(-40,-100).csv",2,10250,10244,6,99.94%,7141,69.71%,464,2639,1.785,0.306,17821,62.259,1438.204,2,2,3,0,0,6
+"3灯_(-175,50)_(-40,-100)_(-85,200)","3灯_(-175,50)_(-40,-100)_(-85,200).csv",3,6629,6629,0,100.00%,5419,81.75%,66,1144,2.730,0.290,18030,55.110,1929.751,3,3,3,0,0,0
