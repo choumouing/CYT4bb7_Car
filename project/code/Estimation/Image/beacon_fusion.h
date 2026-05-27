@@ -49,6 +49,8 @@ typedef struct
 extern beacon_fusion_result_t g_beacon_fusion_result;
 
 void beacon_fusion_init(void);
+void beacon_fusion_set_auto_max_count(uint8 max_count);
+void beacon_fusion_set_expected_count(uint8 expected_count);
 void beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT]);
 const beacon_fusion_result_t *beacon_fusion_get_result(void);
 

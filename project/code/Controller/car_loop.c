@@ -61,6 +61,7 @@ volatile float g_air_crsf_std_ch7;
 #define AIR_RUN_DATA_CRSF_STD_CH7 (14U)
 #define AIR_RUN_DATA_HEIGHT_MIN_MM (100.0f)
 #define AIR_RUN_DATA_HEIGHT_MAX_MM (2500.0f)
+#define CAR_BEACON_AUTO_MAX_COUNT (3U)
 
 static void car_loop_write_u32_le(uint8 *data, uint32 value)
 {
@@ -227,6 +228,7 @@ static void car_loop_runtime_reset(void)
     s_system_time_ms = 0U;
     memset((void *)&g_image_spi, 0, sizeof(g_image_spi));
     beacon_fusion_init();
+    beacon_fusion_set_auto_max_count(CAR_BEACON_AUTO_MAX_COUNT);
 }
 
 void car_loop_init(void)
@@ -314,7 +316,8 @@ static void car_loop_100HZ(void)
 
 
 
-    wifi_justfloat(g_image_spi.board[0].target[0].x,
+    wifi_justfloat((float)s_system_time_ms,
+                   g_image_spi.board[0].target[0].x,
                    g_image_spi.board[0].target[0].y,
                    g_image_spi.board[0].target[0].radius,
                    g_image_spi.board[0].target[1].x,
