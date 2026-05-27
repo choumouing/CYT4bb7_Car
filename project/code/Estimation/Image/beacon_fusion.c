@@ -19,10 +19,10 @@
 #define BEACON_FUSION_FILTER_ALPHA               (0.35f)
 #define BEACON_FUSION_AUTO_MAX_COUNT             (3U)
 #define BEACON_FUSION_AUTO_PROMOTE_TICKS         (8U)
-#define BEACON_FUSION_AUTO_CAM2_THREE_X_MIN_PX   (148.0f)
-#define BEACON_FUSION_AUTO_CAM2_THREE_Y_MAX_PX   (35.0f)
-#define BEACON_FUSION_AUTO_CAM2_TWO_X_MIN_PX     (120.0f)
-#define BEACON_FUSION_AUTO_CAM2_TWO_Y_MAX_PX     (45.0f)
+#define BEACON_FUSION_AUTO_GLOBAL_THREE_TICKS    (50U)
+#define BEACON_FUSION_AUTO_THREE_DEMOTE_TICKS    (50U)
+#define BEACON_FUSION_AUTO_TWO_DEMOTE_TICKS      (80U)
+#define BEACON_FUSION_AUTO_GLOBAL_THREE_OBS      (5U)
 
 typedef struct
 {
@@ -64,9 +64,11 @@ beacon_fusion_result_t g_beacon_fusion_result;
 
 static uint8 s_auto_count_state;
 static uint8 s_auto_max_count;
-static uint8 s_signature_locked;
 static uint8 s_seen_two_ticks;
-static uint8 s_seen_three_ticks;
+static uint8 s_seen_local_three_ticks;
+static uint8 s_seen_global_three_ticks;
+static uint8 s_missing_two_ticks;
+static uint8 s_missing_three_ticks;
 
 static const beacon_fusion_camera_model_t s_camera_model[BEACON_FUSION_CAMERA_COUNT] =
 {
@@ -408,121 +410,114 @@ static uint8 beacon_fusion_bucket_max_count(const beacon_fusion_camera_bucket_t 
     return max_count;
 }
 
-static const beacon_fusion_observation_t *beacon_fusion_best_observation(
+static uint8 beacon_fusion_bucket_active_camera_count(
     const beacon_fusion_camera_bucket_t bucket[BEACON_FUSION_CAMERA_COUNT])
 {
     uint8 camera_id;
-    const beacon_fusion_observation_t *best = 0;
+    uint8 active_count = 0U;
 
     for(camera_id = 0U; camera_id < BEACON_FUSION_CAMERA_COUNT; camera_id++)
     {
-        uint8 i;
-
-        for(i = 0U; i < bucket[camera_id].count; i++)
+        if(bucket[camera_id].count > 0U)
         {
-            const beacon_fusion_observation_t *observation = &bucket[camera_id].item[i];
-
-            if((best == 0) || (observation->radius > best->radius))
-            {
-                best = observation;
-            }
+            active_count++;
         }
     }
-
-    return best;
+    return active_count;
 }
 
-static uint8 beacon_fusion_initial_auto_count(
+static void beacon_fusion_tick_up(uint8 *tick)
+{
+    if(*tick < 255U)
+    {
+        (*tick)++;
+    }
+}
+
+static void beacon_fusion_update_count_evidence(
     const beacon_fusion_camera_bucket_t bucket[BEACON_FUSION_CAMERA_COUNT],
     uint8 observation_count)
 {
-    const beacon_fusion_observation_t *best;
     uint8 max_count = beacon_fusion_bucket_max_count(bucket);
+    uint8 has_local_three = (max_count >= 3U) ? 1U : 0U;
+    uint8 has_global_three =
+        ((beacon_fusion_bucket_active_camera_count(bucket) >= BEACON_FUSION_CAMERA_COUNT) &&
+         (observation_count >= BEACON_FUSION_AUTO_GLOBAL_THREE_OBS)) ? 1U : 0U;
+    uint8 has_three = ((has_local_three != 0U) || (has_global_three != 0U)) ? 1U : 0U;
+    uint8 has_two = ((max_count >= 2U) || (has_three != 0U)) ? 1U : 0U;
 
-    if(max_count >= 3U)
+    if(has_local_three != 0U)
     {
-        return 3U;
+        beacon_fusion_tick_up(&s_seen_local_three_ticks);
     }
-    if(max_count >= 2U)
+    else
     {
-        return 2U;
-    }
-    if(observation_count == 0U)
-    {
-        return 1U;
+        s_seen_local_three_ticks = 0U;
     }
 
-    best = beacon_fusion_best_observation(bucket);
-    if(best == 0)
+    if(has_global_three != 0U)
     {
-        return 1U;
+        beacon_fusion_tick_up(&s_seen_global_three_ticks);
     }
-    if((best->camera_id == 2U) &&
-       (best->x >= BEACON_FUSION_AUTO_CAM2_THREE_X_MIN_PX) &&
-       (best->y <= BEACON_FUSION_AUTO_CAM2_THREE_Y_MAX_PX))
+    else
     {
-        return 3U;
+        s_seen_global_three_ticks = 0U;
     }
-    if((best->camera_id == 2U) &&
-       (best->x >= BEACON_FUSION_AUTO_CAM2_TWO_X_MIN_PX) &&
-       (best->y <= BEACON_FUSION_AUTO_CAM2_TWO_Y_MAX_PX))
+
+    if(has_three != 0U)
     {
-        return 2U;
+        s_missing_three_ticks = 0U;
     }
-    return 1U;
+    else
+    {
+        beacon_fusion_tick_up(&s_missing_three_ticks);
+    }
+
+    if(has_two != 0U)
+    {
+        beacon_fusion_tick_up(&s_seen_two_ticks);
+        s_missing_two_ticks = 0U;
+    }
+    else
+    {
+        s_seen_two_ticks = 0U;
+        beacon_fusion_tick_up(&s_missing_two_ticks);
+    }
 }
 
 static uint8 beacon_fusion_update_auto_count(
     const beacon_fusion_camera_bucket_t bucket[BEACON_FUSION_CAMERA_COUNT],
     uint8 observation_count)
 {
-    uint8 max_count = beacon_fusion_bucket_max_count(bucket);
-
-    if(max_count >= 3U)
-    {
-        if(s_seen_three_ticks < 255U)
-        {
-            s_seen_three_ticks++;
-        }
-    }
-    else
-    {
-        s_seen_three_ticks = 0U;
-    }
-
-    if(max_count >= 2U)
-    {
-        if(s_seen_two_ticks < 255U)
-        {
-            s_seen_two_ticks++;
-        }
-    }
-    else
-    {
-        s_seen_two_ticks = 0U;
-    }
+    beacon_fusion_update_count_evidence(bucket, observation_count);
 
     if(s_auto_count_state == 0U)
     {
-        s_auto_count_state = beacon_fusion_initial_auto_count(bucket, observation_count);
-        if(observation_count > 0U)
-        {
-            s_signature_locked = 1U;
-        }
-    }
-    else if((s_signature_locked == 0U) && (observation_count > 0U))
-    {
-        s_auto_count_state = beacon_fusion_initial_auto_count(bucket, observation_count);
-        s_signature_locked = 1U;
+        s_auto_count_state = 1U;
     }
 
-    if((s_seen_three_ticks >= BEACON_FUSION_AUTO_PROMOTE_TICKS) && (s_auto_count_state < 3U))
+    if(((s_seen_local_three_ticks >= BEACON_FUSION_AUTO_PROMOTE_TICKS) ||
+        (s_seen_global_three_ticks >= BEACON_FUSION_AUTO_GLOBAL_THREE_TICKS)) &&
+       (s_auto_count_state < 3U))
     {
         s_auto_count_state = 3U;
     }
     else if((s_seen_two_ticks >= BEACON_FUSION_AUTO_PROMOTE_TICKS) && (s_auto_count_state < 2U))
     {
         s_auto_count_state = 2U;
+    }
+
+    if((s_auto_count_state >= 3U) &&
+       (s_missing_three_ticks >= BEACON_FUSION_AUTO_THREE_DEMOTE_TICKS))
+    {
+        s_auto_count_state = (s_seen_two_ticks >= BEACON_FUSION_AUTO_PROMOTE_TICKS) ? 2U : 1U;
+        s_missing_three_ticks = 0U;
+    }
+    if((s_auto_count_state >= 2U) &&
+       (s_missing_two_ticks >= BEACON_FUSION_AUTO_TWO_DEMOTE_TICKS))
+    {
+        s_auto_count_state = 1U;
+        s_missing_two_ticks = 0U;
     }
 
     if(s_auto_count_state > s_auto_max_count)
@@ -688,9 +683,11 @@ void beacon_fusion_init(void)
     g_beacon_fusion_result.best_index = BEACON_FUSION_MAX_BEACONS;
     s_auto_count_state = 0U;
     s_auto_max_count = BEACON_FUSION_AUTO_MAX_COUNT;
-    s_signature_locked = 0U;
     s_seen_two_ticks = 0U;
-    s_seen_three_ticks = 0U;
+    s_seen_local_three_ticks = 0U;
+    s_seen_global_three_ticks = 0U;
+    s_missing_two_ticks = 0U;
+    s_missing_three_ticks = 0U;
 }
 
 void beacon_fusion_set_auto_max_count(uint8 max_count)
@@ -742,7 +739,7 @@ void beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACON
 
     estimated_count = beacon_fusion_update_auto_count(bucket, observation_count);
     max_count = beacon_fusion_bucket_max_count(bucket);
-    if((s_signature_locked != 0U) && (max_count > estimated_count))
+    if(max_count > estimated_count)
     {
         return;
     }
