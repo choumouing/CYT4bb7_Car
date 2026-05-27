@@ -23,6 +23,7 @@
 #define BEACON_FUSION_AUTO_THREE_DEMOTE_TICKS    (50U)
 #define BEACON_FUSION_AUTO_TWO_DEMOTE_TICKS      (80U)
 #define BEACON_FUSION_AUTO_GLOBAL_THREE_OBS      (5U)
+#define BEACON_FUSION_AUTO_BEARING_CLUSTER_DEG   (25.0f)
 
 typedef struct
 {
@@ -59,6 +60,14 @@ typedef struct
     beacon_fusion_observation_t item[BEACON_FUSION_CAMERA_TARGETS];
     uint8 count;
 } beacon_fusion_camera_bucket_t;
+
+typedef struct
+{
+    float bearing_deg;
+    float weight;
+    uint8 camera_mask;
+    uint8 count;
+} beacon_fusion_bearing_cluster_t;
 
 beacon_fusion_result_t g_beacon_fusion_result;
 
@@ -426,6 +435,84 @@ static uint8 beacon_fusion_bucket_active_camera_count(
     return active_count;
 }
 
+static float beacon_fusion_angle_abs_diff(float lhs_deg, float rhs_deg)
+{
+    return beacon_fusion_absf(beacon_fusion_wrap_deg(lhs_deg - rhs_deg));
+}
+
+static uint8 beacon_fusion_bearing_cluster_count(
+    const beacon_fusion_camera_bucket_t bucket[BEACON_FUSION_CAMERA_COUNT])
+{
+    beacon_fusion_bearing_cluster_t cluster[BEACON_FUSION_MAX_OBSERVATIONS];
+    uint8 cluster_count = 0U;
+    uint8 camera_id;
+
+    memset(cluster, 0, sizeof(cluster));
+    for(camera_id = 0U; camera_id < BEACON_FUSION_CAMERA_COUNT; camera_id++)
+    {
+        uint8 i;
+
+        for(i = 0U; i < bucket[camera_id].count; i++)
+        {
+            const beacon_fusion_observation_t *observation = &bucket[camera_id].item[i];
+            uint8 best_index = BEACON_FUSION_MAX_OBSERVATIONS;
+            float best_diff = 1000000.0f;
+            uint8 cluster_id;
+
+            for(cluster_id = 0U; cluster_id < cluster_count; cluster_id++)
+            {
+                float diff;
+
+                if((cluster[cluster_id].camera_mask & (uint8)(1U << camera_id)) != 0U)
+                {
+                    continue;
+                }
+
+                diff = beacon_fusion_angle_abs_diff(observation->bearing_deg,
+                                                    cluster[cluster_id].bearing_deg);
+                if(diff < best_diff)
+                {
+                    best_diff = diff;
+                    best_index = cluster_id;
+                }
+            }
+
+            if((best_index < cluster_count) &&
+               (best_diff <= BEACON_FUSION_AUTO_BEARING_CLUSTER_DEG))
+            {
+                beacon_fusion_bearing_cluster_t *best = &cluster[best_index];
+                float sum_weight = best->weight + observation->weight;
+
+                if(sum_weight > 0.0001f)
+                {
+                    float delta = beacon_fusion_wrap_deg(observation->bearing_deg -
+                                                         best->bearing_deg);
+
+                    best->bearing_deg = beacon_fusion_wrap_deg(best->bearing_deg +
+                                                               ((delta * observation->weight) /
+                                                                sum_weight));
+                    best->weight = sum_weight;
+                }
+                best->camera_mask = (uint8)(best->camera_mask | (uint8)(1U << camera_id));
+                if(best->count < 255U)
+                {
+                    best->count++;
+                }
+            }
+            else if(cluster_count < BEACON_FUSION_MAX_OBSERVATIONS)
+            {
+                cluster[cluster_count].bearing_deg = observation->bearing_deg;
+                cluster[cluster_count].weight = observation->weight;
+                cluster[cluster_count].camera_mask = (uint8)(1U << camera_id);
+                cluster[cluster_count].count = 1U;
+                cluster_count++;
+            }
+        }
+    }
+
+    return cluster_count;
+}
+
 static void beacon_fusion_tick_up(uint8 *tick)
 {
     if(*tick < 255U)
@@ -442,7 +529,8 @@ static void beacon_fusion_update_count_evidence(
     uint8 has_local_three = (max_count >= 3U) ? 1U : 0U;
     uint8 has_global_three =
         ((beacon_fusion_bucket_active_camera_count(bucket) >= BEACON_FUSION_CAMERA_COUNT) &&
-         (observation_count >= BEACON_FUSION_AUTO_GLOBAL_THREE_OBS)) ? 1U : 0U;
+         (observation_count >= BEACON_FUSION_AUTO_GLOBAL_THREE_OBS) &&
+         (beacon_fusion_bearing_cluster_count(bucket) >= 3U)) ? 1U : 0U;
     uint8 has_three = ((has_local_three != 0U) || (has_global_three != 0U)) ? 1U : 0U;
     uint8 has_two = ((max_count >= 2U) || (has_three != 0U)) ? 1U : 0U;
 
