@@ -12,8 +12,8 @@
 typedef struct
 {
     uint8 valid;
-    float x;
-    float y;
+    float x;      /* E-disk algorithm x, image-center origin. */
+    float y;      /* E-disk algorithm y, image-center origin. */
     float radius;
 } beacon_fusion_camera_target_t;
 

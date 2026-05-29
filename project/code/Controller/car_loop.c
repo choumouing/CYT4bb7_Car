@@ -75,6 +75,78 @@ static float car_loop_read_float_le(const uint8 *data)
     return value;
 }
 
+static void car_loop_clear_camera_board(uint8 board_id)
+{
+    uint8 target_index;
+
+    g_image_spi.board[board_id].protocol_version = 0U;
+    g_image_spi.board[board_id].beacon_count = 0U;
+    g_image_spi.board[board_id].car_lamp_count = 0U;
+    for (target_index = 0U; target_index < CAMERA_SPI_IMAGE_TARGET_COUNT; target_index++)
+    {
+        g_image_spi.board[board_id].target[target_index].valid = 0U;
+        g_image_spi.board[board_id].target[target_index].x = 0.0f;
+        g_image_spi.board[board_id].target[target_index].y = 0.0f;
+        g_image_spi.board[board_id].target[target_index].radius = 0.0f;
+    }
+    g_image_spi.board[board_id].car_lamp.valid = 0U;
+    g_image_spi.board[board_id].car_lamp.cx = 0.0f;
+    g_image_spi.board[board_id].car_lamp.cy = 0.0f;
+    g_image_spi.board[board_id].car_lamp.width = 0.0f;
+    g_image_spi.board[board_id].car_lamp.length = 0.0f;
+    g_image_spi.board[board_id].car_lamp.angle = 0.0f;
+}
+
+static uint8 car_loop_parse_camera_payload(uint8 board_id,
+                                           const uint8 *rx,
+                                           beacon_fusion_camera_frame_t *camera)
+{
+    uint8 target_index;
+
+    if ((rx == NULL) || (camera == NULL) ||
+        (rx[CAMERA_SPI_IMAGE_VERSION_OFFSET] != CAMERA_SPI_IMAGE_PROTOCOL_VERSION))
+    {
+        return 0U;
+    }
+
+    g_image_spi.board[board_id].protocol_version = rx[CAMERA_SPI_IMAGE_VERSION_OFFSET];
+    g_image_spi.board[board_id].beacon_count = rx[CAMERA_SPI_IMAGE_BEACON_COUNT_OFFSET];
+    g_image_spi.board[board_id].car_lamp_count = rx[CAMERA_SPI_IMAGE_CAR_LAMP_COUNT_OFFSET];
+
+    for (target_index = 0U; target_index < CAMERA_SPI_IMAGE_TARGET_COUNT; target_index++)
+    {
+        const uint8 *slot = &rx[CAMERA_SPI_IMAGE_BEACON_PACKET_OFFSET +
+                               (target_index * CAMERA_SPI_IMAGE_BEACON_SLOT_SIZE)];
+        const uint8 valid = slot[CAMERA_SPI_IMAGE_BEACON_VALID_OFFSET];
+        const float x = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_BEACON_X_OFFSET]);
+        const float y = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_BEACON_Y_OFFSET]);
+        const float radius = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_BEACON_RADIUS_OFFSET]);
+
+        g_image_spi.board[board_id].target[target_index].valid = valid;
+        g_image_spi.board[board_id].target[target_index].x = x;
+        g_image_spi.board[board_id].target[target_index].y = y;
+        g_image_spi.board[board_id].target[target_index].radius = radius;
+
+        camera->target[target_index].valid = valid;
+        camera->target[target_index].x = x;
+        camera->target[target_index].y = y;
+        camera->target[target_index].radius = radius;
+    }
+
+    {
+        const uint8 *slot = &rx[CAMERA_SPI_IMAGE_CAR_LAMP_PACKET_OFFSET];
+
+        g_image_spi.board[board_id].car_lamp.valid = slot[CAMERA_SPI_IMAGE_CAR_LAMP_VALID_OFFSET];
+        g_image_spi.board[board_id].car_lamp.cx = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_CAR_LAMP_CX_OFFSET]);
+        g_image_spi.board[board_id].car_lamp.cy = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_CAR_LAMP_CY_OFFSET]);
+        g_image_spi.board[board_id].car_lamp.width = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_CAR_LAMP_WIDTH_OFFSET]);
+        g_image_spi.board[board_id].car_lamp.length = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_CAR_LAMP_LENGTH_OFFSET]);
+        g_image_spi.board[board_id].car_lamp.angle = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_CAR_LAMP_ANGLE_OFFSET]);
+    }
+
+    return 1U;
+}
+
 static void on_air_data(const float *data, uint8 count)
 {
     (void)count;
@@ -99,7 +171,6 @@ static void on_air_data(const float *data, uint8 count)
 static void car_loop_camera_spi_update_100HZ(void)
 {
     uint8 board_id;
-    uint8 target_index;
     uint16 rx_len;
     uint8 rx[CAR_IMAGE_SPI_RAW_SIZE];
     uint8 tx[CAR_IMAGE_SPI_TX_RAW_SIZE];
@@ -108,13 +179,7 @@ static void car_loop_camera_spi_update_100HZ(void)
     memset(camera, 0, sizeof(camera));
     for (board_id = 0U; board_id < BEACON_FUSION_CAMERA_COUNT; board_id++)
     {
-        for (target_index = 0U; target_index < CAMERA_SPI_IMAGE_TARGET_COUNT; target_index++)
-        {
-            g_image_spi.board[board_id].target[target_index].valid = 0U;
-            g_image_spi.board[board_id].target[target_index].x = 0.0f;
-            g_image_spi.board[board_id].target[target_index].y = 0.0f;
-            g_image_spi.board[board_id].target[target_index].radius = 0.0f;
-        }
+        car_loop_clear_camera_board(board_id);
 
         rx_len = (uint16)sizeof(rx);
         if (CameraSpi_ReceiveRaw((camera_spi_slave_id_t)board_id, rx, &rx_len) == 0U)
@@ -134,23 +199,9 @@ static void car_loop_camera_spi_update_100HZ(void)
             continue;
         }
 
-        for (target_index = 0U; target_index < CAMERA_SPI_IMAGE_TARGET_COUNT; target_index++)
+        if (car_loop_parse_camera_payload(board_id, rx, &camera[board_id]) == 0U)
         {
-            const uint8 *slot = &rx[target_index * CAMERA_SPI_IMAGE_TARGET_SLOT_SIZE];
-            const uint8 valid = slot[CAMERA_SPI_IMAGE_TARGET_VALID_OFFSET];
-            const float x = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_TARGET_X_OFFSET]);
-            const float y = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_TARGET_Y_OFFSET]);
-            const float radius = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_TARGET_RADIUS_OFFSET]);
-
-            g_image_spi.board[board_id].target[target_index].valid = valid;
-            g_image_spi.board[board_id].target[target_index].x = x;
-            g_image_spi.board[board_id].target[target_index].y = y;
-            g_image_spi.board[board_id].target[target_index].radius = radius;
-
-            camera[board_id].target[target_index].valid = valid;
-            camera[board_id].target[target_index].x = x;
-            camera[board_id].target[target_index].y = y;
-            camera[board_id].target[target_index].radius = radius;
+            car_loop_clear_camera_board(board_id);
         }
     }
 
@@ -273,14 +324,14 @@ static void car_loop_100HZ(void)
 
     car_data[0] = g_odometer.vel[x];            //水平横移速度，正值偏右，负值偏左
     car_data[1] = g_odometer.vel[y];            //水平前进速度，正值前进，负值后退
-    car_data[2] = g_image_spi.board[1].target[0].x;
-    car_data[3] = g_image_spi.board[1].target[0].y;
-    car_data[4] = g_image_spi.board[1].target[0].radius;
-    car_data[5] = g_image_spi.board[1].target[0].valid;
-    car_data[6] = 0;
-    car_data[7] = 0;
-    car_data[8] = 0;
-    car_data[9] = 0;
+    car_data[2] = g_image_spi.board[1].car_lamp.cx;
+    car_data[3] = g_image_spi.board[1].car_lamp.cy;
+    car_data[4] = g_image_spi.board[1].car_lamp.width;
+    car_data[5] = g_image_spi.board[1].car_lamp.length;
+    car_data[6] = g_image_spi.board[1].car_lamp.angle;
+    car_data[7] = g_image_spi.board[1].car_lamp.valid;
+    car_data[8] = g_image_spi.board[1].target[0].x;
+    car_data[9] = g_image_spi.board[1].target[0].y;
     air_comm_send_run_data(car_data, 10);
 
 
