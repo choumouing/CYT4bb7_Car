@@ -280,13 +280,13 @@ static void car_loop_100HZ(void)
     beacon_detection_update_100HZ();
     fixator_update_100HZ();
 
-    if (g_beacon_detection.bump_detected != 0U)
+    if (g_beacon_detection.enter_event != 0U)
     {
-        Beep_Play(100, 0.5f, 1);
+        Beep_Enable();
     }
-    else
+    if (g_beacon_detection.exit_event != 0U)
     {
-        Beep_Stop();
+        Beep_Disable();
     }
 
     CameraSpi_Poll();
@@ -333,6 +333,28 @@ static void car_loop_100HZ(void)
     car_data[8] = g_image_spi.board[1].target[0].x;
     car_data[9] = g_image_spi.board[1].target[0].y;
     air_comm_send_run_data(car_data, 10);
+
+
+    wifi_justfloat(
+        g_image_spi.board[0].car_lamp.cx,
+        g_image_spi.board[0].car_lamp.cy,
+        g_image_spi.board[0].car_lamp.width,
+        g_image_spi.board[0].car_lamp.length,
+        g_image_spi.board[0].car_lamp.angle,
+        g_image_spi.board[0].car_lamp.valid,
+        g_image_spi.board[1].car_lamp.cx,
+        g_image_spi.board[1].car_lamp.cy,
+        g_image_spi.board[1].car_lamp.width,
+        g_image_spi.board[1].car_lamp.length,
+        g_image_spi.board[1].car_lamp.angle,
+        g_image_spi.board[1].car_lamp.valid,
+        g_image_spi.board[2].car_lamp.cx,
+        g_image_spi.board[2].car_lamp.cy,
+        g_image_spi.board[2].car_lamp.width,
+        g_image_spi.board[2].car_lamp.length,
+        g_image_spi.board[2].car_lamp.angle,
+        g_image_spi.board[2].car_lamp.valid
+    );
 
 
 
