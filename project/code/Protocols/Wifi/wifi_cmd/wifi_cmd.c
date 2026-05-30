@@ -22,6 +22,7 @@
 
 
 #define WIFI_CMD_TEXT_SEND_POLL_LIMIT   (20000U)
+#define WIFI_CMD_SPI_DETECT_TIMEOUT_MS  (5000U)
 
 static uint8 s_wifi_cmd_text_tx_active = 0U;
 
@@ -35,6 +36,30 @@ static uint16 s_wifi_cmd_line_len = 0U;        /* 当前文本行长度 */
 static uint8 s_wifi_cmd_line_overflow = 0U;    /* 当前文本行是否溢出 */
 static uint8 s_wifi_cmd_line_invalid = 0U;     /* 当前文本行是否包含非法字符 */
 static uint8 s_wifi_cmd_line_expect_lf = 0U;   /* 当前是否已收到 CR，等待 LF */
+
+static uint8 wifi_cmd_wait_spi_module(uint32 timeout_ms)
+{
+    uint32 elapsed_ms = 0U;
+
+    gpio_init(WIFI_SPI_RST_PIN, GPO, 1, GPO_PUSH_PULL);
+    gpio_init(WIFI_SPI_INT_PIN, GPI, 0, GPI_PULL_DOWN);
+
+    gpio_set_level(WIFI_SPI_RST_PIN, 0);
+    system_delay_ms(10);
+    gpio_set_level(WIFI_SPI_RST_PIN, 1);
+
+    while(elapsed_ms < timeout_ms)
+    {
+        if(0U != gpio_get_level(WIFI_SPI_INT_PIN))
+        {
+            return 1U;
+        }
+        system_delay_ms(1);
+        elapsed_ms++;
+    }
+
+    return 0U;
+}
 
 /*
  * 函数名: wifi_cmd_is_space_char
@@ -274,6 +299,11 @@ void wifi_cmd_Init(void)
     memset(s_wifi_cmd_line, 0, sizeof(s_wifi_cmd_line));
     wifi_cmd_reset_line_state();
 
+    if (0U == wifi_cmd_wait_spi_module(WIFI_CMD_SPI_DETECT_TIMEOUT_MS))
+    {
+        return;
+    }
+
     ret = wifi_spi_init((char *)WIFI_SSID_TEST, (char *)WIFI_PASSWORD_TEST);
     if (0U == ret)
     {
@@ -293,6 +323,12 @@ void wifi_cmd_Poll(void)
     uint8 rx_buffer[WIFI_CMD_RX_BUFFER_SIZE];
     uint32 read_len;
     uint32 i;
+
+    if (0U == s_wifi_cmd_ready)
+    {
+        return;
+    }
+
     /* 推进非阻塞发送状态机，确保发送在主循环中持续推进 */
     wifi_spi_send_poll();
 
