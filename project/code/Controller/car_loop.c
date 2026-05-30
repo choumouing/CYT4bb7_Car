@@ -352,9 +352,7 @@ static void car_loop_100HZ(void)
                    g_beacon_fusion_result.beacon[2].bearing_deg,
                    g_beacon_fusion_result.beacon[2].range_proxy,
                    g_beacon_fusion_result.beacon[3].bearing_deg,
-                   g_beacon_fusion_result.beacon[3].range_proxy,
-                   g_beacon_fusion_result.beacon[4].bearing_deg,
-                   g_beacon_fusion_result.beacon[4].range_proxy);
+                   g_beacon_fusion_result.beacon[3].range_proxy);
 }
 
 static void car_loop_50HZ(void)

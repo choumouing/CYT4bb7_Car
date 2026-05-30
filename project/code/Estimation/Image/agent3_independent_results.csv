@@ -1,4 +1,0 @@
-﻿file,expected_count,total_frames,kept_frames,discarded_frames,correct_frames,wrong_frames,accuracy,coverage
-100cm_1灯.csv,1,7176,7169,7,7169,0,100.000000%,99.902453%
-"2灯_(-175,50)_(-40,-100).csv",2,10250,10244,6,10244,0,100.000000%,99.941463%
-"3灯_(-175,50)_(-40,-100)_(-85,200).csv",3,6629,6629,0,6629,0,100.000000%,100.000000%
