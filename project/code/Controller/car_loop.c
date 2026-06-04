@@ -149,7 +149,10 @@ static uint8 car_loop_parse_camera_payload(uint8 board_id,
 
 static void on_air_data(const float *data, uint8 count)
 {
-    (void)count;
+    if (count < AIR_RUN_DATA_CRSF_COUNT)
+    {
+        return;
+    }
 
     g_air_tof_fused_height_mm = data[0];
     g_air_euler_roll = data[1];
@@ -210,9 +213,9 @@ static void car_loop_camera_spi_update_100HZ(void)
     for (board_id = 0U; board_id < CAR_IMAGE_SPI_BOARD_COUNT; board_id++)
     {
         memset(tx, 0, sizeof(tx));
-        tx[0] = 0x5AU;
-        tx[1] = board_id;
-        car_loop_write_u32_le(&tx[2], g_image_spi.tx_counter);
+        tx[CAMERA_SPI_DOWNLINK_MAGIC_OFFSET] = CAMERA_SPI_DOWNLINK_MAGIC;
+        tx[CAMERA_SPI_DOWNLINK_BOARD_ID_OFFSET] = board_id;
+        car_loop_write_u32_le(&tx[CAMERA_SPI_DOWNLINK_COUNTER_OFFSET], g_image_spi.tx_counter);
         CameraSpi_SendRaw((camera_spi_slave_id_t)board_id, tx, (uint16)sizeof(tx));
         g_image_spi.tx_counter++;
     }
