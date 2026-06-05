@@ -19,6 +19,7 @@ uint8 car_emergency_stop_active = 1U;
 
 static uint32 s_telemetry_timestamp_count = 0U;
 static uint32 s_system_time_ms = 0U;
+static uint16 s_air_comm_beep_tick = 200U;
 
 volatile car_image_spi_state_t g_image_spi;
 
@@ -313,6 +314,27 @@ static void car_loop_100HZ(void)
     }
 
     car_mode_update_100HZ(s_system_time_ms);
+
+
+    // 如果车机串口通信离线,车端的蜂鸣器报警,为1s的鸣叫,1s的停止
+    if (air_comm_car_is_online() == 0U)
+    {
+        if (s_air_comm_beep_tick >= 200U)
+        {
+            s_air_comm_beep_tick = 0U;
+            Beep_Enable();
+        }
+        else if (s_air_comm_beep_tick == 100U)
+        {
+            Beep_Disable();
+        }
+        s_air_comm_beep_tick++;
+    }
+    else if (s_air_comm_beep_tick != 200U)
+    {
+        s_air_comm_beep_tick = 200U;
+        Beep_Disable();
+    }
 
     Beep_Update_100HZ();
 
