@@ -13,6 +13,10 @@
 #define CAMERA_SPI_IMAGE_BEACON_COUNT              (4U)
 #define CAMERA_SPI_IMAGE_CAR_LAMP_COUNT            (1U)
 
+#define CAMERA_SPI_IMAGE_BOARD_CENTER              (0U)
+#define CAMERA_SPI_IMAGE_BOARD_FRONT               (1U)
+#define CAMERA_SPI_IMAGE_BOARD_REAR                (2U)
+
 #define CAMERA_SPI_IMAGE_VERSION_OFFSET            (0U)
 #define CAMERA_SPI_IMAGE_BEACON_COUNT_OFFSET       (1U)
 #define CAMERA_SPI_IMAGE_CAR_LAMP_COUNT_OFFSET     (2U)
@@ -20,14 +24,14 @@
 #define CAMERA_SPI_IMAGE_HEADER_SIZE               (4U)
 
 #define CAMERA_SPI_IMAGE_BEACON_VALID_OFFSET       (0U)
-#define CAMERA_SPI_IMAGE_BEACON_X_OFFSET           (1U)  /* float LE: E-disk algorithm x, image-center origin */
-#define CAMERA_SPI_IMAGE_BEACON_Y_OFFSET           (5U)  /* float LE: E-disk algorithm y, image-center origin */
-#define CAMERA_SPI_IMAGE_BEACON_RADIUS_OFFSET      (9U)  /* float LE: equivalent radius in pixels */
+#define CAMERA_SPI_IMAGE_BEACON_X_OFFSET           (1U)  /* float LE: image x, left origin */
+#define CAMERA_SPI_IMAGE_BEACON_Y_OFFSET           (5U)  /* float LE: image y, top origin */
+#define CAMERA_SPI_IMAGE_BEACON_AREA_OFFSET        (9U)  /* float LE: connected-component area in pixels */
 #define CAMERA_SPI_IMAGE_BEACON_SLOT_SIZE          (13U)
 
 #define CAMERA_SPI_IMAGE_CAR_LAMP_VALID_OFFSET     (0U)
-#define CAMERA_SPI_IMAGE_CAR_LAMP_CX_OFFSET        (1U)  /* float LE: E-disk algorithm cx, image-center origin */
-#define CAMERA_SPI_IMAGE_CAR_LAMP_CY_OFFSET        (5U)  /* float LE: E-disk algorithm cy, image-center origin */
+#define CAMERA_SPI_IMAGE_CAR_LAMP_CX_OFFSET        (1U)  /* float LE: image center x, left origin */
+#define CAMERA_SPI_IMAGE_CAR_LAMP_CY_OFFSET        (5U)  /* float LE: image center y, top origin */
 #define CAMERA_SPI_IMAGE_CAR_LAMP_WIDTH_OFFSET     (9U)
 #define CAMERA_SPI_IMAGE_CAR_LAMP_LENGTH_OFFSET    (13U)
 #define CAMERA_SPI_IMAGE_CAR_LAMP_ANGLE_OFFSET     (17U)

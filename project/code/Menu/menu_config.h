@@ -43,6 +43,16 @@ extern float mode1_velocity_forward_kp;
 extern float mode1_velocity_forward_ki;
 extern float mode1_velocity_forward_kd;
 
+extern float mode2_image_target_deadband_px;
+extern float mode2_image_output_limit;
+extern float mode2_image_i_limit;
+extern float mode2_image_strafe_kp;
+extern float mode2_image_strafe_ki;
+extern float mode2_image_strafe_kd;
+extern float mode2_image_forward_kp;
+extern float mode2_image_forward_ki;
+extern float mode2_image_forward_kd;
+
 extern float s_curve_max_iter;
 extern float s_curve_conv_tol;
 extern float s_curve_min_dist;

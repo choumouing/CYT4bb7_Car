@@ -4,8 +4,13 @@
  * The control tick is split by frequency flags. Heavy work stays in the main
  * loop; PIT interrupt only updates flags.
  */
+
 #include "car_loop.h"
+#include "car_mode.h"
+#include "Estimation/Image/beacon_fusion.h"
 #include "Protocols/CameraSpi/camera_spi.h"
+
+#define CAR_LOOP_WIFI_TELEMETRY_FLOAT_COUNT (40U)
 
 volatile uint8_t timer_100HZ_flag = 0U;
 volatile uint8_t timer_25HZ_flag = 0U;
@@ -75,6 +80,20 @@ static float car_loop_read_float_le(const uint8 *data)
     return value;
 }
 
+static uint8 car_loop_camera_role_from_board(uint8 board_id)
+{
+    if (board_id == BEACON_FUSION_CAMERA_FRONT)
+    {
+        return CAMERA_SPI_IMAGE_BOARD_FRONT;
+    }
+    if (board_id == BEACON_FUSION_CAMERA_REAR)
+    {
+        return CAMERA_SPI_IMAGE_BOARD_REAR;
+    }
+
+    return CAMERA_SPI_IMAGE_BOARD_CENTER;
+}
+
 static void car_loop_clear_camera_board(uint8 board_id)
 {
     uint8 target_index;
@@ -87,7 +106,7 @@ static void car_loop_clear_camera_board(uint8 board_id)
         g_image_spi.board[board_id].target[target_index].valid = 0U;
         g_image_spi.board[board_id].target[target_index].x = 0.0f;
         g_image_spi.board[board_id].target[target_index].y = 0.0f;
-        g_image_spi.board[board_id].target[target_index].radius = 0.0f;
+        g_image_spi.board[board_id].target[target_index].area = 0.0f;
     }
     g_image_spi.board[board_id].car_lamp.valid = 0U;
     g_image_spi.board[board_id].car_lamp.cx = 0.0f;
@@ -120,17 +139,17 @@ static uint8 car_loop_parse_camera_payload(uint8 board_id,
         const uint8 valid = slot[CAMERA_SPI_IMAGE_BEACON_VALID_OFFSET];
         const float x = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_BEACON_X_OFFSET]);
         const float y = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_BEACON_Y_OFFSET]);
-        const float radius = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_BEACON_RADIUS_OFFSET]);
+        const float area = car_loop_read_float_le(&slot[CAMERA_SPI_IMAGE_BEACON_AREA_OFFSET]);
 
         g_image_spi.board[board_id].target[target_index].valid = valid;
         g_image_spi.board[board_id].target[target_index].x = x;
         g_image_spi.board[board_id].target[target_index].y = y;
-        g_image_spi.board[board_id].target[target_index].radius = radius;
+        g_image_spi.board[board_id].target[target_index].area = area;
 
         camera->target[target_index].valid = valid;
         camera->target[target_index].x = x;
         camera->target[target_index].y = y;
-        camera->target[target_index].radius = radius;
+        camera->target[target_index].area = area;
     }
 
     {
@@ -211,7 +230,7 @@ static void car_loop_camera_spi_update_100HZ(void)
     {
         memset(tx, 0, sizeof(tx));
         tx[0] = 0x5AU;
-        tx[1] = board_id;
+        tx[1] = car_loop_camera_role_from_board(board_id);
         car_loop_write_u32_le(&tx[2], g_image_spi.tx_counter);
         CameraSpi_SendRaw((camera_spi_slave_id_t)board_id, tx, (uint16)sizeof(tx));
         g_image_spi.tx_counter++;
@@ -266,6 +285,60 @@ static void car_loop_1000HZ(void)
 {
     IMU_Update_1000HZ();
     beacon_detection_update_1000HZ();
+}
+
+static void car_loop_send_wifi_telemetry(void)
+{
+    float data[CAR_LOOP_WIFI_TELEMETRY_FLOAT_COUNT];
+
+    data[0] = (float)s_system_time_ms;
+
+    data[1] = (float)g_image_spi.board[BEACON_FUSION_CAMERA_FRONT].beacon_count;
+    data[2] = (float)g_image_spi.board[BEACON_FUSION_CAMERA_FRONT].target[0].valid;
+    data[3] = g_image_spi.board[BEACON_FUSION_CAMERA_FRONT].target[0].x;
+    data[4] = g_image_spi.board[BEACON_FUSION_CAMERA_FRONT].target[0].y;
+    data[5] = g_image_spi.board[BEACON_FUSION_CAMERA_FRONT].target[0].area;
+
+    data[6] = (float)g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].beacon_count;
+    data[7] = (float)g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].target[0].valid;
+    data[8] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].target[0].x;
+    data[9] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].target[0].y;
+    data[10] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].target[0].area;
+
+    data[11] = (float)g_image_spi.board[BEACON_FUSION_CAMERA_REAR].beacon_count;
+    data[12] = (float)g_image_spi.board[BEACON_FUSION_CAMERA_REAR].target[0].valid;
+    data[13] = g_image_spi.board[BEACON_FUSION_CAMERA_REAR].target[0].x;
+    data[14] = g_image_spi.board[BEACON_FUSION_CAMERA_REAR].target[0].y;
+    data[15] = g_image_spi.board[BEACON_FUSION_CAMERA_REAR].target[0].area;
+
+    data[16] = (float)g_beacon_fusion.valid;
+    data[17] = (float)g_beacon_fusion.center_delta_valid;
+    data[18] = (float)g_beacon_fusion.camera_id;
+    data[19] = g_beacon_fusion.image_x;
+    data[20] = g_beacon_fusion.image_y;
+    data[21] = g_beacon_fusion.center_delta_x;
+    data[22] = g_beacon_fusion.center_delta_y;
+    data[23] = g_beacon_fusion.area;
+
+    data[24] = (float)g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.valid;
+    data[25] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.cx;
+    data[26] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.cy;
+    data[27] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.width;
+    data[28] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.length;
+    data[29] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.angle;
+    data[30] = (float)g_car_mode2_state.car_position_in_center_window;
+
+    data[31] = (float)g_car_mode2_state.output_valid;
+    data[32] = g_car_mode2_state.forward_target;
+    data[33] = g_car_mode2_state.strafe_target;
+    data[34] = g_car_mode2_state.forward_pid_p_term;
+    data[35] = g_car_mode2_state.forward_pid_i_term;
+    data[36] = g_car_mode2_state.forward_pid_d_term;
+    data[37] = g_car_mode2_state.strafe_pid_p_term;
+    data[38] = g_car_mode2_state.strafe_pid_i_term;
+    data[39] = g_car_mode2_state.strafe_pid_d_term;
+
+    wifi_justfloat_Array(data, CAR_LOOP_WIFI_TELEMETRY_FLOAT_COUNT);
 }
 
 static void car_loop_100HZ(void)
@@ -335,26 +408,7 @@ static void car_loop_100HZ(void)
     air_comm_send_run_data(car_data, 10);
 
 
-    wifi_justfloat(
-        g_image_spi.board[0].car_lamp.cx,
-        g_image_spi.board[0].car_lamp.cy,
-        g_image_spi.board[0].car_lamp.width,
-        g_image_spi.board[0].car_lamp.length,
-        g_image_spi.board[0].car_lamp.angle,
-        g_image_spi.board[0].car_lamp.valid,
-        g_image_spi.board[1].car_lamp.cx,
-        g_image_spi.board[1].car_lamp.cy,
-        g_image_spi.board[1].car_lamp.width,
-        g_image_spi.board[1].car_lamp.length,
-        g_image_spi.board[1].car_lamp.angle,
-        g_image_spi.board[1].car_lamp.valid,
-        g_image_spi.board[2].car_lamp.cx,
-        g_image_spi.board[2].car_lamp.cy,
-        g_image_spi.board[2].car_lamp.width,
-        g_image_spi.board[2].car_lamp.length,
-        g_image_spi.board[2].car_lamp.angle,
-        g_image_spi.board[2].car_lamp.valid
-    );
+    car_loop_send_wifi_telemetry();
 
 
 
@@ -376,22 +430,22 @@ static void car_loop_100HZ(void)
 
     // wifi_justfloat(g_image_spi.board[0].target[0].x,
     //                g_image_spi.board[0].target[0].y,
-    //                g_image_spi.board[0].target[0].radius,
+    //                g_image_spi.board[0].target[0].area,
     //                g_image_spi.board[0].target[1].x,
     //                g_image_spi.board[0].target[1].y,
-    //                g_image_spi.board[0].target[1].radius,
+    //                g_image_spi.board[0].target[1].area,
     //                g_image_spi.board[1].target[0].x,
     //                g_image_spi.board[1].target[0].y,
-    //                g_image_spi.board[1].target[0].radius,
+    //                g_image_spi.board[1].target[0].area,
     //                g_image_spi.board[1].target[1].x,
     //                g_image_spi.board[1].target[1].y,
-    //                g_image_spi.board[1].target[1].radius,
+    //                g_image_spi.board[1].target[1].area,
     //                g_image_spi.board[2].target[0].x,
     //                g_image_spi.board[2].target[0].y,
-    //                g_image_spi.board[2].target[0].radius,
+    //                g_image_spi.board[2].target[0].area,
     //                g_image_spi.board[2].target[1].x,
     //                g_image_spi.board[2].target[1].y,
-    //                g_image_spi.board[2].target[1].radius,
+    //                g_image_spi.board[2].target[1].area,
     //                g_beacon_fusion_result.beacon_count,
     //                g_beacon_fusion_result.beacon[0].bearing_deg,
     //                g_beacon_fusion_result.beacon[0].x_body,

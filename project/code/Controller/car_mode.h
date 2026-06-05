@@ -41,8 +41,23 @@ typedef struct
 
 typedef struct
 {
+    uint8 target_valid;
+    uint8 car_position_valid;
+    uint8 car_position_in_center_window;
+    float target_delta_x;
+    float target_delta_y;
+    float car_position_x;
+    float car_position_y;
+    float forward_pid_output;
+    float strafe_pid_output;
     float forward_target;
     float strafe_target;
+    float forward_pid_p_term;
+    float forward_pid_i_term;
+    float forward_pid_d_term;
+    float strafe_pid_p_term;
+    float strafe_pid_i_term;
+    float strafe_pid_d_term;
     uint8 output_valid;
 } car_mode2_state_t;
 
@@ -66,5 +81,6 @@ void car_mode1_update_100HZ(uint32 now_ms);
 void car_mode2_init(void);
 void car_mode2_reset(void);
 void car_mode2_update_25HZ(uint32 now_ms);
+void car_mode2_update_100HZ(uint32 now_ms);
 
 #endif /* CAR_MODE_H */

@@ -38,16 +38,16 @@ extern volatile float g_air_crsf_std_ch7;
 typedef struct
 {
     volatile uint8 valid;
-    volatile float x;      /* E-disk algorithm x, image-center origin. */
-    volatile float y;      /* E-disk algorithm y, image-center origin. */
-    volatile float radius; /* Equivalent connected-component radius in pixels. */
+    volatile float x;      /* Image x, left origin. */
+    volatile float y;      /* Image y, top origin. */
+    volatile float area;   /* Connected-component area in pixels. */
 } car_image_spi_target_t;
 
 typedef struct
 {
     volatile uint8 valid;
-    volatile float cx;     /* E-disk algorithm cx, image-center origin. */
-    volatile float cy;     /* E-disk algorithm cy, image-center origin. */
+    volatile float cx;     /* Image center x, left origin. */
+    volatile float cy;     /* Image center y, top origin. */
     volatile float width;
     volatile float length;
     volatile float angle;

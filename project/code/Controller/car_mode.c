@@ -128,4 +128,8 @@ void car_mode_update_100HZ(uint32 now_ms)
     {
         car_mode1_update_100HZ(now_ms);
     }
+    else if(CAR_MODE_2 == s_car_mode)
+    {
+        car_mode2_update_100HZ(now_ms);
+    }
 }
