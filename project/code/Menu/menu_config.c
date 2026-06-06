@@ -38,15 +38,15 @@ float mode1_velocity_forward_kp = 80.0f;
 float mode1_velocity_forward_ki = 0.0f;
 float mode1_velocity_forward_kd = 20.0f;
 
-float mode2_image_target_deadband_px = 2.0f;
-float mode2_image_output_limit = 300.0f;
+float mode2_image_target_deadband_px = 1.0f;
+float mode2_image_output_limit = 100.0f;
 float mode2_image_i_limit = 0.0f;
-float mode2_image_strafe_kp = 4.0f;
+float mode2_image_strafe_kp = 2.0f;
 float mode2_image_strafe_ki = 0.0f;
-float mode2_image_strafe_kd = 0.0f;
-float mode2_image_forward_kp = 4.0f;
+float mode2_image_strafe_kd = 0.2f;
+float mode2_image_forward_kp = 2.0f;
 float mode2_image_forward_ki = 0.0f;
-float mode2_image_forward_kd = 0.0f;
+float mode2_image_forward_kd = 0.2f;
 
 float s_curve_max_iter = 50.0f;
 float s_curve_conv_tol = 0.001f;

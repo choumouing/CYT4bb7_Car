@@ -1,28 +1,9 @@
 #include "car_mode.h"
 #include "car_loop.h"
 
-#define CAR_MODE_CH4_ENABLE_THRESHOLD (0.5f)
-#define CAR_MODE_CH6_LOW_THRESHOLD    (-333.0f)
-#define CAR_MODE_CH6_HIGH_THRESHOLD   (333.0f)
-
-static car_mode_e s_car_mode = CAR_MODE_0;
-static car_mode_e s_last_car_mode = CAR_MODE_0;
-static uint8 s_last_control_enabled = 0U;
-
-static car_mode_e car_mode_from_ch6(float ch6)
-{
-    if(ch6 < CAR_MODE_CH6_LOW_THRESHOLD)
-    {
-        return CAR_MODE_0;
-    }
-
-    if(ch6 > CAR_MODE_CH6_HIGH_THRESHOLD)
-    {
-        return CAR_MODE_2;
-    }
-
-    return CAR_MODE_1;
-}
+static car_mode_e s_car_mode = CAR_MODE_2;
+static car_mode_e s_last_car_mode = CAR_MODE_2;
+static uint8 s_last_control_enabled = 1U;
 
 static void car_mode_reset_all(void)
 {
@@ -67,11 +48,11 @@ void car_mode_init(void)
 
 void car_mode_reset(void)
 {
-    s_car_mode = CAR_MODE_0;
-    s_last_car_mode = CAR_MODE_0;
-    s_last_control_enabled = 0U;
-    car_control_enabled = 0U;
-    car_emergency_stop_active = 1U;
+    s_car_mode = CAR_MODE_2;
+    s_last_car_mode = CAR_MODE_2;
+    s_last_control_enabled = 1U;
+    car_control_enabled = 1U;
+    car_emergency_stop_active = 0U;
     car_forward_target = 0.0f;
     car_strafe_target = 0.0f;
     car_mode_reset_all();
@@ -84,17 +65,10 @@ car_mode_e car_mode_get(void)
 
 void car_mode_update_25HZ(uint32 now_ms)
 {
-    car_control_enabled = (g_air_crsf_std_ch4 >= CAR_MODE_CH4_ENABLE_THRESHOLD) ? 1U : 0U;
-    car_emergency_stop_active = (0U == car_control_enabled) ? 1U : 0U;
-    s_car_mode = (0U != car_control_enabled) ? car_mode_from_ch6(g_air_crsf_std_ch6) : CAR_MODE_0;
+    car_control_enabled = 1U;
+    car_emergency_stop_active = 0U;
+    s_car_mode = CAR_MODE_2;
     car_mode_handle_transition_25HZ(s_car_mode, car_control_enabled);
-
-    if(0U == car_control_enabled)
-    {
-        car_forward_target = 0.0f;
-        car_strafe_target = 0.0f;
-        return;
-    }
 
     switch(s_car_mode)
     {

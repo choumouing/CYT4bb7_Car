@@ -13,6 +13,8 @@ typedef struct
 
 #define CAMERA_FRONT_BOUNDARY_MAP_NODE_COUNT (4U)
 #define CAMERA_REAR_BOUNDARY_MAP_NODE_COUNT  (6U)
+#define CAMERA_FRONT_BOUNDARY_CENTER_Y       (3.0f)
+#define CAMERA_REAR_BOUNDARY_CENTER_Y        (102.0f)
 
 /*
  * Trusted calibration nodes. source_y records the measured same-point sample.
@@ -57,72 +59,32 @@ static inline const camera_crop_boundary_map_node_t *camera_rear_boundary_map_no
 
 static inline float camera_front_boundary_center_x(float front_x)
 {
-    return (((-1.61349009851e-6f * front_x) + 0.000590180490985f) * front_x +
-            1.02352403654f) * front_x - 6.08595519353f;
+    return front_x;
 }
 
 static inline float camera_front_boundary_center_y(float front_x)
 {
-    return (((-2.13888497740e-5f * front_x) + 0.00622926255210f) * front_x -
-            0.497913843925f) * front_x + 11.5273738193f;
+    (void)front_x;
+    return CAMERA_FRONT_BOUNDARY_CENTER_Y;
 }
 
 static inline float camera_rear_mapping_boundary_y(float rear_x)
 {
-    return ((-7.0f / 4371.0f) * rear_x * rear_x) + ((1309.0f / 4371.0f) * rear_x) + 32.0f;
+    return camera_rear_crop_boundary_y(rear_x);
 }
 
 static inline void camera_rear_point_center_xy(float rear_x, float rear_y, float *center_x, float *center_y)
 {
-    unsigned int i;
-    float dx;
-    float dy;
-    float d2;
-    float w;
-    float weight_sum;
-    float center_x_sum;
-    float center_y_sum;
-    const camera_crop_boundary_map_node_t *node;
-
-    weight_sum = 0.0f;
-    center_x_sum = 0.0f;
-    center_y_sum = 0.0f;
-
-    for(i = 0U; i < CAMERA_REAR_BOUNDARY_MAP_NODE_COUNT; i++)
-    {
-        node = &camera_rear_boundary_map_nodes[i];
-        dx = rear_x - node->source_x;
-        dy = rear_y - node->source_y;
-        d2 = dx * dx + dy * dy;
-
-        if(d2 < 1.0e-4f)
-        {
-            if(center_x != 0)
-            {
-                *center_x = node->center_x;
-            }
-
-            if(center_y != 0)
-            {
-                *center_y = node->center_y;
-            }
-            return;
-        }
-
-        w = 1.0f / (d2 * d2);
-        weight_sum += w;
-        center_x_sum += node->center_x * w;
-        center_y_sum += node->center_y * w;
-    }
+    (void)rear_y;
 
     if(center_x != 0)
     {
-        *center_x = center_x_sum / weight_sum;
+        *center_x = 187.0f - rear_x;
     }
 
     if(center_y != 0)
     {
-        *center_y = center_y_sum / weight_sum;
+        *center_y = CAMERA_REAR_BOUNDARY_CENTER_Y;
     }
 }
 

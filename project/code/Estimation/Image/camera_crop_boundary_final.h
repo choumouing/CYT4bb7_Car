@@ -7,18 +7,27 @@
  * downward, so the crop test is y > boundary_y.
  */
 
+#define CAMERA_CROP_BOUNDARY_CENTER_X      (94.0f)
+#define CAMERA_CROP_BOUNDARY_BOTTOM_ROW_Y  (54.0f)
+#define CAMERA_CROP_BOUNDARY_CURVE_K       (13.0f / 8742.0f)
+
+static inline float camera_crop_boundary_y(float x)
+{
+    const float dx = CAMERA_CROP_BOUNDARY_CENTER_X - x;
+
+    return CAMERA_CROP_BOUNDARY_BOTTOM_ROW_Y +
+           (CAMERA_CROP_BOUNDARY_CURVE_K * dx) -
+           (CAMERA_CROP_BOUNDARY_CURVE_K * dx * dx);
+}
+
 static inline float camera_front_crop_boundary_y(float x)
 {
-    const float image_x = 94.0f - x;
-
-    return 60.0f - (9.0f -
-                    (0.003202929f * image_x) +
-                    (0.003202929f * image_x * image_x));
+    return camera_crop_boundary_y(x);
 }
 
 static inline float camera_rear_crop_boundary_y(float x)
 {
-    return (-7.0f / 4371.0f) * x * x + (1309.0f / 4371.0f) * x + 32.0f;
+    return camera_crop_boundary_y(x);
 }
 
 static inline int camera_front_crop_below(float x, float y)

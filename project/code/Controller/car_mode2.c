@@ -1,6 +1,6 @@
 /* Mode2: image beacon tracking.
  *
- * The tracked beacon delta is expressed relative to the stitched center image.
+ * The tracked beacon delta is expressed relative to the center camera image.
  * The car is allowed to move only when the center camera sees the long lamp
  * board near the center image point.
  */
@@ -12,7 +12,7 @@
 #define MODE2_CENTER_CAMERA_INDEX          (BEACON_FUSION_CAMERA_CENTER)
 #define MODE2_CENTER_X                     (94.0f)
 #define MODE2_CENTER_Y                     (60.0f)
-#define MODE2_CAR_POSITION_WINDOW_HALF     (40.0f)
+#define MODE2_CAR_POSITION_WINDOW_HALF     (30.0f)
 
 car_mode2_state_t g_car_mode2_state = {0};
 

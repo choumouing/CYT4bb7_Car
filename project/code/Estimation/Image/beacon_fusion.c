@@ -8,13 +8,7 @@
 #define BEACON_FUSION_MIN_TARGET_AREA         (1.0f)
 #define BEACON_FUSION_BASE_MATCH_DISTANCE     (14.0f)
 #define BEACON_FUSION_CROSS_CAMERA_DISTANCE   (30.0f)
-#define BEACON_FUSION_MAX_MISSING_FRAMES      (3U)
-#define BEACON_FUSION_FRONT_STITCH_LAST_ROW   (52.0f)
-#define BEACON_FUSION_FRONT_STITCH_ROWS       (BEACON_FUSION_FRONT_STITCH_LAST_ROW + 1.0f)
-#define BEACON_FUSION_CENTER_STITCH_ROWS      (120.0f)
-#define BEACON_FUSION_REAR_STITCH_LAST_ROW    (41.0f)
-#define BEACON_FUSION_REAR_STITCH_X0_COLUMN   (119.0f)
-#define BEACON_FUSION_STITCH_CENTER_Y         (BEACON_FUSION_FRONT_STITCH_ROWS + BEACON_FUSION_IMAGE_CENTER_Y)
+#define BEACON_FUSION_MAX_MISSING_FRAMES      (5U)
 
 typedef struct
 {
@@ -165,8 +159,8 @@ static uint8 beacon_fusion_calc_center_delta(const beacon_fusion_point_t *point,
                                              float *delta_x,
                                              float *delta_y)
 {
-    float stitched_x;
-    float stitched_y;
+    float center_x;
+    float center_y;
 
     if((point == NULL) || (delta_x == NULL) || (delta_y == NULL) || (point->valid == 0U))
     {
@@ -175,38 +169,28 @@ static uint8 beacon_fusion_calc_center_delta(const beacon_fusion_point_t *point,
 
     if(point->camera_index == (int)BEACON_FUSION_CAMERA_FRONT)
     {
-        if((point->image_y < 0.0f) || (point->image_y > BEACON_FUSION_FRONT_STITCH_LAST_ROW))
-        {
-            return 0U;
-        }
-
-        stitched_x = point->image_x;
-        stitched_y = point->image_y;
+        center_x = camera_front_boundary_center_x(point->image_x);
+        center_y = camera_front_boundary_center_y(point->image_x) +
+                   (point->image_y - CAMERA_CROP_BOUNDARY_BOTTOM_ROW_Y);
     }
     else if(point->camera_index == (int)BEACON_FUSION_CAMERA_CENTER)
     {
-        stitched_x = point->image_x;
-        stitched_y = BEACON_FUSION_FRONT_STITCH_ROWS + point->image_y;
+        center_x = point->image_x;
+        center_y = point->image_y;
     }
     else if(point->camera_index == (int)BEACON_FUSION_CAMERA_REAR)
     {
-        if((point->image_y < 0.0f) || (point->image_y > BEACON_FUSION_REAR_STITCH_LAST_ROW))
-        {
-            return 0U;
-        }
-
-        stitched_x = BEACON_FUSION_REAR_STITCH_X0_COLUMN - point->image_x;
-        stitched_y = BEACON_FUSION_FRONT_STITCH_ROWS +
-                     BEACON_FUSION_CENTER_STITCH_ROWS +
-                     (BEACON_FUSION_REAR_STITCH_LAST_ROW - point->image_y);
+        center_x = camera_rear_boundary_center_x(point->image_x);
+        center_y = camera_rear_boundary_center_y(point->image_x) +
+                   (CAMERA_CROP_BOUNDARY_BOTTOM_ROW_Y - point->image_y);
     }
     else
     {
         return 0U;
     }
 
-    *delta_x = stitched_x - BEACON_FUSION_IMAGE_CENTER_X;
-    *delta_y = stitched_y - BEACON_FUSION_STITCH_CENTER_Y;
+    *delta_x = center_x - BEACON_FUSION_IMAGE_CENTER_X;
+    *delta_y = center_y - BEACON_FUSION_IMAGE_CENTER_Y;
     return 1U;
 }
 
