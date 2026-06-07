@@ -12,7 +12,8 @@
 #define MODE2_CENTER_CAMERA_INDEX          (BEACON_FUSION_CAMERA_CENTER)
 #define MODE2_CENTER_X                     (94.0f)
 #define MODE2_CENTER_Y                     (60.0f)
-#define MODE2_CAR_POSITION_WINDOW_HALF     (30.0f)
+#define MODE2_CAR_POSITION_WINDOW_HALF     (20.0f)
+#define MODE2_IMAGE_PID_OUTPUT_DEADBAND    (0.0f)
 
 car_mode2_state_t g_car_mode2_state = {0};
 
@@ -52,6 +53,21 @@ static void car_mode2_pid_apply_params(void)
     s_mode2_strafe_pid.kd = mode2_image_strafe_kd;
     s_mode2_strafe_pid.i_limit = mode2_image_i_limit;
     s_mode2_strafe_pid.output_limit = mode2_image_output_limit;
+}
+
+static float car_mode2_apply_pid_output_deadband(float output)
+{
+    if(output == 0.0f)
+    {
+        return 0.0f;
+    }
+
+    if(car_math_absf(output) >= MODE2_IMAGE_PID_OUTPUT_DEADBAND)
+    {
+        return output;
+    }
+
+    return (output > 0.0f) ? MODE2_IMAGE_PID_OUTPUT_DEADBAND : -MODE2_IMAGE_PID_OUTPUT_DEADBAND;
 }
 
 static void car_mode2_clear_output(void)
@@ -148,9 +164,11 @@ void car_mode2_update_100HZ(uint32 now_ms)
     delta_y = car_math_deadband(g_car_mode2_state.target_delta_y, mode2_image_target_deadband_px);
 
     g_car_mode2_state.forward_pid_output =
-        PositionalPID_Update(&s_mode2_forward_pid, 0.0f, delta_y);
+        car_mode2_apply_pid_output_deadband(
+            PositionalPID_Update(&s_mode2_forward_pid, 0.0f, delta_y));
     g_car_mode2_state.strafe_pid_output =
-        PositionalPID_Update(&s_mode2_strafe_pid, 0.0f, delta_x);
+        car_mode2_apply_pid_output_deadband(
+            PositionalPID_Update(&s_mode2_strafe_pid, 0.0f, delta_x));
 
     g_car_mode2_state.forward_target =
         car_math_limit_absf(g_car_mode2_state.forward_pid_output, mode2_image_output_limit);

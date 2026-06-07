@@ -1,14 +1,19 @@
 #include "beacon_fusion.h"
 
+#include "Common/car_filter.h"
 #include "camera_crop_boundary_mapping.h"
 
 #define BEACON_FUSION_IMAGE_CENTER_X          (94.0f)
 #define BEACON_FUSION_IMAGE_CENTER_Y          (60.0f)
-#define BEACON_FUSION_HISTORY_FRAME_LIMIT     (5U)
 #define BEACON_FUSION_MIN_TARGET_AREA         (1.0f)
-#define BEACON_FUSION_BASE_MATCH_DISTANCE     (14.0f)
-#define BEACON_FUSION_CROSS_CAMERA_DISTANCE   (30.0f)
-#define BEACON_FUSION_MAX_MISSING_FRAMES      (5U)
+#define TRACK_CENTER_START_AREA_BONUS         (5.0f)
+#define TRACK_MATCH_RADIUS                    (15.0f)
+#define TRACK_LOST_FRAME_LIMIT                (5U)
+#define TRACK_BOUNDARY_SWITCH_Y_EPS           (5.0f)
+#define TRACK_CENTER_SEARCH_RADIUS            (20.0f)
+#define BEACON_FUSION_CAR_LAMP_OFFSET_Y       (10.0f)
+#define BEACON_FUSION_CAR_LAMP_HOLD_FRAMES    (5U)
+#define BEACON_FUSION_CAR_LAMP_LPF_ALPHA      (0.2f)
 
 typedef struct
 {
@@ -32,16 +37,25 @@ typedef struct
 
 beacon_fusion_state_t g_beacon_fusion;
 
-static beacon_fusion_point_t s_history[BEACON_FUSION_HISTORY_FRAME_LIMIT];
-static beacon_fusion_point_t s_predicted_point;
-static uint8 s_history_count;
+static beacon_fusion_point_t s_last_point;
 static uint8 s_missing_frame_count;
 static uint8 s_auto_max_count = BEACON_FUSION_CAMERA_TARGETS;
 static uint16 s_frame_id;
+static float s_car_lamp_ref_x;
+static float s_car_lamp_ref_y;
+static uint8 s_car_lamp_ref_valid;
+static uint8 s_car_lamp_missing_count;
+static car_filter_lpf1_t s_car_lamp_filter_x;
+static car_filter_lpf1_t s_car_lamp_filter_y;
 
 static float beacon_fusion_square(float value)
 {
     return value * value;
+}
+
+static float beacon_fusion_abs(float value)
+{
+    return (value < 0.0f) ? -value : value;
 }
 
 static float beacon_fusion_distance2(float lhs_x, float lhs_y, float rhs_x, float rhs_y)
@@ -55,6 +69,19 @@ static float beacon_fusion_distance2(float lhs_x, float lhs_y, float rhs_x, floa
 static float beacon_fusion_candidate_score(const beacon_fusion_candidate_t *candidate)
 {
     return candidate->area;
+}
+
+static float beacon_fusion_start_candidate_score(const beacon_fusion_candidate_t *candidate)
+{
+    float score;
+
+    score = beacon_fusion_candidate_score(candidate);
+    if(candidate->camera_index == (int)BEACON_FUSION_CAMERA_CENTER)
+    {
+        score += TRACK_CENTER_START_AREA_BONUS;
+    }
+
+    return score;
 }
 
 static uint8 beacon_fusion_target_limit(void)
@@ -79,14 +106,7 @@ static void beacon_fusion_clear_point(beacon_fusion_point_t *point)
 
 static void beacon_fusion_clear_track(void)
 {
-    uint8 i;
-
-    for(i = 0U; i < BEACON_FUSION_HISTORY_FRAME_LIMIT; i++)
-    {
-        beacon_fusion_clear_point(&s_history[i]);
-    }
-    beacon_fusion_clear_point(&s_predicted_point);
-    s_history_count = 0U;
+    beacon_fusion_clear_point(&s_last_point);
     s_missing_frame_count = 0U;
 }
 
@@ -95,6 +115,12 @@ static void beacon_fusion_reset_state(void)
     memset(&g_beacon_fusion, 0, sizeof(g_beacon_fusion));
     beacon_fusion_clear_track();
     s_frame_id = 0U;
+    s_car_lamp_ref_x = BEACON_FUSION_IMAGE_CENTER_X;
+    s_car_lamp_ref_y = BEACON_FUSION_IMAGE_CENTER_Y;
+    s_car_lamp_ref_valid = 0U;
+    s_car_lamp_missing_count = BEACON_FUSION_CAR_LAMP_HOLD_FRAMES;
+    s_car_lamp_filter_x.ready = 0U;
+    s_car_lamp_filter_y.ready = 0U;
 }
 
 static beacon_fusion_candidate_t beacon_fusion_candidate_from_target(const beacon_fusion_target_t *target,
@@ -119,40 +145,36 @@ static beacon_fusion_candidate_t beacon_fusion_candidate_from_target(const beaco
     return candidate;
 }
 
-static beacon_fusion_point_t beacon_fusion_history_last(void)
+static void beacon_fusion_point_from_candidate(const beacon_fusion_candidate_t *candidate,
+                                               uint16 frame_id,
+                                               beacon_fusion_point_t *point)
 {
-    if(s_history_count == 0U)
+    if((candidate == NULL) || (point == NULL) || (candidate->valid == 0U))
     {
-        beacon_fusion_point_t empty;
-
-        beacon_fusion_clear_point(&empty);
-        return empty;
+        return;
     }
 
-    return s_history[s_history_count - 1U];
+    point->camera_index = candidate->camera_index;
+    point->frame_id = frame_id;
+    point->image_x = candidate->image_x;
+    point->image_y = candidate->image_y;
+    point->area = candidate->area;
+    point->valid = 1U;
 }
 
-static void beacon_fusion_append_history(const beacon_fusion_point_t *point)
+static beacon_fusion_point_t beacon_fusion_last_point(void)
 {
-    uint8 i;
+    return s_last_point;
+}
 
-    if(point->valid == 0U)
+static void beacon_fusion_store_last_point(const beacon_fusion_point_t *point)
+{
+    if((point == NULL) || (point->valid == 0U))
     {
         return;
     }
 
-    if(s_history_count < BEACON_FUSION_HISTORY_FRAME_LIMIT)
-    {
-        s_history[s_history_count] = *point;
-        s_history_count++;
-        return;
-    }
-
-    for(i = 1U; i < BEACON_FUSION_HISTORY_FRAME_LIMIT; i++)
-    {
-        s_history[i - 1U] = s_history[i];
-    }
-    s_history[BEACON_FUSION_HISTORY_FRAME_LIMIT - 1U] = *point;
+    s_last_point = *point;
 }
 
 static uint8 beacon_fusion_calc_center_delta(const beacon_fusion_point_t *point,
@@ -189,12 +211,12 @@ static uint8 beacon_fusion_calc_center_delta(const beacon_fusion_point_t *point,
         return 0U;
     }
 
-    *delta_x = center_x - BEACON_FUSION_IMAGE_CENTER_X;
-    *delta_y = center_y - BEACON_FUSION_IMAGE_CENTER_Y;
+    *delta_x = center_x - s_car_lamp_ref_x;
+    *delta_y = center_y - s_car_lamp_ref_y;
     return 1U;
 }
 
-static void beacon_fusion_publish_point(const beacon_fusion_point_t *point, uint8 predicted)
+static void beacon_fusion_publish_point(const beacon_fusion_point_t *point)
 {
     float center_delta_x;
     float center_delta_y;
@@ -203,7 +225,6 @@ static void beacon_fusion_publish_point(const beacon_fusion_point_t *point, uint
     {
         g_beacon_fusion.active = 0U;
         g_beacon_fusion.valid = 0U;
-        g_beacon_fusion.predicted = 0U;
         g_beacon_fusion.camera_id = 0U;
         g_beacon_fusion.frame_id = s_frame_id;
         g_beacon_fusion.image_x = 0.0f;
@@ -218,7 +239,6 @@ static void beacon_fusion_publish_point(const beacon_fusion_point_t *point, uint
 
     g_beacon_fusion.active = 1U;
     g_beacon_fusion.valid = 1U;
-    g_beacon_fusion.predicted = predicted;
     g_beacon_fusion.camera_id = (uint8)point->camera_index;
     g_beacon_fusion.frame_id = point->frame_id;
     g_beacon_fusion.image_x = point->image_x;
@@ -253,7 +273,7 @@ static uint8 beacon_fusion_find_largest_candidate(const beacon_fusion_camera_fra
                 beacon_fusion_candidate_from_target(&camera[camera_index].target[target_index],
                                                     camera_index,
                                                     target_index);
-            const float score = beacon_fusion_candidate_score(&candidate);
+            const float score = beacon_fusion_start_candidate_score(&candidate);
 
             if(candidate.valid == 0U)
             {
@@ -271,73 +291,81 @@ static uint8 beacon_fusion_find_largest_candidate(const beacon_fusion_camera_fra
     return best_candidate->valid;
 }
 
-static void beacon_fusion_predict_xy(uint16 frame_id, float *image_x, float *image_y)
+static uint8 beacon_fusion_find_nearest_candidate(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT],
+                                                  uint8 camera_index,
+                                                  float search_x,
+                                                  float search_y,
+                                                  float search_radius,
+                                                  beacon_fusion_candidate_t *best_candidate)
 {
-    uint8 i;
-    uint8 first_index;
-    uint8 velocity_count;
-    float velocity_x;
-    float velocity_y;
-    beacon_fusion_point_t last_point;
+    uint8 target_index;
+    uint8 target_limit;
+    float best_distance;
+    const float max_distance2 = beacon_fusion_square(search_radius);
 
-    last_point = beacon_fusion_history_last();
-    if(last_point.valid == 0U)
+    if((camera_index >= BEACON_FUSION_CAMERA_COUNT) || (best_candidate == NULL))
     {
-        *image_x = 0.0f;
-        *image_y = 0.0f;
-        return;
+        return 0U;
     }
 
-    velocity_x = 0.0f;
-    velocity_y = 0.0f;
-    velocity_count = 0U;
-    first_index = (s_history_count > BEACON_FUSION_HISTORY_FRAME_LIMIT) ?
-                  (uint8)(s_history_count - BEACON_FUSION_HISTORY_FRAME_LIMIT) :
-                  1U;
+    target_limit = beacon_fusion_target_limit();
+    best_distance = 0.0f;
+    best_candidate->valid = 0U;
 
-    for(i = first_index; i < s_history_count; i++)
+    for(target_index = 0U; target_index < target_limit; target_index++)
     {
-        const beacon_fusion_point_t *previous = &s_history[i - 1U];
-        const beacon_fusion_point_t *current = &s_history[i];
-        const uint16 frame_delta = (uint16)(current->frame_id - previous->frame_id);
+        const beacon_fusion_candidate_t candidate =
+            beacon_fusion_candidate_from_target(&camera[camera_index].target[target_index],
+                                                camera_index,
+                                                target_index);
+        const float distance2 = beacon_fusion_distance2(candidate.image_x,
+                                                        candidate.image_y,
+                                                        search_x,
+                                                        search_y);
 
-        if(previous->camera_index != current->camera_index)
+        if(candidate.valid == 0U)
         {
             continue;
         }
-        if(frame_delta == 0U)
+        if(distance2 > max_distance2)
         {
             continue;
         }
-
-        velocity_x += (current->image_x - previous->image_x) / (float)frame_delta;
-        velocity_y += (current->image_y - previous->image_y) / (float)frame_delta;
-        velocity_count++;
+        if((best_candidate->valid == 0U) || (distance2 < best_distance))
+        {
+            *best_candidate = candidate;
+            best_distance = distance2;
+        }
     }
 
-    if(velocity_count > 0U)
+    return best_candidate->valid;
+}
+
+static uint8 beacon_fusion_start_from_largest(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT],
+                                              uint16 frame_id,
+                                              beacon_fusion_point_t *next_point)
+{
+    beacon_fusion_candidate_t start_candidate;
+
+    beacon_fusion_clear_point(next_point);
+    if(beacon_fusion_find_largest_candidate(camera, &start_candidate) == 0U)
     {
-        velocity_x /= (float)velocity_count;
-        velocity_y /= (float)velocity_count;
+        return 0U;
     }
 
-    *image_x = last_point.image_x + (velocity_x * (float)(frame_id - last_point.frame_id));
-    *image_y = last_point.image_y + (velocity_y * (float)(frame_id - last_point.frame_id));
+    beacon_fusion_clear_track();
+    beacon_fusion_point_from_candidate(&start_candidate, frame_id, next_point);
+    beacon_fusion_store_last_point(next_point);
+    return 1U;
 }
 
 static uint8 beacon_fusion_update_current_camera(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT],
                                                  uint16 frame_id,
                                                  beacon_fusion_point_t *next_point)
 {
-    uint8 target_index;
-    uint8 target_limit;
     uint8 current_camera;
-    float predict_x;
-    float predict_y;
-    float match_distance;
-    float best_distance;
     beacon_fusion_candidate_t best_candidate;
-    const beacon_fusion_point_t last_point = beacon_fusion_history_last();
+    const beacon_fusion_point_t last_point = beacon_fusion_last_point();
 
     beacon_fusion_clear_point(next_point);
     if((last_point.valid == 0U) ||
@@ -348,139 +376,78 @@ static uint8 beacon_fusion_update_current_camera(const beacon_fusion_camera_fram
     }
 
     current_camera = (uint8)last_point.camera_index;
-    target_limit = beacon_fusion_target_limit();
-    best_distance = 0.0f;
-    best_candidate.valid = 0U;
-    beacon_fusion_predict_xy(frame_id, &predict_x, &predict_y);
-    match_distance = BEACON_FUSION_BASE_MATCH_DISTANCE;
-
-    for(target_index = 0U; target_index < target_limit; target_index++)
-    {
-        const beacon_fusion_candidate_t candidate =
-            beacon_fusion_candidate_from_target(&camera[current_camera].target[target_index],
-                                                current_camera,
-                                                target_index);
-        const float distance2 = beacon_fusion_distance2(candidate.image_x,
-                                                        candidate.image_y,
-                                                        predict_x,
-                                                        predict_y);
-
-        if(candidate.valid == 0U)
-        {
-            continue;
-        }
-        if(distance2 > beacon_fusion_square(match_distance))
-        {
-            continue;
-        }
-        if((best_candidate.valid == 0U) || (distance2 < best_distance))
-        {
-            best_candidate = candidate;
-            best_distance = distance2;
-        }
-    }
-
-    if(best_candidate.valid == 0U)
+    if(beacon_fusion_find_nearest_candidate(camera,
+                                            current_camera,
+                                            last_point.image_x,
+                                            last_point.image_y,
+                                            TRACK_MATCH_RADIUS,
+                                            &best_candidate) == 0U)
     {
         return 0U;
     }
 
-    next_point->camera_index = best_candidate.camera_index;
-    next_point->frame_id = frame_id;
-    next_point->image_x = best_candidate.image_x;
-    next_point->image_y = best_candidate.image_y;
-    next_point->area = best_candidate.area;
-    next_point->valid = 1U;
+    beacon_fusion_point_from_candidate(&best_candidate, frame_id, next_point);
     return 1U;
 }
 
-static uint8 beacon_fusion_map_to_center(const beacon_fusion_point_t *point,
-                                         float *center_x,
-                                         float *center_y)
+static uint8 beacon_fusion_calc_boundary_center_point(const beacon_fusion_point_t *point,
+                                                      float *center_x,
+                                                      float *center_y)
 {
-    if((point == NULL) || (center_x == NULL) || (center_y == NULL))
+    float boundary_y;
+
+    if((point == NULL) || (center_x == NULL) || (center_y == NULL) || (point->valid == 0U))
     {
         return 0U;
     }
 
     if(point->camera_index == (int)BEACON_FUSION_CAMERA_FRONT)
     {
-        camera_front_boundary_center_xy(point->image_x, center_x, center_y);
-        return 1U;
+        camera_front_boundary_point_to_center(point->image_x, &boundary_y, center_x, center_y);
     }
-
-    if(point->camera_index == (int)BEACON_FUSION_CAMERA_REAR)
+    else if(point->camera_index == (int)BEACON_FUSION_CAMERA_REAR)
     {
-        camera_rear_boundary_center_xy(point->image_x, center_x, center_y);
-        return 1U;
+        camera_rear_boundary_point_to_center(point->image_x, &boundary_y, center_x, center_y);
+    }
+    else
+    {
+        return 0U;
     }
 
-    return 0U;
+    if(beacon_fusion_abs(point->image_y - boundary_y) >= TRACK_BOUNDARY_SWITCH_Y_EPS)
+    {
+        return 0U;
+    }
+
+    return 1U;
 }
 
-static uint8 beacon_fusion_update_across_camera(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT],
+static uint8 beacon_fusion_try_switch_to_center(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT],
+                                                const beacon_fusion_point_t *source_point,
                                                 uint16 frame_id,
                                                 beacon_fusion_point_t *next_point)
 {
-    uint8 target_index;
-    uint8 target_limit;
-    float mapped_x;
-    float mapped_y;
-    float best_distance;
+    float center_x;
+    float center_y;
     beacon_fusion_candidate_t best_candidate;
-    const beacon_fusion_point_t last_point = beacon_fusion_history_last();
 
     beacon_fusion_clear_point(next_point);
-    if(last_point.valid == 0U)
-    {
-        return 0U;
-    }
-    if(beacon_fusion_map_to_center(&last_point, &mapped_x, &mapped_y) == 0U)
+    if(beacon_fusion_calc_boundary_center_point(source_point, &center_x, &center_y) == 0U)
     {
         return 0U;
     }
 
-    target_limit = beacon_fusion_target_limit();
-    best_distance = 0.0f;
-    best_candidate.valid = 0U;
-
-    for(target_index = 0U; target_index < target_limit; target_index++)
-    {
-        const beacon_fusion_candidate_t candidate =
-            beacon_fusion_candidate_from_target(&camera[BEACON_FUSION_CAMERA_CENTER].target[target_index],
-                                                BEACON_FUSION_CAMERA_CENTER,
-                                                target_index);
-        const float distance2 = beacon_fusion_distance2(candidate.image_x,
-                                                        candidate.image_y,
-                                                        mapped_x,
-                                                        mapped_y);
-
-        if(candidate.valid == 0U)
-        {
-            continue;
-        }
-        if(distance2 > beacon_fusion_square(BEACON_FUSION_CROSS_CAMERA_DISTANCE))
-        {
-            continue;
-        }
-        if((best_candidate.valid == 0U) || (distance2 < best_distance))
-        {
-            best_candidate = candidate;
-            best_distance = distance2;
-        }
-    }
-
-    if(best_candidate.valid == 0U)
+    if(beacon_fusion_find_nearest_candidate(camera,
+                                            BEACON_FUSION_CAMERA_CENTER,
+                                            center_x,
+                                            center_y,
+                                            TRACK_CENTER_SEARCH_RADIUS,
+                                            &best_candidate) == 0U)
     {
         return 0U;
     }
 
-    next_point->camera_index = best_candidate.camera_index;
-    next_point->frame_id = frame_id;
-    next_point->image_x = best_candidate.image_x;
-    next_point->image_y = best_candidate.image_y;
-    next_point->area = best_candidate.area;
-    next_point->valid = 1U;
+    beacon_fusion_point_from_candidate(&best_candidate, frame_id, next_point);
     return 1U;
 }
 
@@ -496,9 +463,37 @@ void beacon_fusion_set_auto_max_count(uint8 max_count)
                        max_count;
 }
 
+void beacon_fusion_set_center_car_lamp(uint8 valid, float cx, float cy)
+{
+    if(valid != 0U)
+    {
+        s_car_lamp_ref_x =
+            car_filter_lpf1_update(&s_car_lamp_filter_x, cx, BEACON_FUSION_CAR_LAMP_LPF_ALPHA);
+        s_car_lamp_ref_y =
+            car_filter_lpf1_update(&s_car_lamp_filter_y, cy, BEACON_FUSION_CAR_LAMP_LPF_ALPHA) +
+            BEACON_FUSION_CAR_LAMP_OFFSET_Y;
+        s_car_lamp_ref_valid = 1U;
+        s_car_lamp_missing_count = 0U;
+    }
+    else
+    {
+        if(s_car_lamp_missing_count < BEACON_FUSION_CAR_LAMP_HOLD_FRAMES)
+        {
+            s_car_lamp_missing_count++;
+        }
+        else
+        {
+            s_car_lamp_ref_x = BEACON_FUSION_IMAGE_CENTER_X;
+            s_car_lamp_ref_y = BEACON_FUSION_IMAGE_CENTER_Y;
+            s_car_lamp_ref_valid = 0U;
+            s_car_lamp_filter_x.ready = 0U;
+            s_car_lamp_filter_y.ready = 0U;
+        }
+    }
+}
+
 uint8 beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT])
 {
-    beacon_fusion_candidate_t start_candidate;
     beacon_fusion_point_t next_point;
 
     s_frame_id++;
@@ -510,61 +505,56 @@ uint8 beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACO
 
     if(g_beacon_fusion.active == 0U)
     {
-        if(beacon_fusion_find_largest_candidate(camera, &start_candidate) == 0U)
+        if(beacon_fusion_start_from_largest(camera, s_frame_id, &next_point) == 0U)
         {
-            beacon_fusion_publish_point(NULL, 0U);
+            beacon_fusion_publish_point(NULL);
             return 0U;
         }
 
-        beacon_fusion_clear_track();
-        next_point.camera_index = start_candidate.camera_index;
-        next_point.frame_id = s_frame_id;
-        next_point.image_x = start_candidate.image_x;
-        next_point.image_y = start_candidate.image_y;
-        next_point.area = start_candidate.area;
-        next_point.valid = 1U;
-        beacon_fusion_append_history(&next_point);
-        beacon_fusion_clear_point(&s_predicted_point);
         s_missing_frame_count = 0U;
-        beacon_fusion_publish_point(&next_point, 0U);
+        beacon_fusion_publish_point(&next_point);
         return 1U;
     }
 
     if(beacon_fusion_update_current_camera(camera, s_frame_id, &next_point) != 0U)
     {
-        beacon_fusion_append_history(&next_point);
-        beacon_fusion_clear_point(&s_predicted_point);
+        beacon_fusion_point_t center_point;
+
+        if(beacon_fusion_try_switch_to_center(camera, &next_point, s_frame_id, &center_point) != 0U)
+        {
+            next_point = center_point;
+        }
+
+        beacon_fusion_store_last_point(&next_point);
         s_missing_frame_count = 0U;
-        beacon_fusion_publish_point(&next_point, 0U);
+        beacon_fusion_publish_point(&next_point);
         return 1U;
     }
 
-    if(beacon_fusion_update_across_camera(camera, s_frame_id, &next_point) != 0U)
+    if(beacon_fusion_try_switch_to_center(camera, &s_last_point, s_frame_id, &next_point) != 0U)
     {
-        beacon_fusion_append_history(&next_point);
-        beacon_fusion_clear_point(&s_predicted_point);
+        beacon_fusion_store_last_point(&next_point);
         s_missing_frame_count = 0U;
-        beacon_fusion_publish_point(&next_point, 0U);
+        beacon_fusion_publish_point(&next_point);
         return 1U;
     }
 
-    if(s_missing_frame_count < BEACON_FUSION_MAX_MISSING_FRAMES)
+    if(s_last_point.valid == 0U)
     {
-        s_predicted_point = beacon_fusion_history_last();
-        s_predicted_point.frame_id = s_frame_id;
-        beacon_fusion_predict_xy(s_frame_id,
-                                 &s_predicted_point.image_x,
-                                 &s_predicted_point.image_y);
-        s_predicted_point.valid = 1U;
-        s_missing_frame_count++;
-        beacon_fusion_publish_point(&s_predicted_point, 1U);
+        beacon_fusion_publish_point(NULL);
+        beacon_fusion_clear_track();
+        return 0U;
+    }
+
+    s_missing_frame_count++;
+    if(s_missing_frame_count <= TRACK_LOST_FRAME_LIMIT)
+    {
+        next_point = beacon_fusion_last_point();
+        beacon_fusion_publish_point(&next_point);
         return 1U;
     }
 
-    beacon_fusion_clear_point(&s_predicted_point);
-    g_beacon_fusion.active = 0U;
-    g_beacon_fusion.valid = 0U;
-    g_beacon_fusion.predicted = 0U;
-    g_beacon_fusion.missing_frame_count = s_missing_frame_count;
+    beacon_fusion_publish_point(NULL);
+    beacon_fusion_clear_track();
     return 0U;
 }
