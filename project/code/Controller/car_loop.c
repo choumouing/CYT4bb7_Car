@@ -333,14 +333,14 @@ static void car_loop_send_wifi_telemetry(void)
     data[30] = (float)g_car_mode2_state.car_position_in_center_window;
 
     data[31] = (float)g_car_mode2_state.output_valid;
-    data[32] = g_car_mode2_state.forward_target;
-    data[33] = g_car_mode2_state.strafe_target;
-    data[34] = g_car_mode2_state.forward_pid_p_term;
-    data[35] = g_car_mode2_state.forward_pid_i_term;
-    data[36] = g_car_mode2_state.forward_pid_d_term;
-    data[37] = g_car_mode2_state.strafe_pid_p_term;
-    data[38] = g_car_mode2_state.strafe_pid_i_term;
-    data[39] = g_car_mode2_state.strafe_pid_d_term;
+    data[32] = g_car_mode2_state.target_forward_mps;
+    data[33] = g_car_mode2_state.target_strafe_mps;
+    data[34] = g_car_mode2_state.limited_forward_mps;
+    data[35] = g_car_mode2_state.limited_strafe_mps;
+    data[36] = g_car_mode2_state.feedback_forward_mps;
+    data[37] = g_car_mode2_state.feedback_strafe_mps;
+    data[38] = (float)g_car_mode2_state.forward_zone;
+    data[39] = (float)g_car_mode2_state.strafe_zone;
 
     wifi_justfloat_Array(data, CAR_LOOP_WIFI_TELEMETRY_FLOAT_COUNT);
 }
@@ -412,7 +412,7 @@ static void car_loop_100HZ(void)
     air_comm_send_run_data(car_data, 10);
 
 
-    car_loop_send_wifi_telemetry();
+    //car_loop_send_wifi_telemetry();
 
 
 

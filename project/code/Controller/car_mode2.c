@@ -1,87 +1,48 @@
 /* Mode2: image beacon tracking.
  *
- * The tracked beacon delta is expressed relative to the center camera image.
- * The car is allowed to move only when the center camera sees the long lamp
- * board near the center image point.
+ * 信标追踪只在本模式内使用像素距离分段固定速度，速度单位统一为 m/s。
+ * 进入底层 Control_100Hz 前再转换为现有麦轮编码器计数命令。
  */
 #include "car_mode.h"
 #include "car_loop.h"
 #include "Common/car_math.h"
 #include "Estimation/Image/beacon_fusion.h"
+#include "Estimation/Position/odometer.h"
 
 #define MODE2_CENTER_CAMERA_INDEX          (BEACON_FUSION_CAMERA_CENTER)
 #define MODE2_CENTER_X                     (94.0f)
 #define MODE2_CENTER_Y                     (60.0f)
 #define MODE2_CAR_POSITION_WINDOW_HALF     (20.0f)
-#define MODE2_IMAGE_PID_OUTPUT_DEADBAND    (0.0f)
+
+#define MODE2_ZONE_STOP                    (0U)
+#define MODE2_ZONE_NEAR                    (1U)
+#define MODE2_ZONE_MID                     (2U)
+#define MODE2_ZONE_FAR                     (3U)
 
 car_mode2_state_t g_car_mode2_state = {0};
 
-static PositionalPID s_mode2_forward_pid;
-static PositionalPID s_mode2_strafe_pid;
-
-static void car_mode2_pid_init(void)
+static float car_mode2_abs_limit_param(float value, float fallback)
 {
-    PositionalPID_Init(&s_mode2_forward_pid,
-                       0.0f,
-                       mode2_image_forward_kp,
-                       mode2_image_forward_ki,
-                       mode2_image_forward_kd,
-                       mode2_image_i_limit,
-                       mode2_image_output_limit);
-    PositionalPID_Init(&s_mode2_strafe_pid,
-                       0.0f,
-                       mode2_image_strafe_kp,
-                       mode2_image_strafe_ki,
-                       mode2_image_strafe_kd,
-                       mode2_image_i_limit,
-                       mode2_image_output_limit);
-}
-
-static void car_mode2_pid_apply_params(void)
-{
-    s_mode2_forward_pid.kp_2 = 0.0f;
-    s_mode2_forward_pid.kp_1 = mode2_image_forward_kp;
-    s_mode2_forward_pid.ki = mode2_image_forward_ki;
-    s_mode2_forward_pid.kd = mode2_image_forward_kd;
-    s_mode2_forward_pid.i_limit = mode2_image_i_limit;
-    s_mode2_forward_pid.output_limit = mode2_image_output_limit;
-
-    s_mode2_strafe_pid.kp_2 = 0.0f;
-    s_mode2_strafe_pid.kp_1 = mode2_image_strafe_kp;
-    s_mode2_strafe_pid.ki = mode2_image_strafe_ki;
-    s_mode2_strafe_pid.kd = mode2_image_strafe_kd;
-    s_mode2_strafe_pid.i_limit = mode2_image_i_limit;
-    s_mode2_strafe_pid.output_limit = mode2_image_output_limit;
-}
-
-static float car_mode2_apply_pid_output_deadband(float output)
-{
-    if(output == 0.0f)
+    if(value < 0.0f)
     {
-        return 0.0f;
+        return fallback;
     }
 
-    if(car_math_absf(output) >= MODE2_IMAGE_PID_OUTPUT_DEADBAND)
-    {
-        return output;
-    }
-
-    return (output > 0.0f) ? MODE2_IMAGE_PID_OUTPUT_DEADBAND : -MODE2_IMAGE_PID_OUTPUT_DEADBAND;
+    return value;
 }
 
 static void car_mode2_clear_output(void)
 {
-    g_car_mode2_state.forward_pid_output = 0.0f;
-    g_car_mode2_state.strafe_pid_output = 0.0f;
-    g_car_mode2_state.forward_target = 0.0f;
-    g_car_mode2_state.strafe_target = 0.0f;
-    g_car_mode2_state.forward_pid_p_term = 0.0f;
-    g_car_mode2_state.forward_pid_i_term = 0.0f;
-    g_car_mode2_state.forward_pid_d_term = 0.0f;
-    g_car_mode2_state.strafe_pid_p_term = 0.0f;
-    g_car_mode2_state.strafe_pid_i_term = 0.0f;
-    g_car_mode2_state.strafe_pid_d_term = 0.0f;
+    g_car_mode2_state.forward_zone = MODE2_ZONE_STOP;
+    g_car_mode2_state.strafe_zone = MODE2_ZONE_STOP;
+    g_car_mode2_state.target_forward_mps = 0.0f;
+    g_car_mode2_state.target_strafe_mps = 0.0f;
+    g_car_mode2_state.feedback_forward_mps = 0.0f;
+    g_car_mode2_state.feedback_strafe_mps = 0.0f;
+    g_car_mode2_state.limited_forward_mps = 0.0f;
+    g_car_mode2_state.limited_strafe_mps = 0.0f;
+    g_car_mode2_state.forward_command = 0.0f;
+    g_car_mode2_state.strafe_command = 0.0f;
     car_forward_target = 0.0f;
     car_strafe_target = 0.0f;
 }
@@ -116,6 +77,116 @@ static uint8 car_mode2_car_position_allowed(void)
     return 0U;
 }
 
+static float car_mode2_segment_speed(float delta_px,
+                                     float mid_threshold_px,
+                                     float far_threshold_px,
+                                     float near_speed_mps,
+                                     float mid_speed_mps,
+                                     float far_speed_mps,
+                                     uint8 *zone)
+{
+    float abs_delta;
+    float mid_threshold;
+    float far_threshold;
+    float speed;
+
+    if(zone != NULL)
+    {
+        *zone = MODE2_ZONE_STOP;
+    }
+
+    if(car_math_absf(delta_px) <= mode2_image_target_deadband_px)
+    {
+        return 0.0f;
+    }
+
+    abs_delta = car_math_absf(delta_px);
+    mid_threshold = car_mode2_abs_limit_param(mid_threshold_px, 0.0f);
+    far_threshold = car_mode2_abs_limit_param(far_threshold_px, mid_threshold);
+    if(far_threshold < mid_threshold)
+    {
+        far_threshold = mid_threshold;
+    }
+
+    if(abs_delta > far_threshold)
+    {
+        speed = car_mode2_abs_limit_param(far_speed_mps, 0.0f);
+        if(zone != NULL)
+        {
+            *zone = MODE2_ZONE_FAR;
+        }
+    }
+    else if(abs_delta > mid_threshold)
+    {
+        speed = car_mode2_abs_limit_param(mid_speed_mps, 0.0f);
+        if(zone != NULL)
+        {
+            *zone = MODE2_ZONE_MID;
+        }
+    }
+    else
+    {
+        speed = car_mode2_abs_limit_param(near_speed_mps, 0.0f);
+        if(zone != NULL)
+        {
+            *zone = MODE2_ZONE_NEAR;
+        }
+    }
+
+    return speed;
+}
+
+static float car_mode2_limit_speed_by_accel(float current_mps, float target_mps)
+{
+    float max_accel = mode2_max_accel_mps2;
+    float max_step;
+    float error;
+
+    if(max_accel < 0.0f)
+    {
+        max_accel = 0.0f;
+    }
+
+    max_step = max_accel * ODOMETER_UPDATE_DT_S;
+    error = target_mps - current_mps;
+
+    if(error > max_step)
+    {
+        return current_mps + max_step;
+    }
+    if(error < -max_step)
+    {
+        return current_mps - max_step;
+    }
+
+    return target_mps;
+}
+
+static void car_mode2_update_limited_speed(void)
+{
+    g_car_mode2_state.limited_forward_mps =
+        car_mode2_limit_speed_by_accel(g_car_mode2_state.limited_forward_mps,
+                                       g_car_mode2_state.target_forward_mps);
+    g_car_mode2_state.limited_strafe_mps =
+        car_mode2_limit_speed_by_accel(g_car_mode2_state.limited_strafe_mps,
+                                       g_car_mode2_state.target_strafe_mps);
+}
+
+static void car_mode2_publish_command_from_mps(void)
+{
+    g_car_mode2_state.forward_command =
+        g_car_mode2_state.limited_forward_mps *
+        ODOMETER_FORWARD_COUNT_PER_METER *
+        ODOMETER_UPDATE_DT_S;
+    g_car_mode2_state.strafe_command =
+        -g_car_mode2_state.limited_strafe_mps *
+        ODOMETER_STRAFE_COUNT_PER_METER_ABS *
+        ODOMETER_UPDATE_DT_S;
+
+    car_forward_target = g_car_mode2_state.forward_command;
+    car_strafe_target = g_car_mode2_state.strafe_command;
+}
+
 void car_mode2_init(void)
 {
     car_mode2_reset();
@@ -124,7 +195,6 @@ void car_mode2_init(void)
 void car_mode2_reset(void)
 {
     memset(&g_car_mode2_state, 0, sizeof(g_car_mode2_state));
-    car_mode2_pid_init();
     car_mode2_clear_output();
     g_car_mode2_state.output_valid = 0U;
 }
@@ -139,10 +209,10 @@ void car_mode2_update_100HZ(uint32 now_ms)
     uint8 car_position_allowed;
     float delta_x;
     float delta_y;
+    float forward_speed_mps;
+    float strafe_speed_mps;
 
     (void)now_ms;
-
-    car_mode2_pid_apply_params();
 
     g_car_mode2_state.target_valid =
         (g_beacon_fusion.valid != 0U) &&
@@ -150,12 +220,18 @@ void car_mode2_update_100HZ(uint32 now_ms)
     g_car_mode2_state.target_delta_x = g_beacon_fusion.center_delta_x;
     g_car_mode2_state.target_delta_y = g_beacon_fusion.center_delta_y;
     car_position_allowed = car_mode2_car_position_allowed();
+    g_car_mode2_state.feedback_forward_mps = g_odometer.vel[y];
+    g_car_mode2_state.feedback_strafe_mps = g_odometer.vel[x];
 
     if((g_car_mode2_state.target_valid == 0U) ||
        (car_position_allowed == 0U))
     {
-        car_mode2_pid_init();
-        car_mode2_clear_output();
+        g_car_mode2_state.forward_zone = MODE2_ZONE_STOP;
+        g_car_mode2_state.strafe_zone = MODE2_ZONE_STOP;
+        g_car_mode2_state.target_forward_mps = 0.0f;
+        g_car_mode2_state.target_strafe_mps = 0.0f;
+        car_mode2_update_limited_speed();
+        car_mode2_publish_command_from_mps();
         g_car_mode2_state.output_valid = 1U;
         return;
     }
@@ -163,26 +239,38 @@ void car_mode2_update_100HZ(uint32 now_ms)
     delta_x = car_math_deadband(g_car_mode2_state.target_delta_x, mode2_image_target_deadband_px);
     delta_y = car_math_deadband(g_car_mode2_state.target_delta_y, mode2_image_target_deadband_px);
 
-    g_car_mode2_state.forward_pid_output =
-        car_mode2_apply_pid_output_deadband(
-            PositionalPID_Update(&s_mode2_forward_pid, 0.0f, delta_y));
-    g_car_mode2_state.strafe_pid_output =
-        car_mode2_apply_pid_output_deadband(
-            PositionalPID_Update(&s_mode2_strafe_pid, 0.0f, delta_x));
+    forward_speed_mps =
+        car_mode2_segment_speed(delta_y,
+                                mode2_forward_mid_threshold_px,
+                                mode2_forward_far_threshold_px,
+                                mode2_forward_near_speed_mps,
+                                mode2_forward_mid_speed_mps,
+                                mode2_forward_far_speed_mps,
+                                &g_car_mode2_state.forward_zone);
+    strafe_speed_mps =
+        car_mode2_segment_speed(delta_x,
+                                mode2_strafe_mid_threshold_px,
+                                mode2_strafe_far_threshold_px,
+                                mode2_strafe_near_speed_mps,
+                                mode2_strafe_mid_speed_mps,
+                                mode2_strafe_far_speed_mps,
+                                &g_car_mode2_state.strafe_zone);
 
-    g_car_mode2_state.forward_target =
-        car_math_limit_absf(g_car_mode2_state.forward_pid_output, mode2_image_output_limit);
-    g_car_mode2_state.strafe_target =
-        car_math_limit_absf(g_car_mode2_state.strafe_pid_output, mode2_image_output_limit);
+    g_car_mode2_state.target_forward_mps =
+        (delta_y > 0.0f) ? -forward_speed_mps : forward_speed_mps;
+    g_car_mode2_state.target_strafe_mps =
+        (delta_x > 0.0f) ? strafe_speed_mps : -strafe_speed_mps;
 
-    g_car_mode2_state.forward_pid_p_term = s_mode2_forward_pid.p_term;
-    g_car_mode2_state.forward_pid_i_term = s_mode2_forward_pid.i_term;
-    g_car_mode2_state.forward_pid_d_term = s_mode2_forward_pid.d_term;
-    g_car_mode2_state.strafe_pid_p_term = s_mode2_strafe_pid.p_term;
-    g_car_mode2_state.strafe_pid_i_term = s_mode2_strafe_pid.i_term;
-    g_car_mode2_state.strafe_pid_d_term = s_mode2_strafe_pid.d_term;
+    if(delta_y == 0.0f)
+    {
+        g_car_mode2_state.target_forward_mps = 0.0f;
+    }
+    if(delta_x == 0.0f)
+    {
+        g_car_mode2_state.target_strafe_mps = 0.0f;
+    }
+
+    car_mode2_update_limited_speed();
+    car_mode2_publish_command_from_mps();
     g_car_mode2_state.output_valid = 1U;
-
-    car_forward_target = g_car_mode2_state.forward_target;
-    car_strafe_target = g_car_mode2_state.strafe_target;
 }
