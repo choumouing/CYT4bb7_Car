@@ -1,25 +1,30 @@
 /* Mode2: image beacon tracking.
  *
- * 信标追踪只在本模式内使用像素距离分段固定速度，速度单位统一为 m/s。
- * 进入底层 Control_100Hz 前再转换为现有麦轮编码器计数命令。
+ * 信标追踪�?在本模式内使用像素距离分段固定速度，速度单位统一�? m/s�?
+ * 进入底层 Control_100Hz 前再�?�?为现有麦�?编码器�?�数命令�?
  */
 #include "car_mode.h"
 #include "car_loop.h"
 #include "Common/car_math.h"
 #include "Estimation/Image/beacon_fusion.h"
 #include "Estimation/Position/odometer.h"
+#include <math.h>
 
 #define MODE2_CENTER_CAMERA_INDEX          (BEACON_FUSION_CAMERA_CENTER)
 #define MODE2_CENTER_X                     (94.0f)
 #define MODE2_CENTER_Y                     (60.0f)
-#define MODE2_CAR_POSITION_WINDOW_HALF     (20.0f)
+#define MODE2_CAR_POSITION_WINDOW_HALF     (27.0f)
 
 #define MODE2_ZONE_STOP                    (0U)
 #define MODE2_ZONE_NEAR                    (1U)
 #define MODE2_ZONE_MID                     (2U)
 #define MODE2_ZONE_FAR                     (3U)
+#define MODE2_PID_VECTOR_NORM_MIN          (0.001f)
 
 car_mode2_state_t g_car_mode2_state = {0};
+
+static PositionalPID s_mode2_forward_pid;
+static PositionalPID s_mode2_strafe_pid;
 
 static float car_mode2_abs_limit_param(float value, float fallback)
 {
@@ -31,10 +36,50 @@ static float car_mode2_abs_limit_param(float value, float fallback)
     return value;
 }
 
+static void car_mode2_pid_init(void)
+{
+    PositionalPID_Init(&s_mode2_forward_pid,
+                       0.0f,
+                       mode2_image_forward_kp,
+                       mode2_image_forward_ki,
+                       mode2_image_forward_kd,
+                       mode2_image_i_limit,
+                       mode2_image_pid_output_limit);
+    PositionalPID_Init(&s_mode2_strafe_pid,
+                       0.0f,
+                       mode2_image_strafe_kp,
+                       mode2_image_strafe_ki,
+                       mode2_image_strafe_kd,
+                       mode2_image_i_limit,
+                       mode2_image_pid_output_limit);
+}
+
+static void car_mode2_pid_apply_params(void)
+{
+    s_mode2_forward_pid.kp_2 = 0.0f;
+    s_mode2_forward_pid.kp_1 = mode2_image_forward_kp;
+    s_mode2_forward_pid.ki = mode2_image_forward_ki;
+    s_mode2_forward_pid.kd = mode2_image_forward_kd;
+    s_mode2_forward_pid.i_limit = mode2_image_i_limit;
+    s_mode2_forward_pid.output_limit = mode2_image_pid_output_limit;
+
+    s_mode2_strafe_pid.kp_2 = 0.0f;
+    s_mode2_strafe_pid.kp_1 = mode2_image_strafe_kp;
+    s_mode2_strafe_pid.ki = mode2_image_strafe_ki;
+    s_mode2_strafe_pid.kd = mode2_image_strafe_kd;
+    s_mode2_strafe_pid.i_limit = mode2_image_i_limit;
+    s_mode2_strafe_pid.output_limit = mode2_image_pid_output_limit;
+}
+
 static void car_mode2_clear_output(void)
 {
-    g_car_mode2_state.forward_zone = MODE2_ZONE_STOP;
-    g_car_mode2_state.strafe_zone = MODE2_ZONE_STOP;
+    g_car_mode2_state.distance_zone = MODE2_ZONE_STOP;
+    g_car_mode2_state.target_distance_px = 0.0f;
+    g_car_mode2_state.target_speed_mps = 0.0f;
+    g_car_mode2_state.forward_pid_output = 0.0f;
+    g_car_mode2_state.strafe_pid_output = 0.0f;
+    g_car_mode2_state.forward_ratio = 0.0f;
+    g_car_mode2_state.strafe_ratio = 0.0f;
     g_car_mode2_state.target_forward_mps = 0.0f;
     g_car_mode2_state.target_strafe_mps = 0.0f;
     g_car_mode2_state.feedback_forward_mps = 0.0f;
@@ -77,15 +122,8 @@ static uint8 car_mode2_car_position_allowed(void)
     return 0U;
 }
 
-static float car_mode2_segment_speed(float delta_px,
-                                     float mid_threshold_px,
-                                     float far_threshold_px,
-                                     float near_speed_mps,
-                                     float mid_speed_mps,
-                                     float far_speed_mps,
-                                     uint8 *zone)
+static float car_mode2_distance_speed(float distance_px, uint8 *zone)
 {
-    float abs_delta;
     float mid_threshold;
     float far_threshold;
     float speed;
@@ -95,30 +133,29 @@ static float car_mode2_segment_speed(float delta_px,
         *zone = MODE2_ZONE_STOP;
     }
 
-    if(car_math_absf(delta_px) <= mode2_image_target_deadband_px)
+    if(distance_px <= mode2_image_target_deadband_px)
     {
         return 0.0f;
     }
 
-    abs_delta = car_math_absf(delta_px);
-    mid_threshold = car_mode2_abs_limit_param(mid_threshold_px, 0.0f);
-    far_threshold = car_mode2_abs_limit_param(far_threshold_px, mid_threshold);
+    mid_threshold = car_mode2_abs_limit_param(mode2_distance_mid_threshold_px, 0.0f);
+    far_threshold = car_mode2_abs_limit_param(mode2_distance_far_threshold_px, mid_threshold);
     if(far_threshold < mid_threshold)
     {
         far_threshold = mid_threshold;
     }
 
-    if(abs_delta > far_threshold)
+    if(distance_px > far_threshold)
     {
-        speed = car_mode2_abs_limit_param(far_speed_mps, 0.0f);
+        speed = car_mode2_abs_limit_param(mode2_distance_far_speed_mps, 0.0f);
         if(zone != NULL)
         {
             *zone = MODE2_ZONE_FAR;
         }
     }
-    else if(abs_delta > mid_threshold)
+    else if(distance_px > mid_threshold)
     {
-        speed = car_mode2_abs_limit_param(mid_speed_mps, 0.0f);
+        speed = car_mode2_abs_limit_param(mode2_distance_mid_speed_mps, 0.0f);
         if(zone != NULL)
         {
             *zone = MODE2_ZONE_MID;
@@ -126,7 +163,7 @@ static float car_mode2_segment_speed(float delta_px,
     }
     else
     {
-        speed = car_mode2_abs_limit_param(near_speed_mps, 0.0f);
+        speed = car_mode2_abs_limit_param(mode2_distance_near_speed_mps, 0.0f);
         if(zone != NULL)
         {
             *zone = MODE2_ZONE_NEAR;
@@ -195,6 +232,7 @@ void car_mode2_init(void)
 void car_mode2_reset(void)
 {
     memset(&g_car_mode2_state, 0, sizeof(g_car_mode2_state));
+    car_mode2_pid_init();
     car_mode2_clear_output();
     g_car_mode2_state.output_valid = 0U;
 }
@@ -209,10 +247,11 @@ void car_mode2_update_100HZ(uint32 now_ms)
     uint8 car_position_allowed;
     float delta_x;
     float delta_y;
-    float forward_speed_mps;
-    float strafe_speed_mps;
+    float pid_norm;
 
     (void)now_ms;
+
+    car_mode2_pid_apply_params();
 
     g_car_mode2_state.target_valid =
         (g_beacon_fusion.valid != 0U) &&
@@ -226,8 +265,14 @@ void car_mode2_update_100HZ(uint32 now_ms)
     if((g_car_mode2_state.target_valid == 0U) ||
        (car_position_allowed == 0U))
     {
-        g_car_mode2_state.forward_zone = MODE2_ZONE_STOP;
-        g_car_mode2_state.strafe_zone = MODE2_ZONE_STOP;
+        car_mode2_pid_init();
+        g_car_mode2_state.distance_zone = MODE2_ZONE_STOP;
+        g_car_mode2_state.target_distance_px = 0.0f;
+        g_car_mode2_state.target_speed_mps = 0.0f;
+        g_car_mode2_state.forward_pid_output = 0.0f;
+        g_car_mode2_state.strafe_pid_output = 0.0f;
+        g_car_mode2_state.forward_ratio = 0.0f;
+        g_car_mode2_state.strafe_ratio = 0.0f;
         g_car_mode2_state.target_forward_mps = 0.0f;
         g_car_mode2_state.target_strafe_mps = 0.0f;
         car_mode2_update_limited_speed();
@@ -236,38 +281,43 @@ void car_mode2_update_100HZ(uint32 now_ms)
         return;
     }
 
-    delta_x = car_math_deadband(g_car_mode2_state.target_delta_x, mode2_image_target_deadband_px);
-    delta_y = car_math_deadband(g_car_mode2_state.target_delta_y, mode2_image_target_deadband_px);
+    delta_x = g_car_mode2_state.target_delta_x;
+    delta_y = g_car_mode2_state.target_delta_y;
+    g_car_mode2_state.target_distance_px = sqrtf((delta_x * delta_x) + (delta_y * delta_y));
 
-    forward_speed_mps =
-        car_mode2_segment_speed(delta_y,
-                                mode2_forward_mid_threshold_px,
-                                mode2_forward_far_threshold_px,
-                                mode2_forward_near_speed_mps,
-                                mode2_forward_mid_speed_mps,
-                                mode2_forward_far_speed_mps,
-                                &g_car_mode2_state.forward_zone);
-    strafe_speed_mps =
-        car_mode2_segment_speed(delta_x,
-                                mode2_strafe_mid_threshold_px,
-                                mode2_strafe_far_threshold_px,
-                                mode2_strafe_near_speed_mps,
-                                mode2_strafe_mid_speed_mps,
-                                mode2_strafe_far_speed_mps,
-                                &g_car_mode2_state.strafe_zone);
+    g_car_mode2_state.target_speed_mps =
+        car_mode2_distance_speed(g_car_mode2_state.target_distance_px,
+                                 &g_car_mode2_state.distance_zone);
 
-    g_car_mode2_state.target_forward_mps =
-        (delta_y > 0.0f) ? -forward_speed_mps : forward_speed_mps;
-    g_car_mode2_state.target_strafe_mps =
-        (delta_x > 0.0f) ? strafe_speed_mps : -strafe_speed_mps;
+    g_car_mode2_state.forward_pid_output =
+        PositionalPID_Update(&s_mode2_forward_pid, 0.0f, delta_y);
+    g_car_mode2_state.strafe_pid_output =
+        PositionalPID_Update(&s_mode2_strafe_pid, 0.0f, delta_x);
 
-    if(delta_y == 0.0f)
+    pid_norm = sqrtf((g_car_mode2_state.forward_pid_output *
+                      g_car_mode2_state.forward_pid_output) +
+                     (g_car_mode2_state.strafe_pid_output *
+                      g_car_mode2_state.strafe_pid_output));
+    if((g_car_mode2_state.target_speed_mps <= 0.0f) ||
+       (pid_norm <= MODE2_PID_VECTOR_NORM_MIN))
     {
+        g_car_mode2_state.forward_ratio = 0.0f;
+        g_car_mode2_state.strafe_ratio = 0.0f;
         g_car_mode2_state.target_forward_mps = 0.0f;
-    }
-    if(delta_x == 0.0f)
-    {
         g_car_mode2_state.target_strafe_mps = 0.0f;
+    }
+    else
+    {
+        g_car_mode2_state.forward_ratio =
+            g_car_mode2_state.forward_pid_output / pid_norm;
+        g_car_mode2_state.strafe_ratio =
+            -g_car_mode2_state.strafe_pid_output / pid_norm;
+        g_car_mode2_state.target_forward_mps =
+            g_car_mode2_state.target_speed_mps *
+            g_car_mode2_state.forward_ratio;
+        g_car_mode2_state.target_strafe_mps =
+            g_car_mode2_state.target_speed_mps *
+            g_car_mode2_state.strafe_ratio;
     }
 
     car_mode2_update_limited_speed();

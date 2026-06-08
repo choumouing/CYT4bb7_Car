@@ -39,16 +39,19 @@ float mode1_velocity_forward_ki = 0.0f;
 float mode1_velocity_forward_kd = 20.0f;
 
 float mode2_image_target_deadband_px = 0.0f;
-float mode2_forward_mid_threshold_px = 18.0f;
-float mode2_forward_far_threshold_px = 45.0f;
-float mode2_forward_near_speed_mps = 0.20f;
-float mode2_forward_mid_speed_mps = 0.45f;
-float mode2_forward_far_speed_mps = 0.70f;
-float mode2_strafe_mid_threshold_px = 18.0f;
-float mode2_strafe_far_threshold_px = 45.0f;
-float mode2_strafe_near_speed_mps = 0.20f;
-float mode2_strafe_mid_speed_mps = 0.45f;
-float mode2_strafe_far_speed_mps = 0.70f;
+float mode2_distance_mid_threshold_px = 30.0f;
+float mode2_distance_far_threshold_px = 60.0f;
+float mode2_distance_near_speed_mps = 0.5f;
+float mode2_distance_mid_speed_mps = 1.2f;
+float mode2_distance_far_speed_mps = 1.2f;
+float mode2_image_pid_output_limit = 300.0f;
+float mode2_image_i_limit = 0.0f;
+float mode2_image_strafe_kp = 1.0f;
+float mode2_image_strafe_ki = 0.0f;
+float mode2_image_strafe_kd = 0.0f;
+float mode2_image_forward_kp = 1.0f;
+float mode2_image_forward_ki = 0.0f;
+float mode2_image_forward_kd = 0.0f;
 float mode2_max_accel_mps2 = 3.00f;
 
 float s_curve_max_iter = 50.0f;
@@ -130,17 +133,20 @@ static menu_item_t mode1_velocity_pid_menu[] = {
 
 static menu_item_t mode2_image_segment_menu[] = {
     {"Deadband", MENU_TYPE_PARAMETER, .param_index = 25},
-    {"FMidPx", MENU_TYPE_PARAMETER, .param_index = 26},
-    {"FFarPx", MENU_TYPE_PARAMETER, .param_index = 27},
-    {"FNear", MENU_TYPE_PARAMETER, .param_index = 28},
-    {"FMid", MENU_TYPE_PARAMETER, .param_index = 29},
-    {"FFar", MENU_TYPE_PARAMETER, .param_index = 30},
-    {"SMidPx", MENU_TYPE_PARAMETER, .param_index = 31},
-    {"SFarPx", MENU_TYPE_PARAMETER, .param_index = 32},
-    {"SNear", MENU_TYPE_PARAMETER, .param_index = 33},
-    {"SMid", MENU_TYPE_PARAMETER, .param_index = 34},
-    {"SFar", MENU_TYPE_PARAMETER, .param_index = 35},
-    {"Accel", MENU_TYPE_PARAMETER, .param_index = 36},
+    {"DMidPx", MENU_TYPE_PARAMETER, .param_index = 26},
+    {"DFarPx", MENU_TYPE_PARAMETER, .param_index = 27},
+    {"DNear", MENU_TYPE_PARAMETER, .param_index = 28},
+    {"DMid", MENU_TYPE_PARAMETER, .param_index = 29},
+    {"DFar", MENU_TYPE_PARAMETER, .param_index = 30},
+    {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 31},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 32},
+    {"SKp", MENU_TYPE_PARAMETER, .param_index = 33},
+    {"SKi", MENU_TYPE_PARAMETER, .param_index = 34},
+    {"SKd", MENU_TYPE_PARAMETER, .param_index = 35},
+    {"FKp", MENU_TYPE_PARAMETER, .param_index = 36},
+    {"FKi", MENU_TYPE_PARAMETER, .param_index = 37},
+    {"FKd", MENU_TYPE_PARAMETER, .param_index = 38},
+    {"Accel", MENU_TYPE_PARAMETER, .param_index = 39},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -351,16 +357,19 @@ void menu_config_init(void)
     menu_register_param(&mode1_velocity_forward_kd, 1.0f, 0.0f, 500.0f);
 
     menu_register_param(&mode2_image_target_deadband_px, 0.5f, 0.0f, 50.0f);
-    menu_register_param(&mode2_forward_mid_threshold_px, 1.0f, 0.0f, 160.0f);
-    menu_register_param(&mode2_forward_far_threshold_px, 1.0f, 0.0f, 160.0f);
-    menu_register_param(&mode2_forward_near_speed_mps, 0.01f, 0.0f, 2.0f);
-    menu_register_param(&mode2_forward_mid_speed_mps, 0.01f, 0.0f, 2.0f);
-    menu_register_param(&mode2_forward_far_speed_mps, 0.01f, 0.0f, 2.0f);
-    menu_register_param(&mode2_strafe_mid_threshold_px, 1.0f, 0.0f, 160.0f);
-    menu_register_param(&mode2_strafe_far_threshold_px, 1.0f, 0.0f, 160.0f);
-    menu_register_param(&mode2_strafe_near_speed_mps, 0.01f, 0.0f, 2.0f);
-    menu_register_param(&mode2_strafe_mid_speed_mps, 0.01f, 0.0f, 2.0f);
-    menu_register_param(&mode2_strafe_far_speed_mps, 0.01f, 0.0f, 2.0f);
+    menu_register_param(&mode2_distance_mid_threshold_px, 1.0f, 0.0f, 220.0f);
+    menu_register_param(&mode2_distance_far_threshold_px, 1.0f, 0.0f, 220.0f);
+    menu_register_param(&mode2_distance_near_speed_mps, 0.01f, 0.0f, 2.0f);
+    menu_register_param(&mode2_distance_mid_speed_mps, 0.01f, 0.0f, 2.0f);
+    menu_register_param(&mode2_distance_far_speed_mps, 0.01f, 0.0f, 2.0f);
+    menu_register_param(&mode2_image_pid_output_limit, 10.0f, 0.0f, 1500.0f);
+    menu_register_param(&mode2_image_i_limit, 1.0f, 0.0f, 1000.0f);
+    menu_register_param(&mode2_image_strafe_kp, 0.1f, 0.0f, 500.0f);
+    menu_register_param(&mode2_image_strafe_ki, 0.01f, 0.0f, 500.0f);
+    menu_register_param(&mode2_image_strafe_kd, 0.1f, 0.0f, 500.0f);
+    menu_register_param(&mode2_image_forward_kp, 0.1f, 0.0f, 500.0f);
+    menu_register_param(&mode2_image_forward_ki, 0.01f, 0.0f, 500.0f);
+    menu_register_param(&mode2_image_forward_kd, 0.1f, 0.0f, 500.0f);
     menu_register_param(&mode2_max_accel_mps2, 0.05f, 0.0f, 5.0f);
 
     menu_air_support_init();

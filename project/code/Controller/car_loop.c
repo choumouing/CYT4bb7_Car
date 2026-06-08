@@ -333,14 +333,14 @@ static void car_loop_send_wifi_telemetry(void)
     data[30] = (float)g_car_mode2_state.car_position_in_center_window;
 
     data[31] = (float)g_car_mode2_state.output_valid;
-    data[32] = g_car_mode2_state.target_forward_mps;
-    data[33] = g_car_mode2_state.target_strafe_mps;
-    data[34] = g_car_mode2_state.limited_forward_mps;
-    data[35] = g_car_mode2_state.limited_strafe_mps;
-    data[36] = g_car_mode2_state.feedback_forward_mps;
-    data[37] = g_car_mode2_state.feedback_strafe_mps;
-    data[38] = (float)g_car_mode2_state.forward_zone;
-    data[39] = (float)g_car_mode2_state.strafe_zone;
+    data[32] = g_car_mode2_state.target_distance_px;
+    data[33] = g_car_mode2_state.target_speed_mps;
+    data[34] = g_car_mode2_state.target_forward_mps;
+    data[35] = g_car_mode2_state.target_strafe_mps;
+    data[36] = g_car_mode2_state.limited_forward_mps;
+    data[37] = g_car_mode2_state.limited_strafe_mps;
+    data[38] = g_car_mode2_state.feedback_forward_mps;
+    data[39] = g_car_mode2_state.feedback_strafe_mps;
 
     wifi_justfloat_Array(data, CAR_LOOP_WIFI_TELEMETRY_FLOAT_COUNT);
 }
