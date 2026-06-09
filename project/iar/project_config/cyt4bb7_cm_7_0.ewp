@@ -1189,6 +1189,15 @@
                     <name>$PROJ_DIR$\..\..\code\HW_Drivers\Beep\Beep.h</name>
                 </file>
             </group>
+            <group>
+                <name>WS2812</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\HW_Drivers\WS2812\WS2812.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\HW_Drivers\WS2812\WS2812.h</name>
+                </file>
+            </group>
         </group>
         <group>
             <name>Estimation</name>

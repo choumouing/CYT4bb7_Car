@@ -125,6 +125,7 @@
 #include "HW_Drivers/UWB/ALX_AOA.h"
 #include "HW_Drivers/CameraSpi/camera_spi_hw.h"
 #include "HW_Drivers/Beep/Beep.h"
+#include "HW_Drivers/WS2812/WS2812.h"
 
 #include "Protocols/CameraSpi/camera_spi.h"
 #include "Protocols/AirComm/air_comm_car.h"
