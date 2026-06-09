@@ -1413,7 +1413,7 @@
                         <name>$PROJ_DIR$\..\..\..\libraries\sdk\common\src\drivers\flash\cy_flash.c</name>
                     </file>
                     <file>
-                        <name>$PROJ_DIR$\..\..\..\libraries\sdk\tviibh4m\src\drivers\flash\cy_flash.h</name>
+                        <name>$PROJ_DIR$\..\..\..\libraries\sdk\common\src\drivers\flash\cy_flash.h</name>
                     </file>
                 </group>
                 <group>

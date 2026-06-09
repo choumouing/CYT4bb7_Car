@@ -1172,15 +1172,6 @@
                 </file>
             </group>
             <group>
-                <name>CameraSpi</name>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\HW_Drivers\CameraSpi\camera_spi_hw.c</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\HW_Drivers\CameraSpi\camera_spi_hw.h</name>
-                </file>
-            </group>
-            <group>
                 <name>Beep</name>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\HW_Drivers\Beep\Beep.c</name>
@@ -1256,15 +1247,6 @@
                 </file>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Estimation\Beacon_Detection\beacon_detection.h</name>
-                </file>
-            </group>
-            <group>
-                <name>Image</name>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Estimation\Image\beacon_fusion.c</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Estimation\Image\beacon_fusion.h</name>
                 </file>
             </group>
         </group>
@@ -1394,21 +1376,6 @@
                 </file>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Protocols\SBUS\sbus.h</name>
-                </file>
-            </group>
-            <group>
-                <name>CameraSpi</name>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Protocols\CameraSpi\camera_spi.c</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Protocols\CameraSpi\camera_spi.h</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Protocols\CameraSpi\camera_spi_protocol.h</name>
-                </file>
-                <file>
-                    <name>$PROJ_DIR$\..\..\code\Protocols\CameraSpi\camera_spi_types.h</name>
                 </file>
             </group>
             <group>
