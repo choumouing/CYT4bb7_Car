@@ -227,7 +227,8 @@ static void car_loop_camera_spi_update_100HZ(void)
     beacon_fusion_set_center_car_lamp(
         (uint8)g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.valid,
         g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.cx,
-        g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.cy);
+        g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.cy,
+        g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.angle);
     beacon_fusion_update_100HZ(camera);
 
     for (board_id = 0U; board_id < CAR_IMAGE_SPI_BOARD_COUNT; board_id++)

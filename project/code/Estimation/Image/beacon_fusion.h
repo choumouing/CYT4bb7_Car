@@ -35,6 +35,11 @@ typedef struct
     uint8 center_delta_valid;
     float center_delta_x;
     float center_delta_y;
+    float raw_center_delta_x;
+    float raw_center_delta_y;
+    uint8 lamp_angle_valid;
+    float lamp_angle_deg;
+    float transform_angle_deg;
     float area;
     uint8 missing_frame_count;
 } beacon_fusion_state_t;
@@ -43,7 +48,7 @@ extern beacon_fusion_state_t g_beacon_fusion;
 
 void beacon_fusion_init(void);
 void beacon_fusion_set_auto_max_count(uint8 max_count);
-void beacon_fusion_set_center_car_lamp(uint8 valid, float cx, float cy);
+void beacon_fusion_set_center_car_lamp(uint8 valid, float cx, float cy, float angle_deg);
 uint8 beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT]);
 
 #endif /* BEACON_FUSION_H */

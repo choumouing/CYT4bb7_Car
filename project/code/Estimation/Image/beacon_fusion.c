@@ -11,9 +11,11 @@
 #define TRACK_LOST_FRAME_LIMIT                (5U)
 #define TRACK_BOUNDARY_SWITCH_Y_EPS           (5.0f)
 #define TRACK_CENTER_SEARCH_RADIUS            (20.0f)
-#define BEACON_FUSION_CAR_LAMP_OFFSET_Y       (10.0f)
-#define BEACON_FUSION_CAR_LAMP_HOLD_FRAMES    (5U)
+#define BEACON_FUSION_CAR_LAMP_OFFSET_PX      (10.0f)
 #define BEACON_FUSION_CAR_LAMP_LPF_ALPHA      (0.2f)
+#define BEACON_FUSION_DEG_TO_RAD              (0.017453292519943295f)
+#define BEACON_FUSION_LAMP_LEVEL_ZERO_DEG     (0.0f)
+#define BEACON_FUSION_AIR_TO_CAR_ANGLE_SIGN   (1.0f)
 
 typedef struct
 {
@@ -43,10 +45,11 @@ static uint8 s_auto_max_count = BEACON_FUSION_CAMERA_TARGETS;
 static uint16 s_frame_id;
 static float s_car_lamp_ref_x;
 static float s_car_lamp_ref_y;
-static uint8 s_car_lamp_ref_valid;
-static uint8 s_car_lamp_missing_count;
+static float s_car_lamp_angle_deg;
+static uint8 s_car_lamp_angle_valid;
 static car_filter_lpf1_t s_car_lamp_filter_x;
 static car_filter_lpf1_t s_car_lamp_filter_y;
+static car_filter_lpf1_t s_car_lamp_filter_angle;
 
 static float beacon_fusion_square(float value)
 {
@@ -56,6 +59,109 @@ static float beacon_fusion_square(float value)
 static float beacon_fusion_abs(float value)
 {
     return (value < 0.0f) ? -value : value;
+}
+
+static float beacon_fusion_normalize_signed_lamp_angle_deg(float angle_deg)
+{
+    while(angle_deg >= 90.0f)
+    {
+        angle_deg -= 180.0f;
+    }
+
+    while(angle_deg < -90.0f)
+    {
+        angle_deg += 180.0f;
+    }
+
+    return angle_deg;
+}
+
+static float beacon_fusion_angle_diff_deg(float target_deg, float reference_deg)
+{
+    return beacon_fusion_normalize_signed_lamp_angle_deg(target_deg - reference_deg);
+}
+
+static float beacon_fusion_lpf_angle_deg(car_filter_lpf1_t *filter,
+                                         float measured_deg,
+                                         float alpha)
+{
+    float delta_deg;
+
+    if(filter == NULL)
+    {
+        return measured_deg;
+    }
+
+    if(alpha < 0.0f)
+    {
+        alpha = 0.0f;
+    }
+
+    if(alpha > 1.0f)
+    {
+        alpha = 1.0f;
+    }
+
+    if(filter->ready == 0U)
+    {
+        filter->value = beacon_fusion_normalize_signed_lamp_angle_deg(measured_deg);
+        filter->ready = 1U;
+        return filter->value;
+    }
+
+    delta_deg = beacon_fusion_angle_diff_deg(measured_deg, filter->value);
+    filter->value = beacon_fusion_normalize_signed_lamp_angle_deg(filter->value + (alpha * delta_deg));
+    return filter->value;
+}
+
+static void beacon_fusion_rotate_air_to_car(float air_x,
+                                            float air_y,
+                                            float angle_deg,
+                                            float *car_x,
+                                            float *car_y)
+{
+    const float angle_rad = angle_deg * BEACON_FUSION_DEG_TO_RAD;
+    const float cos_angle = cosf(angle_rad);
+    const float sin_angle = sinf(angle_rad);
+
+    if((car_x == NULL) || (car_y == NULL))
+    {
+        return;
+    }
+
+    *car_x = (cos_angle * air_x) + (sin_angle * air_y);
+    *car_y = (-sin_angle * air_x) + (cos_angle * air_y);
+}
+
+static void beacon_fusion_lamp_ref_from_center(float cx,
+                                               float cy,
+                                               float angle_deg,
+                                               float *ref_x,
+                                               float *ref_y)
+{
+    const float angle_rad = angle_deg * BEACON_FUSION_DEG_TO_RAD;
+    const float normal_x = -sinf(angle_rad);
+    const float normal_y = cosf(angle_rad);
+
+    if((ref_x == NULL) || (ref_y == NULL))
+    {
+        return;
+    }
+
+    *ref_x = cx + (BEACON_FUSION_CAR_LAMP_OFFSET_PX * normal_x);
+    *ref_y = cy + (BEACON_FUSION_CAR_LAMP_OFFSET_PX * normal_y);
+}
+
+static float beacon_fusion_transform_angle_deg(void)
+{
+    if(s_car_lamp_angle_valid == 0U)
+    {
+        return 0.0f;
+    }
+
+    return BEACON_FUSION_AIR_TO_CAR_ANGLE_SIGN *
+           beacon_fusion_angle_diff_deg(s_car_lamp_angle_deg,
+                                        BEACON_FUSION_LAMP_LEVEL_ZERO_DEG);
 }
 
 static float beacon_fusion_distance2(float lhs_x, float lhs_y, float rhs_x, float rhs_y)
@@ -117,10 +223,11 @@ static void beacon_fusion_reset_state(void)
     s_frame_id = 0U;
     s_car_lamp_ref_x = BEACON_FUSION_IMAGE_CENTER_X;
     s_car_lamp_ref_y = BEACON_FUSION_IMAGE_CENTER_Y;
-    s_car_lamp_ref_valid = 0U;
-    s_car_lamp_missing_count = BEACON_FUSION_CAR_LAMP_HOLD_FRAMES;
+    s_car_lamp_angle_deg = 0.0f;
+    s_car_lamp_angle_valid = 0U;
     s_car_lamp_filter_x.ready = 0U;
     s_car_lamp_filter_y.ready = 0U;
+    s_car_lamp_filter_angle.ready = 0U;
 }
 
 static beacon_fusion_candidate_t beacon_fusion_candidate_from_target(const beacon_fusion_target_t *target,
@@ -232,6 +339,11 @@ static void beacon_fusion_publish_point(const beacon_fusion_point_t *point)
         g_beacon_fusion.center_delta_valid = 0U;
         g_beacon_fusion.center_delta_x = 0.0f;
         g_beacon_fusion.center_delta_y = 0.0f;
+        g_beacon_fusion.raw_center_delta_x = 0.0f;
+        g_beacon_fusion.raw_center_delta_y = 0.0f;
+        g_beacon_fusion.lamp_angle_valid = s_car_lamp_angle_valid;
+        g_beacon_fusion.lamp_angle_deg = s_car_lamp_angle_deg;
+        g_beacon_fusion.transform_angle_deg = beacon_fusion_transform_angle_deg();
         g_beacon_fusion.area = 0.0f;
         g_beacon_fusion.missing_frame_count = s_missing_frame_count;
         return;
@@ -247,8 +359,24 @@ static void beacon_fusion_publish_point(const beacon_fusion_point_t *point)
     center_delta_y = 0.0f;
     g_beacon_fusion.center_delta_valid =
         beacon_fusion_calc_center_delta(point, &center_delta_x, &center_delta_y);
-    g_beacon_fusion.center_delta_x = center_delta_x;
-    g_beacon_fusion.center_delta_y = center_delta_y;
+    g_beacon_fusion.raw_center_delta_x = center_delta_x;
+    g_beacon_fusion.raw_center_delta_y = center_delta_y;
+    g_beacon_fusion.lamp_angle_valid = s_car_lamp_angle_valid;
+    g_beacon_fusion.lamp_angle_deg = s_car_lamp_angle_deg;
+    g_beacon_fusion.transform_angle_deg = beacon_fusion_transform_angle_deg();
+    if(g_beacon_fusion.center_delta_valid != 0U)
+    {
+        beacon_fusion_rotate_air_to_car(center_delta_x,
+                                        center_delta_y,
+                                        g_beacon_fusion.transform_angle_deg,
+                                        &g_beacon_fusion.center_delta_x,
+                                        &g_beacon_fusion.center_delta_y);
+    }
+    else
+    {
+        g_beacon_fusion.center_delta_x = 0.0f;
+        g_beacon_fusion.center_delta_y = 0.0f;
+    }
     g_beacon_fusion.area = point->area;
     g_beacon_fusion.missing_frame_count = s_missing_frame_count;
 }
@@ -463,33 +591,32 @@ void beacon_fusion_set_auto_max_count(uint8 max_count)
                        max_count;
 }
 
-void beacon_fusion_set_center_car_lamp(uint8 valid, float cx, float cy)
+void beacon_fusion_set_center_car_lamp(uint8 valid, float cx, float cy, float angle_deg)
 {
-    if(valid != 0U)
+    float normalized_angle;
+    float filtered_cx;
+    float filtered_cy;
+
+    if(valid == 0U)
     {
-        s_car_lamp_ref_x =
-            car_filter_lpf1_update(&s_car_lamp_filter_x, cx, BEACON_FUSION_CAR_LAMP_LPF_ALPHA);
-        s_car_lamp_ref_y =
-            car_filter_lpf1_update(&s_car_lamp_filter_y, cy, BEACON_FUSION_CAR_LAMP_LPF_ALPHA) +
-            BEACON_FUSION_CAR_LAMP_OFFSET_Y;
-        s_car_lamp_ref_valid = 1U;
-        s_car_lamp_missing_count = 0U;
+        return;
     }
-    else
-    {
-        if(s_car_lamp_missing_count < BEACON_FUSION_CAR_LAMP_HOLD_FRAMES)
-        {
-            s_car_lamp_missing_count++;
-        }
-        else
-        {
-            s_car_lamp_ref_x = BEACON_FUSION_IMAGE_CENTER_X;
-            s_car_lamp_ref_y = BEACON_FUSION_IMAGE_CENTER_Y;
-            s_car_lamp_ref_valid = 0U;
-            s_car_lamp_filter_x.ready = 0U;
-            s_car_lamp_filter_y.ready = 0U;
-        }
-    }
+
+    normalized_angle = beacon_fusion_normalize_signed_lamp_angle_deg(angle_deg);
+    s_car_lamp_angle_deg =
+        beacon_fusion_lpf_angle_deg(&s_car_lamp_filter_angle,
+                                    normalized_angle,
+                                    BEACON_FUSION_CAR_LAMP_LPF_ALPHA);
+    filtered_cx =
+        car_filter_lpf1_update(&s_car_lamp_filter_x, cx, BEACON_FUSION_CAR_LAMP_LPF_ALPHA);
+    filtered_cy =
+        car_filter_lpf1_update(&s_car_lamp_filter_y, cy, BEACON_FUSION_CAR_LAMP_LPF_ALPHA);
+    beacon_fusion_lamp_ref_from_center(filtered_cx,
+                                       filtered_cy,
+                                       s_car_lamp_angle_deg,
+                                       &s_car_lamp_ref_x,
+                                       &s_car_lamp_ref_y);
+    s_car_lamp_angle_valid = 1U;
 }
 
 uint8 beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT])
