@@ -241,6 +241,24 @@ static void car_loop_camera_spi_update_100HZ(void)
     }
 }
 
+static void car_loop_update_timestamp_100HZ(void)
+{
+    s_telemetry_timestamp_count++;
+    s_system_time_ms = s_telemetry_timestamp_count * 10U;
+}
+
+static void car_loop_update_wifi_telemetry_sources_100HZ(void)
+{
+    encoder_update_100HZ();
+    odometer_update_100HZ();
+    beacon_detection_update_100HZ();
+    fixator_update_100HZ();
+
+    CameraSpi_Poll();
+    car_loop_camera_spi_update_100HZ();
+    CameraSpi_Poll();
+}
+
 static void car_loop_runtime_reset(void)
 {
     timer_100HZ_flag = 0U;
@@ -357,20 +375,21 @@ static void car_loop_send_wifi_telemetry(void)
 
 static void car_loop_100HZ(void)
 {
+#if (CAR_GLOBAL_RUN_ENABLE != 0U)
     float car_data[10];
-
-#if (CAR_GLOBAL_RUN_ENABLE == 0U)
-    car_loop_force_motor_idle();
-    return;
 #endif
 
-    s_telemetry_timestamp_count++;
-    s_system_time_ms = s_telemetry_timestamp_count * 10U;
+    car_loop_update_timestamp_100HZ();
 
-    encoder_update_100HZ();
-    odometer_update_100HZ();
-    beacon_detection_update_100HZ();
-    fixator_update_100HZ();
+#if (CAR_GLOBAL_RUN_ENABLE == 0U)
+    car_loop_update_wifi_telemetry_sources_100HZ();
+    car_mode2_update_100HZ(s_system_time_ms);
+    car_loop_force_motor_idle();
+    car_loop_send_wifi_telemetry();
+    return;
+#else
+
+    car_loop_update_wifi_telemetry_sources_100HZ();
 
     if (g_beacon_detection.enter_event != 0U)
     {
@@ -380,10 +399,6 @@ static void car_loop_100HZ(void)
     {
         Beep_Disable();
     }
-
-    CameraSpi_Poll();
-    car_loop_camera_spi_update_100HZ();
-    CameraSpi_Poll();
 
     if ((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
     {
@@ -428,6 +443,7 @@ static void car_loop_100HZ(void)
 
 
     car_loop_send_wifi_telemetry();
+#endif
 
 
 

@@ -5,7 +5,6 @@
  */
 #include "car_mode.h"
 #include "car_loop.h"
-#include "Common/car_math.h"
 #include "Estimation/Image/beacon_fusion.h"
 #include "Estimation/Position/odometer.h"
 #include <math.h>
@@ -13,7 +12,7 @@
 #define MODE2_CENTER_CAMERA_INDEX          (BEACON_FUSION_CAMERA_CENTER)
 #define MODE2_CENTER_X                     (94.0f)
 #define MODE2_CENTER_Y                     (60.0f)
-#define MODE2_CAR_POSITION_WINDOW_HALF     (27.0f)
+#define MODE2_CAR_POSITION_WINDOW_RADIUS   (35.0f)
 
 #define MODE2_ZONE_STOP                    (0U)
 #define MODE2_ZONE_NEAR                    (1U)
@@ -111,8 +110,8 @@ static uint8 car_mode2_car_position_allowed(void)
 
     dx = lamp->cx - MODE2_CENTER_X;
     dy = lamp->cy - MODE2_CENTER_Y;
-    if((car_math_absf(dx) <= MODE2_CAR_POSITION_WINDOW_HALF) &&
-       (car_math_absf(dy) <= MODE2_CAR_POSITION_WINDOW_HALF))
+    if(((dx * dx) + (dy * dy)) <=
+       (MODE2_CAR_POSITION_WINDOW_RADIUS * MODE2_CAR_POSITION_WINDOW_RADIUS))
     {
         g_car_mode2_state.car_position_in_center_window = 1U;
         return 1U;
@@ -177,7 +176,9 @@ static float car_mode2_limit_speed_by_accel(float current_mps, float target_mps)
 {
     float max_accel = mode2_max_accel_mps2;
     float max_step;
-    float error;
+    float current_speed;
+    float target_speed;
+    float limited_speed;
 
     if(max_accel < 0.0f)
     {
@@ -185,15 +186,28 @@ static float car_mode2_limit_speed_by_accel(float current_mps, float target_mps)
     }
 
     max_step = max_accel * ODOMETER_UPDATE_DT_S;
-    error = target_mps - current_mps;
+    current_speed = fabsf(current_mps);
+    target_speed = fabsf(target_mps);
 
-    if(error > max_step)
+    if((current_mps * target_mps) < 0.0f)
     {
-        return current_mps + max_step;
+        if(target_speed > max_step)
+        {
+            return (target_mps > 0.0f) ? max_step : -max_step;
+        }
+
+        return target_mps;
     }
-    if(error < -max_step)
+
+    if(target_speed <= current_speed)
     {
-        return current_mps - max_step;
+        return target_mps;
+    }
+
+    if((target_speed - current_speed) > max_step)
+    {
+        limited_speed = current_speed + max_step;
+        return (target_mps >= 0.0f) ? limited_speed : -limited_speed;
     }
 
     return target_mps;
