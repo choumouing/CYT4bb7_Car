@@ -11,6 +11,10 @@
 #include "zf_common_headfile.h"
 #include "Protocols/CameraSpi/camera_spi_types.h"
 
+#ifndef CAR_GLOBAL_RUN_ENABLE
+#define CAR_GLOBAL_RUN_ENABLE (1U)
+#endif
+
 #define CAR_IMAGE_SPI_BOARD_COUNT (3U)
 #define CAR_IMAGE_SPI_TX_RAW_SIZE (12U)
 #define CAR_IMAGE_SPI_RAW_SIZE    CAMERA_SPI_IMAGE_TARGET_PACKET_SIZE

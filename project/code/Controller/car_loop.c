@@ -259,6 +259,15 @@ static void car_loop_runtime_reset(void)
     beacon_fusion_init();
 }
 
+static void car_loop_force_motor_idle(void)
+{
+    car_forward_target = 0.0f;
+    car_strafe_target = 0.0f;
+    car_control_enabled = 0U;
+    car_emergency_stop_active = 1U;
+    Control_Stop();
+}
+
 void car_loop_init(void)
 {
     car_loop_runtime_reset();
@@ -320,27 +329,28 @@ static void car_loop_send_wifi_telemetry(void)
     data[18] = (float)g_beacon_fusion.camera_id;
     data[19] = g_beacon_fusion.image_x;
     data[20] = g_beacon_fusion.image_y;
-    data[21] = g_beacon_fusion.center_delta_x;
-    data[22] = g_beacon_fusion.center_delta_y;
-    data[23] = g_beacon_fusion.area;
+    data[21] = g_beacon_fusion.area;
 
-    data[24] = (float)g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.valid;
-    data[25] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.cx;
-    data[26] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.cy;
-    data[27] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.width;
-    data[28] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.length;
-    data[29] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.angle;
-    data[30] = (float)g_car_mode2_state.car_position_in_center_window;
+    data[22] = (float)g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.valid;
+    data[23] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.cx;
+    data[24] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.cy;
+    data[25] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.width;
+    data[26] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.length;
+    data[27] = g_image_spi.board[BEACON_FUSION_CAMERA_CENTER].car_lamp.angle;
+    data[28] = (float)g_car_mode2_state.car_position_in_center_window;
 
-    data[31] = (float)g_car_mode2_state.output_valid;
-    data[32] = g_car_mode2_state.target_distance_px;
-    data[33] = g_car_mode2_state.target_speed_mps;
-    data[34] = g_car_mode2_state.target_forward_mps;
-    data[35] = g_car_mode2_state.target_strafe_mps;
-    data[36] = g_car_mode2_state.limited_forward_mps;
-    data[37] = g_car_mode2_state.limited_strafe_mps;
-    data[38] = g_car_mode2_state.feedback_forward_mps;
-    data[39] = g_car_mode2_state.feedback_strafe_mps;
+    data[29] = (float)g_car_mode2_state.output_valid;
+    data[30] = g_car_mode2_state.target_distance_px;
+    data[31] = g_car_mode2_state.target_speed_mps;
+    data[32] = g_car_mode2_state.target_forward_mps;
+    data[33] = g_car_mode2_state.target_strafe_mps;
+    data[34] = g_car_mode2_state.limited_forward_mps;
+    data[35] = g_car_mode2_state.limited_strafe_mps;
+    data[36] = g_car_mode2_state.feedback_forward_mps;
+    data[37] = g_car_mode2_state.feedback_strafe_mps;
+
+    data[38] = g_odometer.position[x];
+    data[39] = g_odometer.position[y];
 
     wifi_justfloat_Array(data, CAR_LOOP_WIFI_TELEMETRY_FLOAT_COUNT);
 }
@@ -348,6 +358,11 @@ static void car_loop_send_wifi_telemetry(void)
 static void car_loop_100HZ(void)
 {
     float car_data[10];
+
+#if (CAR_GLOBAL_RUN_ENABLE == 0U)
+    car_loop_force_motor_idle();
+    return;
+#endif
 
     s_telemetry_timestamp_count++;
     s_system_time_ms = s_telemetry_timestamp_count * 10U;
@@ -412,7 +427,7 @@ static void car_loop_100HZ(void)
     air_comm_send_run_data(car_data, 10);
 
 
-    //car_loop_send_wifi_telemetry();
+    car_loop_send_wifi_telemetry();
 
 
 
