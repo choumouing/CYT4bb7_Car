@@ -45,6 +45,7 @@ static uint8 s_auto_max_count = BEACON_FUSION_CAMERA_TARGETS;
 static uint16 s_frame_id;
 static float s_car_lamp_ref_x;
 static float s_car_lamp_ref_y;
+static uint8 s_car_lamp_ref_valid;
 static float s_car_lamp_angle_deg;
 static uint8 s_car_lamp_angle_valid;
 static car_filter_lpf1_t s_car_lamp_filter_x;
@@ -223,6 +224,7 @@ static void beacon_fusion_reset_state(void)
     s_frame_id = 0U;
     s_car_lamp_ref_x = BEACON_FUSION_IMAGE_CENTER_X;
     s_car_lamp_ref_y = BEACON_FUSION_IMAGE_CENTER_Y;
+    s_car_lamp_ref_valid = 0U;
     s_car_lamp_angle_deg = 0.0f;
     s_car_lamp_angle_valid = 0U;
     s_car_lamp_filter_x.ready = 0U;
@@ -599,6 +601,7 @@ void beacon_fusion_set_center_car_lamp(uint8 valid, float cx, float cy, float an
 
     if(valid == 0U)
     {
+        s_car_lamp_ref_valid = 0U;
         return;
     }
 
@@ -616,7 +619,20 @@ void beacon_fusion_set_center_car_lamp(uint8 valid, float cx, float cy, float an
                                        s_car_lamp_angle_deg,
                                        &s_car_lamp_ref_x,
                                        &s_car_lamp_ref_y);
+    s_car_lamp_ref_valid = 1U;
     s_car_lamp_angle_valid = 1U;
+}
+
+uint8 beacon_fusion_get_center_car_lamp_ref(float *ref_x, float *ref_y)
+{
+    if((ref_x == NULL) || (ref_y == NULL) || (s_car_lamp_ref_valid == 0U))
+    {
+        return 0U;
+    }
+
+    *ref_x = s_car_lamp_ref_x;
+    *ref_y = s_car_lamp_ref_y;
+    return 1U;
 }
 
 uint8 beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT])

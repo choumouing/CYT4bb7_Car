@@ -49,6 +49,7 @@ extern beacon_fusion_state_t g_beacon_fusion;
 void beacon_fusion_init(void);
 void beacon_fusion_set_auto_max_count(uint8 max_count);
 void beacon_fusion_set_center_car_lamp(uint8 valid, float cx, float cy, float angle_deg);
+uint8 beacon_fusion_get_center_car_lamp_ref(float *ref_x, float *ref_y);
 uint8 beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACON_FUSION_CAMERA_COUNT]);
 
 #endif /* BEACON_FUSION_H */
