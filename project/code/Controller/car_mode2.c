@@ -12,8 +12,8 @@
 #define MODE2_CENTER_CAMERA_INDEX          (BEACON_FUSION_CAMERA_CENTER)
 #define MODE2_CENTER_X                     (94.0f)
 #define MODE2_CENTER_Y                     (60.0f)
-#define MODE2_CAR_POSITION_WINDOW_RADIUS   (35.0f)
-#define MODE2_RECOVERY_TAN_15_DEG          (0.26794919243f)
+#define MODE2_CAR_POSITION_WINDOW_RADIUS   (30.0f)
+#define MODE2_RECOVERY_ANGLE_DEG           (45.0f)
 #define MODE2_VECTOR_NORM2_MIN             (1.0e-6f)
 
 #define MODE2_ZONE_STOP                    (0U)
@@ -21,6 +21,7 @@
 #define MODE2_ZONE_MID                     (2U)
 #define MODE2_ZONE_FAR                     (3U)
 #define MODE2_PID_VECTOR_NORM_MIN          (0.001f)
+
 
 car_mode2_state_t g_car_mode2_state = {0};
 
@@ -101,6 +102,7 @@ static uint8 car_mode2_recovery_direction_allowed(float ref_x, float ref_y)
     float center_y;
     float dot;
     float cross;
+    float angle_tan;
 
     if(g_beacon_fusion.center_delta_valid == 0U)
     {
@@ -133,7 +135,8 @@ static uint8 car_mode2_recovery_direction_allowed(float ref_x, float ref_y)
         cross = -cross;
     }
 
-    return (cross <= (dot * MODE2_RECOVERY_TAN_15_DEG)) ? 1U : 0U;
+    angle_tan = tanf(MODE2_RECOVERY_ANGLE_DEG * 0.01745329252f);
+    return (cross <= (dot * angle_tan)) ? 1U : 0U;
 }
 static uint8 car_mode2_car_position_allowed(void)
 {
@@ -144,10 +147,10 @@ static uint8 car_mode2_car_position_allowed(void)
     float dx;
     float dy;
 
-    g_car_mode2_state.car_position_valid = lamp->valid;
+    g_car_mode2_state.car_position_valid =
+        beacon_fusion_get_center_car_lamp_ref(&ref_x, &ref_y);
 
-    if((lamp->valid == 0U) ||
-       (beacon_fusion_get_center_car_lamp_ref(&ref_x, &ref_y) == 0U))
+    if(g_car_mode2_state.car_position_valid == 0U)
     {
         g_car_mode2_state.car_position_x = lamp->cx;
         g_car_mode2_state.car_position_y = lamp->cy;

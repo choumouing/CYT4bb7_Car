@@ -11,8 +11,9 @@
 #define TRACK_LOST_FRAME_LIMIT                (5U)
 #define TRACK_BOUNDARY_SWITCH_Y_EPS           (5.0f)
 #define TRACK_CENTER_SEARCH_RADIUS            (20.0f)
-#define BEACON_FUSION_CAR_LAMP_OFFSET_PX      (10.0f)
+#define BEACON_FUSION_CAR_LAMP_OFFSET_PX      (15.0f)
 #define BEACON_FUSION_CAR_LAMP_LPF_ALPHA      (0.2f)
+#define BEACON_FUSION_CAR_LAMP_HOLD_FRAME_LIMIT (5U)
 #define BEACON_FUSION_DEG_TO_RAD              (0.017453292519943295f)
 #define BEACON_FUSION_LAMP_LEVEL_ZERO_DEG     (0.0f)
 #define BEACON_FUSION_AIR_TO_CAR_ANGLE_SIGN   (1.0f)
@@ -48,6 +49,7 @@ static float s_car_lamp_ref_y;
 static uint8 s_car_lamp_ref_valid;
 static float s_car_lamp_angle_deg;
 static uint8 s_car_lamp_angle_valid;
+static uint8 s_car_lamp_invalid_frame_count;
 static car_filter_lpf1_t s_car_lamp_filter_x;
 static car_filter_lpf1_t s_car_lamp_filter_y;
 static car_filter_lpf1_t s_car_lamp_filter_angle;
@@ -227,6 +229,7 @@ static void beacon_fusion_reset_state(void)
     s_car_lamp_ref_valid = 0U;
     s_car_lamp_angle_deg = 0.0f;
     s_car_lamp_angle_valid = 0U;
+    s_car_lamp_invalid_frame_count = 0U;
     s_car_lamp_filter_x.ready = 0U;
     s_car_lamp_filter_y.ready = 0U;
     s_car_lamp_filter_angle.ready = 0U;
@@ -601,9 +604,22 @@ void beacon_fusion_set_center_car_lamp(uint8 valid, float cx, float cy, float an
 
     if(valid == 0U)
     {
+        if(s_car_lamp_invalid_frame_count <= BEACON_FUSION_CAR_LAMP_HOLD_FRAME_LIMIT)
+        {
+            s_car_lamp_invalid_frame_count++;
+        }
+
+        if((s_car_lamp_ref_valid != 0U) &&
+           (s_car_lamp_invalid_frame_count <= BEACON_FUSION_CAR_LAMP_HOLD_FRAME_LIMIT))
+        {
+            return;
+        }
+
         s_car_lamp_ref_valid = 0U;
         return;
     }
+
+    s_car_lamp_invalid_frame_count = 0U;
 
     normalized_angle = beacon_fusion_normalize_signed_lamp_angle_deg(angle_deg);
     s_car_lamp_angle_deg =
