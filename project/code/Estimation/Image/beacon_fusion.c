@@ -11,7 +11,7 @@
 #define TRACK_LOST_FRAME_LIMIT                (5U)
 #define TRACK_BOUNDARY_SWITCH_Y_EPS           (5.0f)
 #define TRACK_CENTER_SEARCH_RADIUS            (20.0f)
-#define BEACON_FUSION_CAR_LAMP_OFFSET_PX      (15.0f)
+#define BEACON_FUSION_CAR_LAMP_OFFSET_PX      (13.0f)
 #define BEACON_FUSION_CAR_LAMP_LPF_ALPHA      (0.2f)
 #define BEACON_FUSION_CAR_LAMP_HOLD_FRAME_LIMIT (5U)
 #define BEACON_FUSION_DEG_TO_RAD              (0.017453292519943295f)
@@ -684,14 +684,6 @@ uint8 beacon_fusion_update_100HZ(const beacon_fusion_camera_frame_t camera[BEACO
             next_point = center_point;
         }
 
-        beacon_fusion_store_last_point(&next_point);
-        s_missing_frame_count = 0U;
-        beacon_fusion_publish_point(&next_point);
-        return 1U;
-    }
-
-    if(beacon_fusion_try_switch_to_center(camera, &s_last_point, s_frame_id, &next_point) != 0U)
-    {
         beacon_fusion_store_last_point(&next_point);
         s_missing_frame_count = 0U;
         beacon_fusion_publish_point(&next_point);
