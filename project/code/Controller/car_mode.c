@@ -124,8 +124,17 @@ void car_mode_update_100HZ(uint32 now_ms)
         return;
     }
 
-    if(CAR_MODE_1 == s_car_mode)
+    switch(s_car_mode)
     {
+    case CAR_MODE_1:
         car_mode1_update_100HZ(now_ms);
+        break;
+
+    case CAR_MODE_2:
+        car_mode2_update_100HZ(now_ms);
+        break;
+
+    default:
+        break;
     }
 }

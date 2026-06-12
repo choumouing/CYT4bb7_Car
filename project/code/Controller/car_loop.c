@@ -26,10 +26,7 @@ volatile float g_air_euler_pitch;
 volatile float g_air_euler_yaw;
 volatile float g_air_pos_est_vel_x;
 volatile float g_air_pos_est_vel_y;
-volatile float g_air_state;
-volatile float g_air_reserved0;
-volatile float g_air_reserved1;
-volatile float g_air_reserved2;
+volatile float g_air_crsf_link_up;
 volatile float g_air_crsf_std_ch0;
 volatile float g_air_crsf_std_ch1;
 volatile float g_air_crsf_std_ch2;
@@ -38,8 +35,14 @@ volatile float g_air_crsf_std_ch4;
 volatile float g_air_crsf_std_ch5;
 volatile float g_air_crsf_std_ch6;
 volatile float g_air_crsf_std_ch7;
+volatile float g_air_mode2_target_valid;
+volatile float g_air_mode2_target_x;
+volatile float g_air_mode2_target_y;
+volatile float g_air_mode2_car_lamp_valid;
+volatile float g_air_mode2_car_lamp_cx;
+volatile float g_air_mode2_car_lamp_cy;
+volatile float g_air_mode2_lamp_angle_deg;
 
-#define AIR_RUN_DATA_BASE_COUNT (7U)
 #define AIR_RUN_DATA_CRSF_COUNT (15U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
@@ -47,7 +50,7 @@ volatile float g_air_crsf_std_ch7;
 #define AIR_RUN_DATA_EULER_YAW (3U)
 #define AIR_RUN_DATA_POS_EST_VEL_X (4U)
 #define AIR_RUN_DATA_POS_EST_VEL_Y (5U)
-#define AIR_RUN_DATA_STATE (6U)
+#define AIR_RUN_DATA_CRSF_LINK_UP (6U)
 #define AIR_RUN_DATA_CRSF_STD_CH0 (7U)
 #define AIR_RUN_DATA_CRSF_STD_CH1 (8U)
 #define AIR_RUN_DATA_CRSF_STD_CH2 (9U)
@@ -56,6 +59,14 @@ volatile float g_air_crsf_std_ch7;
 #define AIR_RUN_DATA_CRSF_STD_CH5 (12U)
 #define AIR_RUN_DATA_CRSF_STD_CH6 (13U)
 #define AIR_RUN_DATA_CRSF_STD_CH7 (14U)
+#define AIR_RUN_DATA_MODE2_COUNT (22U)
+#define AIR_RUN_DATA_MODE2_TARGET_VALID (15U)
+#define AIR_RUN_DATA_MODE2_TARGET_X (16U)
+#define AIR_RUN_DATA_MODE2_TARGET_Y (17U)
+#define AIR_RUN_DATA_MODE2_CAR_LAMP_VALID (18U)
+#define AIR_RUN_DATA_MODE2_CAR_LAMP_CX (19U)
+#define AIR_RUN_DATA_MODE2_CAR_LAMP_CY (20U)
+#define AIR_RUN_DATA_MODE2_LAMP_ANGLE_DEG (21U)
 
 static void on_air_data(const float *data, uint8 count)
 {
@@ -64,21 +75,42 @@ static void on_air_data(const float *data, uint8 count)
         return;
     }
 
-    g_air_tof_fused_height_mm = data[0];
-    g_air_euler_roll = data[1];
-    g_air_euler_pitch = data[2];
-    g_air_euler_yaw = data[3];
-    g_air_pos_est_vel_x = data[4];
-    g_air_pos_est_vel_y = data[5];
-    g_air_state = data[6];
-    g_air_crsf_std_ch0 = data[7];
-    g_air_crsf_std_ch1 = data[8];
-    g_air_crsf_std_ch2 = data[9];
-    g_air_crsf_std_ch3 = data[10];
-    g_air_crsf_std_ch4 = data[11];
-    g_air_crsf_std_ch5 = data[12];
-    g_air_crsf_std_ch6 = data[13];
-    g_air_crsf_std_ch7 = data[14];
+    g_air_tof_fused_height_mm = data[AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM];
+    g_air_euler_roll = data[AIR_RUN_DATA_EULER_ROLL];
+    g_air_euler_pitch = data[AIR_RUN_DATA_EULER_PITCH];
+    g_air_euler_yaw = data[AIR_RUN_DATA_EULER_YAW];
+    g_air_pos_est_vel_x = data[AIR_RUN_DATA_POS_EST_VEL_X];
+    g_air_pos_est_vel_y = data[AIR_RUN_DATA_POS_EST_VEL_Y];
+    g_air_crsf_link_up = data[AIR_RUN_DATA_CRSF_LINK_UP];
+    g_air_crsf_std_ch0 = data[AIR_RUN_DATA_CRSF_STD_CH0];
+    g_air_crsf_std_ch1 = data[AIR_RUN_DATA_CRSF_STD_CH1];
+    g_air_crsf_std_ch2 = data[AIR_RUN_DATA_CRSF_STD_CH2];
+    g_air_crsf_std_ch3 = data[AIR_RUN_DATA_CRSF_STD_CH3];
+    g_air_crsf_std_ch4 = data[AIR_RUN_DATA_CRSF_STD_CH4];
+    g_air_crsf_std_ch5 = data[AIR_RUN_DATA_CRSF_STD_CH5];
+    g_air_crsf_std_ch6 = data[AIR_RUN_DATA_CRSF_STD_CH6];
+    g_air_crsf_std_ch7 = data[AIR_RUN_DATA_CRSF_STD_CH7];
+
+    if(count >= AIR_RUN_DATA_MODE2_COUNT)
+    {
+        g_air_mode2_target_valid = data[AIR_RUN_DATA_MODE2_TARGET_VALID];
+        g_air_mode2_target_x = data[AIR_RUN_DATA_MODE2_TARGET_X];
+        g_air_mode2_target_y = data[AIR_RUN_DATA_MODE2_TARGET_Y];
+        g_air_mode2_car_lamp_valid = data[AIR_RUN_DATA_MODE2_CAR_LAMP_VALID];
+        g_air_mode2_car_lamp_cx = data[AIR_RUN_DATA_MODE2_CAR_LAMP_CX];
+        g_air_mode2_car_lamp_cy = data[AIR_RUN_DATA_MODE2_CAR_LAMP_CY];
+        g_air_mode2_lamp_angle_deg = data[AIR_RUN_DATA_MODE2_LAMP_ANGLE_DEG];
+    }
+    else
+    {
+        g_air_mode2_target_valid = 0.0f;
+        g_air_mode2_target_x = 0.0f;
+        g_air_mode2_target_y = 0.0f;
+        g_air_mode2_car_lamp_valid = 0.0f;
+        g_air_mode2_car_lamp_cx = 0.0f;
+        g_air_mode2_car_lamp_cy = 0.0f;
+        g_air_mode2_lamp_angle_deg = 0.0f;
+    }
 }
 
 static void car_loop_runtime_reset(void)
@@ -167,7 +199,6 @@ static void car_loop_100HZ(void)
 
     car_mode_update_100HZ(s_system_time_ms);
 
-
     // 如果车机串口通信离线,车端的蜂鸣器报警,为1s的鸣叫,1s的停止
     if (air_comm_car_is_online() == 0U)
     {
@@ -217,7 +248,7 @@ static void car_loop_100HZ(void)
     //             g_air_euler_yaw,
     //             g_air_pos_est_vel_x,
     //             g_air_pos_est_vel_y,
-    //             g_air_state,
+    //             g_air_crsf_link_up,
     //             g_air_crsf_std_ch0,
     //             g_air_crsf_std_ch1,
     //             g_air_crsf_std_ch2,
