@@ -38,9 +38,17 @@ volatile float g_air_crsf_std_ch4;
 volatile float g_air_crsf_std_ch5;
 volatile float g_air_crsf_std_ch6;
 volatile float g_air_crsf_std_ch7;
+volatile float g_air_mode2_target_valid;
+volatile float g_air_mode2_target_x;
+volatile float g_air_mode2_target_y;
+volatile float g_air_mode2_car_lamp_valid;
+volatile float g_air_mode2_car_lamp_cx;
+volatile float g_air_mode2_car_lamp_cy;
+volatile float g_air_mode2_lamp_angle_deg;
 
 #define AIR_RUN_DATA_BASE_COUNT (7U)
 #define AIR_RUN_DATA_CRSF_COUNT (15U)
+#define AIR_RUN_DATA_MODE2_COUNT (22U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -56,6 +64,13 @@ volatile float g_air_crsf_std_ch7;
 #define AIR_RUN_DATA_CRSF_STD_CH5 (12U)
 #define AIR_RUN_DATA_CRSF_STD_CH6 (13U)
 #define AIR_RUN_DATA_CRSF_STD_CH7 (14U)
+#define AIR_RUN_DATA_MODE2_TARGET_VALID (15U)
+#define AIR_RUN_DATA_MODE2_TARGET_X (16U)
+#define AIR_RUN_DATA_MODE2_TARGET_Y (17U)
+#define AIR_RUN_DATA_MODE2_CAR_LAMP_VALID (18U)
+#define AIR_RUN_DATA_MODE2_CAR_LAMP_CX (19U)
+#define AIR_RUN_DATA_MODE2_CAR_LAMP_CY (20U)
+#define AIR_RUN_DATA_MODE2_LAMP_ANGLE_DEG (21U)
 
 static void on_air_data(const float *data, uint8 count)
 {
@@ -79,6 +94,27 @@ static void on_air_data(const float *data, uint8 count)
     g_air_crsf_std_ch5 = data[12];
     g_air_crsf_std_ch6 = data[13];
     g_air_crsf_std_ch7 = data[14];
+
+    if(count >= AIR_RUN_DATA_MODE2_COUNT)
+    {
+        g_air_mode2_target_valid = data[AIR_RUN_DATA_MODE2_TARGET_VALID];
+        g_air_mode2_target_x = data[AIR_RUN_DATA_MODE2_TARGET_X];
+        g_air_mode2_target_y = data[AIR_RUN_DATA_MODE2_TARGET_Y];
+        g_air_mode2_car_lamp_valid = data[AIR_RUN_DATA_MODE2_CAR_LAMP_VALID];
+        g_air_mode2_car_lamp_cx = data[AIR_RUN_DATA_MODE2_CAR_LAMP_CX];
+        g_air_mode2_car_lamp_cy = data[AIR_RUN_DATA_MODE2_CAR_LAMP_CY];
+        g_air_mode2_lamp_angle_deg = data[AIR_RUN_DATA_MODE2_LAMP_ANGLE_DEG];
+    }
+    else
+    {
+        g_air_mode2_target_valid = 0.0f;
+        g_air_mode2_target_x = 0.0f;
+        g_air_mode2_target_y = 0.0f;
+        g_air_mode2_car_lamp_valid = 0.0f;
+        g_air_mode2_car_lamp_cx = 0.0f;
+        g_air_mode2_car_lamp_cy = 0.0f;
+        g_air_mode2_lamp_angle_deg = 0.0f;
+    }
 }
 
 static void car_loop_runtime_reset(void)

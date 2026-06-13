@@ -45,6 +45,15 @@ extern volatile float g_air_crsf_std_ch5;
 extern volatile float g_air_crsf_std_ch6;
 extern volatile float g_air_crsf_std_ch7;
 
+/* Mode2 图像处理结果（来自 AIR 核0 串口转发） */
+extern volatile float g_air_mode2_target_valid;
+extern volatile float g_air_mode2_target_x;
+extern volatile float g_air_mode2_target_y;
+extern volatile float g_air_mode2_car_lamp_valid;
+extern volatile float g_air_mode2_car_lamp_cx;
+extern volatile float g_air_mode2_car_lamp_cy;
+extern volatile float g_air_mode2_lamp_angle_deg;
+
 /* 初始化：清零所有状态和标志位 */
 void car_loop_init(void);
 /* 主循环轮询：内部按 1000/100/25Hz 分频执行各周期任务 */
