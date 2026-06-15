@@ -211,6 +211,24 @@ static void car_loop_100HZ(void)
     car_data[9] = 0.0f;
     air_comm_send_run_data(car_data, 10);
 
+    {
+        air_comm_stats_t stats;
+
+        air_comm_car_get_stats(&stats);
+        wifi_justfloat(2.0f,
+                       stats.tick_ms,
+                       stats.tx_frame_count,
+                       stats.rx_frame_count,
+                       stats.rx_raw_byte_count,
+                       stats.rx_byte_count,
+                       stats.heartbeat_tx_count,
+                       stats.heartbeat_rx_count,
+                       stats.crc_error_count,
+                       stats.rx_oversize_count,
+                       stats.rx_queue_overflow_count,
+                       stats.online_status);
+    }
+
     // wifi_justfloat(g_air_tof_fused_height_mm,
     //             g_air_euler_roll,
     //             g_air_euler_pitch,
