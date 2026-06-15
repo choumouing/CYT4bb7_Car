@@ -29,7 +29,7 @@
 
 /* ===== 帧尺寸 ===== */
 #define AIR_COMM_MAX_PAYLOAD               (250U)  /* payload 最大字节数 */
-#define AIR_COMM_FRAME_OVERHEAD            (9U)    /* 帧开销：head(4)+type(1)+seq(1)+len(1)+crc(2) */
+#define AIR_COMM_FRAME_OVERHEAD            (10U)    /* 帧开销：head(4)+src(1)+type(1)+seq(1)+len(1)+crc(2) */
 #define AIR_COMM_MAX_FRAME                 (AIR_COMM_MAX_PAYLOAD + AIR_COMM_FRAME_OVERHEAD)
 
 /* ===== 接收队列 ===== */
@@ -48,6 +48,8 @@
 #define COMM_MAX_RETRY                     (3U)    /* 最大重试次数 */
 #define COMM_HEARTBEAT_MS                  (200U)  /* 心跳发送间隔（ms） */
 #define COMM_OFFLINE_MS                    (600U)  /* 对端离线判定阈值（ms） */
+#define AIR_COMM_SIDE_AIR                  (1U)
+#define AIR_COMM_SIDE_CAR                  (2U)
 
 /* ===== 内部结构体 ===== */
 
@@ -58,6 +60,7 @@
 typedef struct
 {
     uint8 state;                        /* 状态机状态：0=帧头, 1=信息, 2=payload, 3=CRC */
+    uint8 src;                          /* source side */
     uint8 header_count;                 /* 帧头匹配进度 / 信息字段进度 */
     uint8 type;                         /* 消息类型 */
     uint8 seq;                          /* 帧序号 */
@@ -109,6 +112,8 @@ static uint8 s_air_comm_last_run_data_valid;
 static volatile uint32 s_air_comm_tick_ms;          /* 1ms tick（中断修改） */
 static uint32 s_air_comm_last_peer_ms;              /* 最近一次收到对端心跳的时间 */
 static uint32 s_air_comm_last_heartbeat_ms;         /* 最近一次发送心跳的时间 */
+static uint8 s_air_comm_peer_seq_valid = 0U;
+static uint8 s_air_comm_last_peer_seq = 0U;
 static uint8 s_air_comm_seq;                        /* 下一个发送帧的序号 */
 static uint8 s_air_comm_initialized;                /* 初始化标志 */
 static float s_air_comm_last_ack_value;
@@ -354,6 +359,7 @@ static uint8 air_comm_send_frame(uint8 type,
     frame[pos++] = AIR_COMM_HEADER_2;
     frame[pos++] = AIR_COMM_HEADER_3;
     /* 帧信息 */
+    frame[pos++] = AIR_COMM_SIDE_CAR;
     frame[pos++] = type;
     frame[pos++] = seq;
     frame[pos++] = len;
@@ -604,15 +610,30 @@ static void air_comm_handle_frame(uint8 type,
             break;
 
         case AIR_COMM_MSG_HEARTBEAT:
-            s_air_comm_stats.heartbeat_rx_count++;
-            air_comm_mark_peer_heartbeat();
+            if(len == 6U)
+            {
+                s_air_comm_stats.heartbeat_rx_count++;
+                air_comm_mark_peer_heartbeat();
+            }
+            else
+            {
+                s_air_comm_stats.invalid_len_count++;
+            }
             break;
 
         case AIR_COMM_MSG_RUN_DATA:
-            air_comm_handle_run_data(payload, len);
+            if((len >= 1U) && ((((uint8)payload[0] * 4U) + 1U) == len))
+            {
+                air_comm_handle_run_data(payload, len);
+            }
+            else
+            {
+                s_air_comm_stats.invalid_len_count++;
+            }
             break;
 
         default:
+            s_air_comm_stats.invalid_type_count++;
             break;
     }
 }
@@ -637,6 +658,7 @@ static void air_comm_process_rx_frame(void)
     frame[pos++] = AIR_COMM_HEADER_1;
     frame[pos++] = AIR_COMM_HEADER_2;
     frame[pos++] = AIR_COMM_HEADER_3;
+    frame[pos++] = s_air_comm_rx.src;
     frame[pos++] = s_air_comm_rx.type;
     frame[pos++] = s_air_comm_rx.seq;
     frame[pos++] = s_air_comm_rx.len;
@@ -652,8 +674,27 @@ static void air_comm_process_rx_frame(void)
     if(crc_calc != s_air_comm_rx.crc)
     {
         s_air_comm_stats.crc_error_count++;
+        s_air_comm_stats.resync_count++;
         return;
     }
+
+    if(s_air_comm_rx.src == AIR_COMM_SIDE_CAR)
+    {
+        s_air_comm_stats.self_frame_count++;
+        return;
+    }
+    if(s_air_comm_rx.src != AIR_COMM_SIDE_AIR)
+    {
+        s_air_comm_stats.foreign_frame_count++;
+        return;
+    }
+    if((s_air_comm_peer_seq_valid != 0U) &&
+       ((uint8)(s_air_comm_last_peer_seq + 1U) != s_air_comm_rx.seq))
+    {
+        s_air_comm_stats.peer_seq_gap_count++;
+    }
+    s_air_comm_peer_seq_valid = 1U;
+    s_air_comm_last_peer_seq = s_air_comm_rx.seq;
 
     s_air_comm_stats.rx_frame_count++;
     s_air_comm_stats.rx_byte_count += (uint32)(pos + 2U);
@@ -661,6 +702,19 @@ static void air_comm_process_rx_frame(void)
                           s_air_comm_rx.seq,
                           s_air_comm_rx.payload,
                           s_air_comm_rx.len);
+}
+
+static void air_comm_rx_parser_reset(void)
+{
+    s_air_comm_rx.state = 0U;
+    s_air_comm_rx.src = 0U;
+    s_air_comm_rx.header_count = 0U;
+    s_air_comm_rx.type = 0U;
+    s_air_comm_rx.seq = 0U;
+    s_air_comm_rx.len = 0U;
+    s_air_comm_rx.payload_count = 0U;
+    s_air_comm_rx.crc = 0U;
+    s_air_comm_rx.crc_count = 0U;
 }
 
 /**
@@ -722,13 +776,18 @@ static void air_comm_rx_byte_parser(uint8 byte)
         case 1: /* 帧信息：type → seq → len */
             if(s_air_comm_rx.header_count == 0U)
             {
-                s_air_comm_rx.type = byte;
+                s_air_comm_rx.src = byte;
                 s_air_comm_rx.header_count = 1U;
             }
             else if(s_air_comm_rx.header_count == 1U)
             {
-                s_air_comm_rx.seq = byte;
+                s_air_comm_rx.type = byte;
                 s_air_comm_rx.header_count = 2U;
+            }
+            else if(s_air_comm_rx.header_count == 2U)
+            {
+                s_air_comm_rx.seq = byte;
+                s_air_comm_rx.header_count = 3U;
             }
             else
             {
@@ -739,7 +798,8 @@ static void air_comm_rx_byte_parser(uint8 byte)
                 {
                     /* payload 超限：丢弃 */
                     s_air_comm_stats.rx_oversize_count++;
-                    s_air_comm_rx.state = 0U;
+                    s_air_comm_stats.resync_count++;
+                    air_comm_rx_parser_reset();
                 }
                 else if(byte == 0U)
                 {
@@ -777,14 +837,13 @@ static void air_comm_rx_byte_parser(uint8 byte)
             {
                 s_air_comm_rx.crc |= (uint16)byte << 8;
                 air_comm_process_rx_frame();
-                s_air_comm_rx.state = 0U;
-                s_air_comm_rx.header_count = 0U;
+                air_comm_rx_parser_reset();
             }
             break;
 
         default: /* 异常状态：重置 */
-            s_air_comm_rx.state = 0U;
-            s_air_comm_rx.header_count = 0U;
+            s_air_comm_stats.resync_count++;
+            air_comm_rx_parser_reset();
             break;
     }
 }
@@ -895,6 +954,8 @@ void air_comm_car_init(void)
     s_air_comm_last_peer_ms = 0U;
     s_air_comm_last_heartbeat_ms = 0U;
     s_air_comm_seq = 0U;
+    s_air_comm_peer_seq_valid = 0U;
+    s_air_comm_last_peer_seq = 0U;
     s_air_comm_initialized = 1U;
     s_air_comm_last_ack_value = 0.0f;
     memset(s_air_comm_last_ack_name, 0, sizeof(s_air_comm_last_ack_name));
@@ -958,6 +1019,13 @@ void air_comm_car_update_100HZ(void)
  * @param byte 接收到的字节
  * 写入环形队列，满则丢弃并计 overflow
  */
+void air_comm_car_rx_hw_error(uint32 overflow, uint32 frame_error, uint32 parity_error)
+{
+    s_air_comm_stats.rx_hw_overflow_count += overflow;
+    s_air_comm_stats.rx_hw_frame_error_count += frame_error;
+    s_air_comm_stats.rx_hw_parity_error_count += parity_error;
+}
+
 void air_comm_car_rx_byte(uint8 byte)
 {
     uint16 next_head;

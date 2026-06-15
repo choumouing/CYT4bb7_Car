@@ -92,6 +92,15 @@ typedef struct
     uint32 ack_retry_count;         /* ACK 重试总次数 */
     uint32 heartbeat_tx_count;      /* 心跳发送次数 */
     uint32 heartbeat_rx_count;      /* 心跳接收次数 */
+    uint32 self_frame_count;
+    uint32 foreign_frame_count;
+    uint32 invalid_type_count;
+    uint32 invalid_len_count;
+    uint32 resync_count;
+    uint32 peer_seq_gap_count;
+    uint32 rx_hw_overflow_count;
+    uint32 rx_hw_frame_error_count;
+    uint32 rx_hw_parity_error_count;
     uint8 online_status;            /* 在线状态：0=初始, 1=在线, 2=离线 */
     uint8 pending_ack;              /* 是否有待确认 ACK：1=有 */
     uint8 pending_ack_type;         /* 待确认的消息类型 */
@@ -137,6 +146,7 @@ void air_comm_car_update_100HZ(void);
  * 内部：写入环形接收队列（满则丢弃并计数）
  */
 void air_comm_car_rx_byte(uint8 byte);
+void air_comm_car_rx_hw_error(uint32 overflow, uint32 frame_error, uint32 parity_error);
 
 /**
  * @brief 判断对端是否在线

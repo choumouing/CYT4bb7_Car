@@ -4,6 +4,33 @@
 
 static uint8_t pit_ch0_100HZ_count = 0;
 static uint8_t pit_ch0_25HZ_count = 0;
+static void air_comm_uart3_rx_isr(void)
+{
+    volatile stc_SCB_t *scb = get_scb_module(UART_3);
+    uint32 status = Cy_SCB_GetRxInterruptStatus(scb);
+
+    if((status & (CY_SCB_UART_RX_OVERFLOW |
+                  CY_SCB_UART_RX_ERR_FRAME |
+                  CY_SCB_UART_RX_ERR_PARITY)) != 0U)
+    {
+        air_comm_car_rx_hw_error((status & CY_SCB_UART_RX_OVERFLOW) != 0U,
+                                 (status & CY_SCB_UART_RX_ERR_FRAME) != 0U,
+                                 (status & CY_SCB_UART_RX_ERR_PARITY) != 0U);
+    }
+
+    while(Cy_SCB_GetNumInRxFifo(scb) > 0U)
+    {
+        air_comm_car_rx_byte((uint8)Cy_SCB_ReadRxFifo(scb));
+    }
+
+    Cy_SCB_ClearRxInterrupt(scb, CY_SCB_UART_RX_NOT_EMPTY |
+                                 CY_SCB_UART_RX_TRIGGER |
+                                 CY_SCB_UART_RX_FULL |
+                                 CY_SCB_UART_RX_OVERFLOW |
+                                 CY_SCB_UART_RX_ERR_FRAME |
+                                 CY_SCB_UART_RX_ERR_PARITY |
+                                 CY_SCB_UART_RX_BREAK_DETECT);
+}
 
 void pit0_ch0_isr()
 {
@@ -166,19 +193,23 @@ void uart2_isr (void)
 
 void uart3_isr (void)
 {
-    uint8 dat;
+    volatile stc_SCB_t *scb = get_scb_module(UART_3);
+    uint32 status = Cy_SCB_GetRxInterruptStatus(scb);
 
-    if(uart_isr_mask(UART_3))
+    if(((status & (CY_SCB_UART_RX_NOT_EMPTY |
+                   CY_SCB_UART_RX_TRIGGER |
+                   CY_SCB_UART_RX_FULL |
+                   CY_SCB_UART_RX_OVERFLOW |
+                   CY_SCB_UART_RX_ERR_FRAME |
+                   CY_SCB_UART_RX_ERR_PARITY |
+                   CY_SCB_UART_RX_BREAK_DETECT)) != 0U) ||
+       (Cy_SCB_GetNumInRxFifo(scb) > 0U))
     {
-        while(uart_query_byte(UART_3, &dat))
-        {
-            air_comm_car_rx_byte(dat);
-        }
-
+        air_comm_uart3_rx_isr();
     }
-    else
+    else if(Cy_SCB_GetTxInterruptMask(scb) & CY_SCB_UART_TX_DONE)
     {
-
+        Cy_SCB_ClearTxInterrupt(scb, CY_SCB_UART_TX_DONE);
     }
 }
 

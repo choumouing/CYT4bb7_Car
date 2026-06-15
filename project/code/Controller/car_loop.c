@@ -130,6 +130,7 @@ static void car_loop_1000HZ(void)
 
 static void car_loop_100HZ(void)
 {
+    static uint8 s_air_comm_run_data_div = 0U;
     float car_data[10];
 
     s_telemetry_timestamp_count++;
@@ -209,7 +210,11 @@ static void car_loop_100HZ(void)
     car_data[7] = 0.0f;
     car_data[8] = 0.0f;
     car_data[9] = 0.0f;
-    air_comm_send_run_data(car_data, 10);
+    s_air_comm_run_data_div ^= 1U;
+    if (s_air_comm_run_data_div != 0U)
+    {
+        air_comm_send_run_data(car_data, 10);
+    }
 
     {
         air_comm_stats_t stats;
@@ -226,7 +231,16 @@ static void car_loop_100HZ(void)
                        stats.crc_error_count,
                        stats.rx_oversize_count,
                        stats.rx_queue_overflow_count,
-                       stats.online_status);
+                       stats.online_status,
+                       stats.self_frame_count,
+                       stats.foreign_frame_count,
+                       stats.invalid_type_count,
+                       stats.invalid_len_count,
+                       stats.resync_count,
+                       stats.peer_seq_gap_count,
+                       stats.rx_hw_overflow_count,
+                       stats.rx_hw_frame_error_count,
+                       stats.rx_hw_parity_error_count);
     }
 
     // wifi_justfloat(g_air_tof_fused_height_mm,
