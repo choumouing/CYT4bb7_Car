@@ -167,6 +167,10 @@ static void car_loop_1000HZ(void)
 static void car_loop_100HZ(void)
 {
     float car_data[10];
+    car_mode_e current_mode;
+    float ch4_enable_pass;
+    float ch6_mode_request;
+    float mode2_running_ok;
 
     s_telemetry_timestamp_count++;
     s_system_time_ms = s_telemetry_timestamp_count * 10U;
@@ -247,21 +251,57 @@ static void car_loop_100HZ(void)
     car_data[9] = 0.0f;
     air_comm_send_run_data(car_data, 10);
 
-    // wifi_justfloat(g_air_tof_fused_height_mm,
-    //             g_air_euler_roll,
-    //             g_air_euler_pitch,
-    //             g_air_euler_yaw,
-    //             g_air_pos_est_vel_x,
-    //             g_air_pos_est_vel_y,
-    //             g_air_state,
-    //             g_air_crsf_std_ch0,
-    //             g_air_crsf_std_ch1,
-    //             g_air_crsf_std_ch2,
-    //             g_air_crsf_std_ch3,
-    //             g_air_crsf_std_ch4,
-    //             g_air_crsf_std_ch5,
-    //             g_air_crsf_std_ch6,
-    //             g_air_crsf_std_ch7);
+    current_mode = car_mode_get();
+    ch4_enable_pass = (g_air_crsf_std_ch4 >= 0.5f) ? 1.0f : 0.0f;
+    ch6_mode_request = (g_air_crsf_std_ch6 < 0.5f) ? 0.0f :
+                       ((g_air_crsf_std_ch6 > 1.5f) ? 2.0f : 1.0f);
+    mode2_running_ok =
+        ((current_mode == CAR_MODE_2) &&
+         (car_control_enabled != 0U) &&
+         (g_car_mode2_state.target_valid != 0U) &&
+         (g_car_mode2_state.car_position_valid != 0U) &&
+         (g_car_mode2_state.output_valid != 0U)) ? 1.0f : 0.0f;
+
+    wifi_justfloat((float)s_system_time_ms,
+                   (float)air_comm_car_is_online(),
+                   g_air_state,
+                   (float)car_control_enabled,
+                   (float)car_emergency_stop_active,
+                   (float)current_mode,
+                   g_air_crsf_std_ch4,
+                   ch4_enable_pass,
+                   g_air_crsf_std_ch6,
+                   ch6_mode_request,
+                   g_air_mode2_target_valid,
+                   g_air_mode2_target_x,
+                   g_air_mode2_target_y,
+                   g_air_mode2_car_lamp_valid,
+                   g_air_mode2_car_lamp_cx,
+                   g_air_mode2_car_lamp_cy,
+                   g_air_mode2_lamp_angle_deg,
+                   (float)g_car_mode2_state.target_valid,
+                   (float)g_car_mode2_state.car_position_valid,
+                   (float)g_car_mode2_state.car_position_in_center_window,
+                   (float)g_car_mode2_state.output_valid,
+                   (float)g_car_mode2_state.distance_zone,
+                   g_car_mode2_state.target_delta_x,
+                   g_car_mode2_state.target_delta_y,
+                   g_car_mode2_state.target_distance_px,
+                   g_car_mode2_state.target_speed_mps,
+                   g_car_mode2_state.target_forward_mps,
+                   g_car_mode2_state.target_strafe_mps,
+                   g_car_mode2_state.limited_forward_mps,
+                   g_car_mode2_state.limited_strafe_mps,
+                   g_car_mode2_state.forward_command,
+                   g_car_mode2_state.strafe_command,
+                   car_forward_target,
+                   car_strafe_target,
+                   g_odometer.vel[y],
+                   g_odometer.vel[x],
+                   mode2_image_target_deadband_px,
+                   mode2_distance_mid_threshold_px,
+                   mode2_distance_far_threshold_px,
+                   mode2_running_ok);
 }
 
 static void car_loop_25HZ(void)

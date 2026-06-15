@@ -2,8 +2,8 @@
 #include "car_loop.h"
 
 #define CAR_MODE_CH4_ENABLE_THRESHOLD (0.5f)
-#define CAR_MODE_CH6_LOW_THRESHOLD    (-333.0f)
-#define CAR_MODE_CH6_HIGH_THRESHOLD   (333.0f)
+#define CAR_MODE_CH6_LOW_THRESHOLD    (0.5f)
+#define CAR_MODE_CH6_HIGH_THRESHOLD   (1.5f)
 
 static car_mode_e s_car_mode = CAR_MODE_0;
 static car_mode_e s_last_car_mode = CAR_MODE_0;
