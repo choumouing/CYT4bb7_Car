@@ -30,7 +30,7 @@
 #define MOTOR_M3_PWM        (TCPWM_CH09_P05_0)
 #define MOTOR_M3_INVERT     0       // 0=不反转, 1=反转
 
-#define MOTOR_PWM_MAX           5000        // PWM 占空比上限（对应 100%）
+#define MOTOR_PWM_MAX           6000        // PWM 占空比上限（对应 100%）
 /* 初始化四轮电机 GPIO + PWM，上电后调用一次 */
 void mecanum_motor_init(void);
 
