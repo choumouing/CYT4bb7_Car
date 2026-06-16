@@ -9,8 +9,8 @@
 #define MODE2_DEG_TO_RAD              (0.017453292519943295f)
 #define MODE2_CENTER_X                (94.0f)
 #define MODE2_CENTER_Y                (60.0f)
-#define MODE2_CAR_POSITION_SMALL_WINDOW_RADIUS (20.0f)
-#define MODE2_CAR_POSITION_LARGE_WINDOW_RADIUS (25.0f)
+#define MODE2_CAR_POSITION_SMALL_WINDOW_RADIUS (25.0f)
+#define MODE2_CAR_POSITION_LARGE_WINDOW_RADIUS (30.0f)
 #define MODE2_DIRECT_ALLOW_COS        (0.70710678118f)
 #define MODE2_REVERSE_SMALL_WINDOW_COS (-0.96592582629f)
 #define MODE2_VECTOR_NORM2_MIN        (1.0e-6f)
@@ -89,6 +89,23 @@ static void car_mode2_clear_output(void)
     g_car_mode2_state.strafe_command = 0.0f;
     car_forward_target = 0.0f;
     car_strafe_target = 0.0f;
+}
+
+static float car_mode2_air_yaw_to_camera_angle_deg(float yaw_deg)
+{
+    float angle_deg = -yaw_deg;
+
+    while(angle_deg >= 180.0f)
+    {
+        angle_deg -= 360.0f;
+    }
+
+    while(angle_deg < -180.0f)
+    {
+        angle_deg += 360.0f;
+    }
+
+    return angle_deg;
 }
 
 static void car_mode2_rotate_air_to_car(float air_x,
@@ -187,7 +204,7 @@ static uint8 car_mode2_angle_position_allowed(float ref_x, float ref_y)
     return g_car_mode2_state.car_position_in_center_window;
 }
 
-static uint8 car_mode2_car_position_allowed(void)
+static uint8 car_mode2_car_position_allowed(float camera_angle_deg)
 {
     float ref_x;
     float ref_y;
@@ -203,7 +220,7 @@ static uint8 car_mode2_car_position_allowed(void)
 
     car_mode2_lamp_ref_from_center(g_air_mode2_car_lamp_cx,
                                    g_air_mode2_car_lamp_cy,
-                                   g_air_mode2_lamp_angle_deg,
+                                   camera_angle_deg,
                                    &ref_x,
                                    &ref_y);
     g_car_mode2_state.car_position_valid = 1U;
@@ -357,6 +374,7 @@ void car_mode2_update_25HZ(uint32 now_ms)
 void car_mode2_update_100HZ(uint32 now_ms)
 {
     uint8 car_position_allowed;
+    float camera_angle_deg;
     float delta_x;
     float delta_y;
     float pid_norm;
@@ -365,13 +383,14 @@ void car_mode2_update_100HZ(uint32 now_ms)
 
     car_mode2_pid_apply_params();
 
+    camera_angle_deg = car_mode2_air_yaw_to_camera_angle_deg(g_air_euler_yaw);
     g_car_mode2_state.target_valid = (g_air_mode2_target_valid > 0.5f) ? 1U : 0U;
     car_mode2_rotate_air_to_car(g_air_mode2_target_x,
                                 g_air_mode2_target_y,
-                                g_air_mode2_lamp_angle_deg,
+                                camera_angle_deg,
                                 &g_car_mode2_state.target_delta_x,
                                 &g_car_mode2_state.target_delta_y);
-    car_position_allowed = car_mode2_car_position_allowed();
+    car_position_allowed = car_mode2_car_position_allowed(camera_angle_deg);
     g_car_mode2_state.feedback_forward_mps = g_odometer.vel[y];
     g_car_mode2_state.feedback_strafe_mps = g_odometer.vel[x];
 

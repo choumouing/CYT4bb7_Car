@@ -34,6 +34,8 @@ extern uint8 car_control_enabled;
 /* 急停激活标志：1=急停生效，电机强制停止 */
 extern uint8 car_emergency_stop_active;
 
+extern volatile float g_air_euler_yaw;
+
 /* 遥控通道标准化值（来自无人机 CRSF 转发） */
 /* 范围 -1.0 ~ +1.0，ch0=油门/前后，ch1=横移，ch2=航向，ch3=辅助等 */
 extern volatile float g_air_crsf_std_ch0;
