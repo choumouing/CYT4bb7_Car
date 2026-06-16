@@ -18,7 +18,8 @@ uint8 car_emergency_stop_active = 1U;
 
 static uint32 s_telemetry_timestamp_count = 0U;
 static uint32 s_system_time_ms = 0U;
-static uint16 s_air_comm_beep_tick = 200U;
+static uint8 s_air_comm_beep_on = 0U;
+static uint8 s_beacon_beep_active = 0U;
 
 volatile float g_air_tof_fused_height_mm;
 volatile float g_air_euler_roll;
@@ -94,6 +95,8 @@ static void car_loop_runtime_reset(void)
     car_emergency_stop_active = 1U;
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
+    s_air_comm_beep_on = 0U;
+    s_beacon_beep_active = 0U;
     beacon_config_init();
 }
 
@@ -142,10 +145,12 @@ static void car_loop_100HZ(void)
 
     if (g_beacon_detection.enter_event != 0U)
     {
+        s_beacon_beep_active = 1U;
         Beep_Enable();
     }
     if (g_beacon_detection.exit_event != 0U)
     {
+        s_beacon_beep_active = 0U;
         Beep_Disable();
     }
 
@@ -168,24 +173,23 @@ static void car_loop_100HZ(void)
     car_mode_update_100HZ(s_system_time_ms);
 
 
-    // 如果车机串口通信离线,车端的蜂鸣器报警,为1s的鸣叫,1s的停止
+    // AirComm offline alarm: steady on. Do not override beacon beep.
     if (air_comm_car_is_online() == 0U)
     {
-        if (s_air_comm_beep_tick >= 200U)
+        s_air_comm_beep_on = 1U;
+
+        if (s_beacon_beep_active == 0U)
         {
-            s_air_comm_beep_tick = 0U;
             Beep_Enable();
         }
-        else if (s_air_comm_beep_tick == 100U)
+    }
+    else
+    {
+        if ((s_air_comm_beep_on != 0U) && (s_beacon_beep_active == 0U))
         {
             Beep_Disable();
         }
-        s_air_comm_beep_tick++;
-    }
-    else if (s_air_comm_beep_tick != 200U)
-    {
-        s_air_comm_beep_tick = 200U;
-        Beep_Disable();
+        s_air_comm_beep_on = 0U;
     }
 
     Beep_Update_100HZ();
@@ -211,23 +215,23 @@ static void car_loop_100HZ(void)
     car_data[9] = 0.0f;
     air_comm_send_run_data(car_data, 10);
 
-    {
-        air_comm_stats_t stats;
+    // {
+    //     air_comm_stats_t stats;
 
-        air_comm_car_get_stats(&stats);
-        wifi_justfloat(2.0f,
-                       stats.tick_ms,
-                       stats.tx_frame_count,
-                       stats.rx_frame_count,
-                       stats.rx_raw_byte_count,
-                       stats.rx_byte_count,
-                       stats.heartbeat_tx_count,
-                       stats.heartbeat_rx_count,
-                       stats.crc_error_count,
-                       stats.rx_oversize_count,
-                       stats.rx_queue_overflow_count,
-                       stats.online_status);
-    }
+    //     air_comm_car_get_stats(&stats);
+    //     wifi_justfloat(2.0f,
+    //                    stats.tick_ms,
+    //                    stats.tx_frame_count,
+    //                    stats.rx_frame_count,
+    //                    stats.rx_raw_byte_count,
+    //                    stats.rx_byte_count,
+    //                    stats.heartbeat_tx_count,
+    //                    stats.heartbeat_rx_count,
+    //                    stats.crc_error_count,
+    //                    stats.rx_oversize_count,
+    //                    stats.rx_queue_overflow_count,
+    //                    stats.online_status);
+    // }
 
     // wifi_justfloat(g_air_tof_fused_height_mm,
     //             g_air_euler_roll,

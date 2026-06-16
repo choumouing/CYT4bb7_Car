@@ -1,5 +1,6 @@
 #include "car_mode.h"
 #include "car_loop.h"
+#include "../Protocols/AirComm/air_comm_car.h"
 
 #define CAR_MODE_CH4_ENABLE_THRESHOLD (0.5f)
 #define CAR_MODE_CH6_LOW_THRESHOLD    (-333.0f)
@@ -106,7 +107,15 @@ void car_mode_update_25HZ(uint32 now_ms)
         break;
 
     case CAR_MODE_2:
-        car_mode2_update_25HZ(now_ms);
+        if(air_comm_car_is_online() != 0U)
+        {
+            car_mode2_update_25HZ(now_ms);
+        }
+        else
+        {
+            car_forward_target = 0.0f;
+            car_strafe_target = 0.0f;
+        }
         break;
 
     default:
