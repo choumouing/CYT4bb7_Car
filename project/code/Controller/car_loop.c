@@ -39,8 +39,17 @@ volatile float g_air_crsf_std_ch5;
 volatile float g_air_crsf_std_ch6;
 volatile float g_air_crsf_std_ch7;
 
+volatile float g_air_mode2_target_valid = 0.0f;
+volatile float g_air_mode2_target_x = 0.0f;
+volatile float g_air_mode2_target_y = 0.0f;
+volatile float g_air_mode2_car_lamp_valid = 0.0f;
+volatile float g_air_mode2_car_lamp_cx = 0.0f;
+volatile float g_air_mode2_car_lamp_cy = 0.0f;
+volatile float g_air_mode2_lamp_angle_deg = 0.0f;
+
 #define AIR_RUN_DATA_BASE_COUNT (7U)
 #define AIR_RUN_DATA_CRSF_COUNT (15U)
+#define AIR_RUN_DATA_MODE2_COUNT (22U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -79,6 +88,27 @@ static void on_air_data(const float *data, uint8 count)
     g_air_crsf_std_ch5 = data[12];
     g_air_crsf_std_ch6 = data[13];
     g_air_crsf_std_ch7 = data[14];
+
+    if(count >= AIR_RUN_DATA_MODE2_COUNT)
+    {
+        g_air_mode2_target_valid   = data[15];
+        g_air_mode2_target_x       = data[16];
+        g_air_mode2_target_y       = data[17];
+        g_air_mode2_car_lamp_valid = data[18];
+        g_air_mode2_car_lamp_cx    = data[19];
+        g_air_mode2_car_lamp_cy    = data[20];
+        g_air_mode2_lamp_angle_deg = data[21];
+    }
+    else
+    {
+        g_air_mode2_target_valid   = 0.0f;
+        g_air_mode2_target_x       = 0.0f;
+        g_air_mode2_target_y       = 0.0f;
+        g_air_mode2_car_lamp_valid = 0.0f;
+        g_air_mode2_car_lamp_cx    = 0.0f;
+        g_air_mode2_car_lamp_cy    = 0.0f;
+        g_air_mode2_lamp_angle_deg = 0.0f;
+    }
 }
 
 static void car_loop_runtime_reset(void)
@@ -211,23 +241,18 @@ static void car_loop_100HZ(void)
     car_data[9] = 0.0f;
     air_comm_send_run_data(car_data, 10);
 
-    {
-        air_comm_stats_t stats;
-
-        air_comm_car_get_stats(&stats);
-        wifi_justfloat(2.0f,
-                       stats.tick_ms,
-                       stats.tx_frame_count,
-                       stats.rx_frame_count,
-                       stats.rx_raw_byte_count,
-                       stats.rx_byte_count,
-                       stats.heartbeat_tx_count,
-                       stats.heartbeat_rx_count,
-                       stats.crc_error_count,
-                       stats.rx_oversize_count,
-                       stats.rx_queue_overflow_count,
-                       stats.online_status);
-    }
+    wifi_justfloat((float)car_mode_get(),
+                   g_air_mode2_target_valid,
+                   g_air_mode2_target_x,
+                   g_air_mode2_target_y,
+                   g_car_mode2_state.target_delta_x,
+                   g_car_mode2_state.target_delta_y,
+                   g_car_mode2_state.target_distance_px,
+                   (float)g_car_mode2_state.distance_zone,
+                   g_car_mode2_state.target_speed_mps,
+                   g_car_mode2_state.forward_command,
+                   g_car_mode2_state.strafe_command,
+                   (float)g_car_mode2_state.output_valid);
 
     // wifi_justfloat(g_air_tof_fused_height_mm,
     //             g_air_euler_roll,

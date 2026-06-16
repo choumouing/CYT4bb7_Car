@@ -2,26 +2,18 @@
 #include "car_loop.h"
 
 #define CAR_MODE_CH4_ENABLE_THRESHOLD (0.5f)
-#define CAR_MODE_CH6_LOW_THRESHOLD    (-333.0f)
-#define CAR_MODE_CH6_HIGH_THRESHOLD   (333.0f)
+#define CAR_MODE_SW_LOW   (0.5f)
+#define CAR_MODE_SW_HIGH  (1.5f)
 
 static car_mode_e s_car_mode = CAR_MODE_0;
 static car_mode_e s_last_car_mode = CAR_MODE_0;
 static uint8 s_last_control_enabled = 0U;
 
-static car_mode_e car_mode_from_ch6(float ch6)
+static car_mode_e car_mode_from_ch5_ch6(float ch5, float ch6)
 {
-    if(ch6 < CAR_MODE_CH6_LOW_THRESHOLD)
-    {
-        return CAR_MODE_0;
-    }
-
-    if(ch6 > CAR_MODE_CH6_HIGH_THRESHOLD)
-    {
-        return CAR_MODE_2;
-    }
-
-    return CAR_MODE_1;
+    uint8 p5 = (ch5 > CAR_MODE_SW_HIGH) ? 2U : ((ch5 < CAR_MODE_SW_LOW) ? 0U : 1U);
+    uint8 p6 = (ch6 > CAR_MODE_SW_HIGH) ? 2U : ((ch6 < CAR_MODE_SW_LOW) ? 0U : 1U);
+    return (car_mode_e)(p5 * 3U + p6);
 }
 
 static void car_mode_reset_all(void)
@@ -86,7 +78,7 @@ void car_mode_update_25HZ(uint32 now_ms)
 {
     car_control_enabled = (g_air_crsf_std_ch4 >= CAR_MODE_CH4_ENABLE_THRESHOLD) ? 1U : 0U;
     car_emergency_stop_active = (0U == car_control_enabled) ? 1U : 0U;
-    s_car_mode = (0U != car_control_enabled) ? car_mode_from_ch6(g_air_crsf_std_ch6) : CAR_MODE_0;
+    s_car_mode = (0U != car_control_enabled) ? car_mode_from_ch5_ch6(g_air_crsf_std_ch5, g_air_crsf_std_ch6) : CAR_MODE_0;
     car_mode_handle_transition_25HZ(s_car_mode, car_control_enabled);
 
     if(0U == car_control_enabled)
@@ -98,19 +90,15 @@ void car_mode_update_25HZ(uint32 now_ms)
 
     switch(s_car_mode)
     {
-    case CAR_MODE_0:
+    case CAR_MODE_6:
         car_mode0_update_25HZ(now_ms);
         break;
 
-    case CAR_MODE_1:
-        break;
-
-    case CAR_MODE_2:
+    case CAR_MODE_8:
         car_mode2_update_25HZ(now_ms);
         break;
 
     default:
-        car_mode0_update_25HZ(now_ms);
         break;
     }
 }
@@ -124,8 +112,17 @@ void car_mode_update_100HZ(uint32 now_ms)
         return;
     }
 
-    if(CAR_MODE_1 == s_car_mode)
+    switch(s_car_mode)
     {
+    case CAR_MODE_7:
         car_mode1_update_100HZ(now_ms);
+        break;
+
+    case CAR_MODE_8:
+        car_mode2_update_100HZ(now_ms);
+        break;
+
+    default:
+        break;
     }
 }

@@ -36,6 +36,14 @@ extern uint8 car_emergency_stop_active;
 
 /* 遥控通道标准化值（来自无人机 CRSF 转发） */
 /* 范围 -1.0 ~ +1.0，ch0=油门/前后，ch1=横移，ch2=航向，ch3=辅助等 */
+extern volatile float g_air_tof_fused_height_mm;
+extern volatile float g_air_euler_roll;
+extern volatile float g_air_euler_pitch;
+extern volatile float g_air_euler_yaw;
+extern volatile float g_air_pos_est_vel_x;
+extern volatile float g_air_pos_est_vel_y;
+extern volatile float g_air_state;
+
 extern volatile float g_air_crsf_std_ch0;
 extern volatile float g_air_crsf_std_ch1;
 extern volatile float g_air_crsf_std_ch2;
@@ -44,6 +52,14 @@ extern volatile float g_air_crsf_std_ch4;
 extern volatile float g_air_crsf_std_ch5;
 extern volatile float g_air_crsf_std_ch6;
 extern volatile float g_air_crsf_std_ch7;
+
+extern volatile float g_air_mode2_target_valid;
+extern volatile float g_air_mode2_target_x;
+extern volatile float g_air_mode2_target_y;
+extern volatile float g_air_mode2_car_lamp_valid;
+extern volatile float g_air_mode2_car_lamp_cx;
+extern volatile float g_air_mode2_car_lamp_cy;
+extern volatile float g_air_mode2_lamp_angle_deg;
 
 /* 初始化：清零所有状态和标志位 */
 void car_loop_init(void);
