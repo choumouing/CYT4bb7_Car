@@ -7,7 +7,7 @@ static void car_platform_init(void)
     debug_init();                       // 调试串口信息初始化
 }
 
-int main(void)
+ int main(void)
 {
     car_platform_init();
     car_loop_init();
