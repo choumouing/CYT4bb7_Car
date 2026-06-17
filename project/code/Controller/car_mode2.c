@@ -36,13 +36,6 @@ static float mode2_normalize_angle_180(float angle_deg)
     return angle_deg;
 }
 
-static float mode2_normalize_lamp_angle_90(float angle_deg)
-{
-    while(angle_deg >= 90.0f) { angle_deg -= 180.0f; }
-    while(angle_deg < -90.0f) { angle_deg += 180.0f; }
-    return angle_deg;
-}
-
 static void mode2_pid_init(void)
 {
     PositionalPID_Init(&s_mode2_forward_pid, 0.0f,
@@ -123,47 +116,32 @@ static float mode2_air_yaw_to_image_angle(void)
     return mode2_normalize_angle_180(-g_air_euler_yaw);
 }
 
-static void mode2_decode_air_target_delta(float target_x, float target_y,
+static void mode2_decode_air_target_point(float target_x, float target_y,
                                           float image_angle_deg,
                                           float *air_x, float *air_y)
 {
-    float lamp_angle_deg;
-    float old_ref_x;
-    float old_ref_y;
-    float yaw_ref_x;
-    float yaw_ref_y;
-    float old_delta_x;
-    float old_delta_y;
+    float ref_x;
+    float ref_y;
 
     if((air_x == NULL) || (air_y == NULL))
     {
         return;
     }
 
-    /*
-     * Current AIR payload target_x/y is already rotated by the old lamp angle.
-     * Undo that legacy rotation first, then use AIR yaw as the only frame angle.
-     */
     if(g_air_mode2_car_lamp_valid > 0.5f)
     {
-        lamp_angle_deg = mode2_normalize_lamp_angle_90(g_air_mode2_lamp_angle_deg);
-        mode2_rotate_air_to_car(target_x,
-                                target_y,
-                                -lamp_angle_deg,
-                                &old_delta_x,
-                                &old_delta_y);
-        mode2_lamp_ref_from_angle(g_air_mode2_car_lamp_cx,
-                                  g_air_mode2_car_lamp_cy,
-                                  lamp_angle_deg,
-                                  &old_ref_x,
-                                  &old_ref_y);
+        /*
+         * AIR target_x/y is the stitched center-image point. Subtract the
+         * yaw-based lamp reference here so the later yaw rotation preserves
+         * the old controller input.
+         */
         mode2_lamp_ref_from_angle(g_air_mode2_car_lamp_cx,
                                   g_air_mode2_car_lamp_cy,
                                   image_angle_deg,
-                                  &yaw_ref_x,
-                                  &yaw_ref_y);
-        *air_x = old_delta_x + old_ref_x - yaw_ref_x;
-        *air_y = old_delta_y + old_ref_y - yaw_ref_y;
+                                  &ref_x,
+                                  &ref_y);
+        *air_x = target_x - ref_x;
+        *air_y = target_y - ref_y;
         return;
     }
 
@@ -335,7 +313,7 @@ void car_mode2_update_100HZ(uint32 now_ms)
     image_angle = mode2_air_yaw_to_image_angle();
 
     g_car_mode2_state.target_valid = (g_air_mode2_target_valid > 0.5f) ? 1U : 0U;
-    mode2_decode_air_target_delta(g_air_mode2_target_x,
+    mode2_decode_air_target_point(g_air_mode2_target_x,
                                   g_air_mode2_target_y,
                                   image_angle,
                                   &air_x,
