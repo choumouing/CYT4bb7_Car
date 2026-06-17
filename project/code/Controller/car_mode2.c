@@ -29,6 +29,20 @@ static float mode2_abs_limit(float value, float fallback)
     return (value < 0.0f) ? fallback : value;
 }
 
+static float mode2_normalize_angle_180(float angle_deg)
+{
+    while(angle_deg >= 180.0f) { angle_deg -= 360.0f; }
+    while(angle_deg < -180.0f) { angle_deg += 360.0f; }
+    return angle_deg;
+}
+
+static float mode2_normalize_lamp_angle_90(float angle_deg)
+{
+    while(angle_deg >= 90.0f) { angle_deg -= 180.0f; }
+    while(angle_deg < -90.0f) { angle_deg += 180.0f; }
+    return angle_deg;
+}
+
 static void mode2_pid_init(void)
 {
     PositionalPID_Init(&s_mode2_forward_pid, 0.0f,
@@ -88,10 +102,80 @@ static void mode2_rotate_air_to_car(float air_x, float air_y, float angle_deg,
     *car_y = -s * air_x + c * air_y;
 }
 
-static uint8 mode2_position_allowed(float camera_angle_deg)
+static void mode2_lamp_ref_from_angle(float cx, float cy, float angle_deg,
+                                      float *ref_x, float *ref_y)
+{
+    float rad = angle_deg * MODE2_DEG_TO_RAD;
+    float nx = -sinf(rad);
+    float ny = cosf(rad);
+
+    if((ref_x == NULL) || (ref_y == NULL))
+    {
+        return;
+    }
+
+    *ref_x = cx + MODE2_CAR_LAMP_OFFSET_PX * nx;
+    *ref_y = cy + MODE2_CAR_LAMP_OFFSET_PX * ny;
+}
+
+static float mode2_air_yaw_to_image_angle(void)
+{
+    return mode2_normalize_angle_180(-g_air_euler_yaw);
+}
+
+static void mode2_decode_air_target_delta(float target_x, float target_y,
+                                          float image_angle_deg,
+                                          float *air_x, float *air_y)
+{
+    float lamp_angle_deg;
+    float old_ref_x;
+    float old_ref_y;
+    float yaw_ref_x;
+    float yaw_ref_y;
+    float old_delta_x;
+    float old_delta_y;
+
+    if((air_x == NULL) || (air_y == NULL))
+    {
+        return;
+    }
+
+    /*
+     * Current AIR payload target_x/y is already rotated by the old lamp angle.
+     * Undo that legacy rotation first, then use AIR yaw as the only frame angle.
+     */
+    if(g_air_mode2_car_lamp_valid > 0.5f)
+    {
+        lamp_angle_deg = mode2_normalize_lamp_angle_90(g_air_mode2_lamp_angle_deg);
+        mode2_rotate_air_to_car(target_x,
+                                target_y,
+                                -lamp_angle_deg,
+                                &old_delta_x,
+                                &old_delta_y);
+        mode2_lamp_ref_from_angle(g_air_mode2_car_lamp_cx,
+                                  g_air_mode2_car_lamp_cy,
+                                  lamp_angle_deg,
+                                  &old_ref_x,
+                                  &old_ref_y);
+        mode2_lamp_ref_from_angle(g_air_mode2_car_lamp_cx,
+                                  g_air_mode2_car_lamp_cy,
+                                  image_angle_deg,
+                                  &yaw_ref_x,
+                                  &yaw_ref_y);
+        *air_x = old_delta_x + old_ref_x - yaw_ref_x;
+        *air_y = old_delta_y + old_ref_y - yaw_ref_y;
+        return;
+    }
+
+    *air_x = target_x;
+    *air_y = target_y;
+}
+
+static uint8 mode2_position_allowed(float image_angle_deg,
+                                    float target_car_x,
+                                    float target_car_y)
 {
     float ref_x, ref_y;
-    float rad, nx, ny;
     float tx, ty, cx, cy;
     float tn2, cn2, dot, cos_a, range_r;
 
@@ -104,11 +188,11 @@ static uint8 mode2_position_allowed(float camera_angle_deg)
         return 0U;
     }
 
-    rad = camera_angle_deg * MODE2_DEG_TO_RAD;
-    nx = -sinf(rad);
-    ny = cosf(rad);
-    ref_x = g_air_mode2_car_lamp_cx + MODE2_CAR_LAMP_OFFSET_PX * nx;
-    ref_y = g_air_mode2_car_lamp_cy + MODE2_CAR_LAMP_OFFSET_PX * ny;
+    mode2_lamp_ref_from_angle(g_air_mode2_car_lamp_cx,
+                              g_air_mode2_car_lamp_cy,
+                              image_angle_deg,
+                              &ref_x,
+                              &ref_y);
     g_car_mode2_state.car_position_valid = 1U;
     g_car_mode2_state.car_position_x = ref_x;
     g_car_mode2_state.car_position_y = ref_y;
@@ -119,10 +203,13 @@ static uint8 mode2_position_allowed(float camera_angle_deg)
         return 0U;
     }
 
-    tx = g_air_mode2_target_x;
-    ty = g_air_mode2_target_y;
-    cx = MODE2_CENTER_X - ref_x;
-    cy = MODE2_CENTER_Y - ref_y;
+    tx = target_car_x;
+    ty = target_car_y;
+    mode2_rotate_air_to_car(MODE2_CENTER_X - ref_x,
+                            MODE2_CENTER_Y - ref_y,
+                            image_angle_deg,
+                            &cx,
+                            &cy);
     tn2 = tx * tx + ty * ty;
     cn2 = cx * cx + cy * cy;
 
@@ -239,21 +326,26 @@ void car_mode2_update_25HZ(uint32 now_ms)
 
 void car_mode2_update_100HZ(uint32 now_ms)
 {
-    float cam_angle, dx, dy, pid_norm;
+    float image_angle, air_x = 0.0f, air_y = 0.0f, dx, dy, pid_norm;
     uint8 pos_ok;
 
     (void)now_ms;
     mode2_pid_apply_params();
 
-    cam_angle = -g_air_euler_yaw;
-    while(cam_angle >= 180.0f) { cam_angle -= 360.0f; }
-    while(cam_angle < -180.0f) { cam_angle += 360.0f; }
+    image_angle = mode2_air_yaw_to_image_angle();
 
     g_car_mode2_state.target_valid = (g_air_mode2_target_valid > 0.5f) ? 1U : 0U;
-    mode2_rotate_air_to_car(g_air_mode2_target_x, g_air_mode2_target_y, cam_angle,
+    mode2_decode_air_target_delta(g_air_mode2_target_x,
+                                  g_air_mode2_target_y,
+                                  image_angle,
+                                  &air_x,
+                                  &air_y);
+    mode2_rotate_air_to_car(air_x, air_y, image_angle,
                             &g_car_mode2_state.target_delta_x,
                             &g_car_mode2_state.target_delta_y);
-    pos_ok = mode2_position_allowed(cam_angle);
+    pos_ok = mode2_position_allowed(image_angle,
+                                    g_car_mode2_state.target_delta_x,
+                                    g_car_mode2_state.target_delta_y);
     g_car_mode2_state.feedback_forward_mps = g_odometer.vel[y];
     g_car_mode2_state.feedback_strafe_mps = g_odometer.vel[x];
 
