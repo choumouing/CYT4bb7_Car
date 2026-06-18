@@ -1,6 +1,6 @@
 /* Compatibility wrapper.
- * Mode selection is centralized in car_mode.c: CH4 enables control, CH6 selects
- * mode0/mode1/mode2. Keep these APIs as read-only adapters for old callers.
+ * Mode selection is centralized in car_mode.c: CH4 enables control, CH5/CH6
+ * select MODE0~MODE8. Keep these APIs as read-only adapters for old callers.
  */
 #include "car_start_sbus.h"
 #include "car_loop.h"

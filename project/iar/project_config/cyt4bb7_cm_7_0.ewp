@@ -1286,6 +1286,24 @@
                 <name>$PROJ_DIR$\..\..\code\Controller\car_mode2.c</name>
             </file>
             <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode3.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode4.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode5.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode6.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode7.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\car_mode8.c</name>
+            </file>
+            <file>
                 <name>$PROJ_DIR$\..\..\code\Controller\car_start_sbus.c</name>
             </file>
             <file>

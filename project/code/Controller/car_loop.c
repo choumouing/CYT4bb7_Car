@@ -220,7 +220,7 @@ static void car_loop_100HZ(void)
 
     Beep_Update_100HZ();
 
-    if (car_control_enabled != 0U)
+    if ((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
     {
         Control_100Hz(car_forward_target, car_strafe_target);
     }
@@ -245,14 +245,14 @@ static void car_loop_100HZ(void)
                    g_air_mode2_target_valid,
                    g_air_mode2_target_x,
                    g_air_mode2_target_y,
-                   g_car_mode2_state.target_delta_x,
-                   g_car_mode2_state.target_delta_y,
-                   g_car_mode2_state.target_distance_px,
-                   (float)g_car_mode2_state.distance_zone,
-                   g_car_mode2_state.target_speed_mps,
-                   g_car_mode2_state.forward_command,
-                   g_car_mode2_state.strafe_command,
-                   (float)g_car_mode2_state.output_valid);
+                   g_car_mode8_state.target_delta_x,
+                   g_car_mode8_state.target_delta_y,
+                   g_car_mode8_state.target_distance_px,
+                   (float)g_car_mode8_state.distance_zone,
+                   g_car_mode8_state.target_speed_mps,
+                   g_car_mode8_state.forward_command,
+                   g_car_mode8_state.strafe_command,
+                   (float)g_car_mode8_state.output_valid);
 
     // wifi_justfloat(g_air_tof_fused_height_mm,
     //             g_air_euler_roll,

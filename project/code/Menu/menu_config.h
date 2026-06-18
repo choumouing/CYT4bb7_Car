@@ -32,16 +32,16 @@ extern float yaw_rate_kd;
 extern float yaw_rate_i_limit;
 extern float yaw_rate_output_limit;
 
-extern float mode1_velocity_smooth_tau_s;
-extern float mode1_velocity_output_limit;
-extern float mode1_velocity_pid_output_limit;
-extern float mode1_velocity_i_limit;
-extern float mode1_velocity_strafe_kp;
-extern float mode1_velocity_strafe_ki;
-extern float mode1_velocity_strafe_kd;
-extern float mode1_velocity_forward_kp;
-extern float mode1_velocity_forward_ki;
-extern float mode1_velocity_forward_kd;
+extern float mode7_velocity_smooth_tau_s;
+extern float mode7_velocity_output_limit;
+extern float mode7_velocity_pid_output_limit;
+extern float mode7_velocity_i_limit;
+extern float mode7_velocity_strafe_kp;
+extern float mode7_velocity_strafe_ki;
+extern float mode7_velocity_strafe_kd;
+extern float mode7_velocity_forward_kp;
+extern float mode7_velocity_forward_ki;
+extern float mode7_velocity_forward_kd;
 
 extern float mode2_image_target_deadband_px;
 extern float mode2_distance_mid_threshold_px;
