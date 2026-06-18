@@ -56,28 +56,24 @@ typedef struct
 
 typedef struct
 {
-    float target_delta_x;
-    float target_delta_y;
-    float target_distance_px;
-    float target_speed_mps;
+    float raw_forward_mps;
+    float raw_strafe_mps;
+    float velocity_forward_target_mps;
+    float velocity_strafe_target_mps;
+    float velocity_forward_feedback_mps;
+    float velocity_strafe_feedback_mps;
+    float forward_feedforward;
+    float strafe_feedforward;
     float forward_pid_output;
     float strafe_pid_output;
-    float forward_ratio;
-    float strafe_ratio;
-    float target_forward_mps;
-    float target_strafe_mps;
-    float feedback_forward_mps;
-    float feedback_strafe_mps;
-    float limited_forward_mps;
-    float limited_strafe_mps;
-    float forward_command;
-    float strafe_command;
-    float car_position_x;
-    float car_position_y;
-    uint8 distance_zone;
-    uint8 target_valid;
-    uint8 car_position_valid;
-    uint8 car_position_in_center_window;
+    float forward_target;
+    float strafe_target;
+    float forward_pid_p_term;
+    float forward_pid_i_term;
+    float forward_pid_d_term;
+    float strafe_pid_p_term;
+    float strafe_pid_i_term;
+    float strafe_pid_d_term;
     uint8 output_valid;
 } car_mode8_state_t;
 
