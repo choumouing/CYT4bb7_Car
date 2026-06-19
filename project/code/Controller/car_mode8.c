@@ -6,7 +6,7 @@
 #include "car_mode.h"
 #include "car_loop.h"
 
-#define MODE8_MAX_VELOCITY_MPS       (2.0f)
+#define MODE8_MAX_VELOCITY_MPS       (1.5f)
 #define MODE8_STICK_DEADBAND         (50.0f)
 #define MODE8_STICK_MAX              (1000.0f)
 #define MODE8_STICK_ACTIVE_RANGE     (MODE8_STICK_MAX - MODE8_STICK_DEADBAND)
