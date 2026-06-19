@@ -198,7 +198,7 @@ static void car_loop_100HZ(void)
     {
         float yaw_target_rad = 0.0f;
 
-        if(CAR_MODE_8 == car_mode_get())
+        if((CAR_MODE_5 == car_mode_get()) || (CAR_MODE_8 == car_mode_get()))
         {
             yaw_target_rad = g_air_yaw_angle_target_deg * AIR_YAW_TARGET_DEG_TO_RAD;
         }
@@ -210,8 +210,16 @@ static void car_loop_100HZ(void)
         Control_Stop();
     }
 
-    car_data[0] = g_car_mode8_state.velocity_strafe_target_mps;   // mode8车体系横移目标速度，正值向右
-    car_data[1] = g_car_mode8_state.velocity_forward_target_mps;  // mode8车体系前进目标速度，正值向前
+    if(CAR_MODE_5 == car_mode_get())
+    {
+        car_data[0] = g_car_mode5_state.velocity_strafe_target_mps;
+        car_data[1] = g_car_mode5_state.velocity_forward_target_mps;
+    }
+    else
+    {
+        car_data[0] = g_car_mode8_state.velocity_strafe_target_mps;
+        car_data[1] = g_car_mode8_state.velocity_forward_target_mps;
+    }
     car_data[2] = 0.0f;
     car_data[3] = 0.0f;
     car_data[4] = 0.0f;

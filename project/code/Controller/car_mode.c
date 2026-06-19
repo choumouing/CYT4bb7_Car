@@ -18,7 +18,8 @@ static car_mode_e car_mode_from_ch5_ch6(float ch5, float ch6)
 
 static uint8 car_mode_allows_output(car_mode_e mode)
 {
-    return ((CAR_MODE_6 == mode) ||
+    return ((CAR_MODE_5 == mode) ||
+            (CAR_MODE_6 == mode) ||
             (CAR_MODE_7 == mode) ||
             (CAR_MODE_8 == mode)) ? 1U : 0U;
 }
@@ -119,6 +120,10 @@ void car_mode_update_25HZ(uint32 now_ms)
 
     switch(s_car_mode)
     {
+    case CAR_MODE_5:
+        car_mode5_update_25HZ(now_ms);
+        break;
+
     case CAR_MODE_6:
         car_mode6_update_25HZ(now_ms);
         break;
@@ -143,6 +148,10 @@ void car_mode_update_100HZ(uint32 now_ms)
 
     switch(s_car_mode)
     {
+    case CAR_MODE_5:
+        car_mode5_update_100HZ(now_ms);
+        break;
+
     case CAR_MODE_7:
         car_mode7_update_100HZ(now_ms);
         break;
