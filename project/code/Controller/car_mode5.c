@@ -7,9 +7,6 @@
 #include "car_loop.h"
 
 #define MODE5_MAX_VELOCITY_MPS       (1.5f)
-#define MODE5_STICK_DEADBAND         (50.0f)
-#define MODE5_STICK_MAX              (1000.0f)
-#define MODE5_STICK_ACTIVE_RANGE     (MODE5_STICK_MAX - MODE5_STICK_DEADBAND)
 #define MODE5_MIN_OUTPUT_LIMIT       (0.0f)
 
 car_mode5_state_t g_car_mode5_state = {0};
@@ -50,13 +47,6 @@ static void car_mode5_pid_apply_params(void)
     s_mode5_strafe_pid.kd = mode5_velocity_strafe_kd;
     s_mode5_strafe_pid.i_limit = mode5_velocity_i_limit;
     s_mode5_strafe_pid.output_limit = mode5_velocity_pid_output_limit;
-}
-
-static float car_mode5_stick_to_velocity(float stick)
-{
-    stick = car_math_limit_absf(stick, MODE5_STICK_MAX);
-    stick = car_math_soft_deadband(stick, MODE5_STICK_DEADBAND);
-    return stick * (MODE5_MAX_VELOCITY_MPS / MODE5_STICK_ACTIVE_RANGE);
 }
 
 static float car_mode5_limit_output(float value)
@@ -112,8 +102,18 @@ void car_mode5_update_100HZ(uint32 now_ms)
 
     car_mode5_pid_apply_params();
 
-    g_car_mode5_state.raw_forward_mps = car_mode5_stick_to_velocity(g_air_crsf_std_ch1);
-    g_car_mode5_state.raw_strafe_mps = car_mode5_stick_to_velocity(g_air_crsf_std_ch0);
+    if (g_air_car_plan_valid > 0.5f)
+    {
+        g_car_mode5_state.raw_forward_mps = car_math_limit_absf(g_air_car_plan_forward_mps,
+                                                                MODE5_MAX_VELOCITY_MPS);
+        g_car_mode5_state.raw_strafe_mps = car_math_limit_absf(g_air_car_plan_strafe_mps,
+                                                               MODE5_MAX_VELOCITY_MPS);
+    }
+    else
+    {
+        g_car_mode5_state.raw_forward_mps = 0.0f;
+        g_car_mode5_state.raw_strafe_mps = 0.0f;
+    }
 
     g_car_mode5_state.velocity_forward_target_mps =
         car_filter_lpf1_apply(g_car_mode5_state.velocity_forward_target_mps,

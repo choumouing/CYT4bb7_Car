@@ -39,8 +39,15 @@ volatile float g_air_crsf_std_ch5;
 volatile float g_air_crsf_std_ch6;
 volatile float g_air_crsf_std_ch7;
 volatile float g_air_yaw_angle_target_deg = 0.0f;
+volatile float g_air_sync_time_ms = 0.0f;
+volatile float g_air_car_plan_valid = 0.0f;
+volatile float g_air_car_plan_strafe_mps = 0.0f;
+volatile float g_air_car_plan_forward_mps = 0.0f;
+volatile float g_air_car_plan_camera = 0.0f;
+volatile float g_air_car_plan_beacon_index = 0.0f;
+volatile float g_air_car_plan_dist_px = 0.0f;
 
-#define AIR_RUN_DATA_COUNT (16U)
+#define AIR_RUN_DATA_COUNT (23U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -57,6 +64,13 @@ volatile float g_air_yaw_angle_target_deg = 0.0f;
 #define AIR_RUN_DATA_CRSF_STD_CH6 (13U)
 #define AIR_RUN_DATA_CRSF_STD_CH7 (14U)
 #define AIR_RUN_DATA_YAW_ANGLE_TARGET_DEG (15U)
+#define AIR_RUN_DATA_SYNC_TIME_MS (16U)
+#define AIR_RUN_DATA_CAR_PLAN_VALID (17U)
+#define AIR_RUN_DATA_CAR_PLAN_STRAFE_MPS (18U)
+#define AIR_RUN_DATA_CAR_PLAN_FORWARD_MPS (19U)
+#define AIR_RUN_DATA_CAR_PLAN_CAMERA (20U)
+#define AIR_RUN_DATA_CAR_PLAN_BEACON_INDEX (21U)
+#define AIR_RUN_DATA_CAR_PLAN_DIST_PX (22U)
 
 #define AIR_YAW_TARGET_DEG_TO_RAD (-0.017453292519943295f)
 
@@ -83,6 +97,13 @@ static void on_air_data(const float *data, uint8 count)
     g_air_crsf_std_ch6 = data[13];
     g_air_crsf_std_ch7 = data[14];
     g_air_yaw_angle_target_deg = data[AIR_RUN_DATA_YAW_ANGLE_TARGET_DEG];
+    g_air_sync_time_ms = data[AIR_RUN_DATA_SYNC_TIME_MS];
+    g_air_car_plan_valid = data[AIR_RUN_DATA_CAR_PLAN_VALID];
+    g_air_car_plan_strafe_mps = data[AIR_RUN_DATA_CAR_PLAN_STRAFE_MPS];
+    g_air_car_plan_forward_mps = data[AIR_RUN_DATA_CAR_PLAN_FORWARD_MPS];
+    g_air_car_plan_camera = data[AIR_RUN_DATA_CAR_PLAN_CAMERA];
+    g_air_car_plan_beacon_index = data[AIR_RUN_DATA_CAR_PLAN_BEACON_INDEX];
+    g_air_car_plan_dist_px = data[AIR_RUN_DATA_CAR_PLAN_DIST_PX];
 }
 
 static void car_loop_runtime_reset(void)
@@ -96,6 +117,12 @@ static void car_loop_runtime_reset(void)
     car_strafe_target = 0.0f;
     car_control_enabled = 0U;
     car_emergency_stop_active = 1U;
+    g_air_car_plan_valid = 0.0f;
+    g_air_car_plan_strafe_mps = 0.0f;
+    g_air_car_plan_forward_mps = 0.0f;
+    g_air_car_plan_camera = 0.0f;
+    g_air_car_plan_beacon_index = 0.0f;
+    g_air_car_plan_dist_px = 0.0f;
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
     beacon_config_init();
@@ -134,7 +161,7 @@ static void car_loop_1000HZ(void)
 
 static void car_loop_100HZ(void)
 {
-    float car_data[10];
+    float car_data[11];
 
     s_telemetry_timestamp_count++;
     s_system_time_ms = s_telemetry_timestamp_count * 10U;
@@ -228,21 +255,41 @@ static void car_loop_100HZ(void)
     car_data[7] = 0.0f;
     car_data[8] = 0.0f;
     car_data[9] = 0.0f;
-    air_comm_send_run_data(car_data, 10);
+    car_data[10] = (float)s_system_time_ms;
+    air_comm_send_run_data(car_data, 11);
 
-    wifi_justfloat((float)car_mode_get(),
-                   g_air_euler_yaw,
-                   g_air_yaw_angle_target_deg,
-                   control_yaw_angle_current,
-                   g_car_mode8_state.velocity_forward_target_mps,
-                   g_car_mode8_state.velocity_strafe_target_mps,
-                   g_car_mode8_state.velocity_forward_feedback_mps,
-                   g_car_mode8_state.velocity_strafe_feedback_mps,
-                   g_car_mode8_state.forward_pid_output,
-                   g_car_mode8_state.strafe_pid_output,
-                   g_car_mode8_state.forward_target,
-                   g_car_mode8_state.strafe_target,
-                   (float)g_car_mode8_state.output_valid);
+    if ((CAR_MODE_5 == car_mode_get()) || (CAR_MODE_8 == car_mode_get()))
+    {
+        wifi_justfloat(g_air_sync_time_ms,                              /* I1 */
+                       g_odometer.body_vel[x],                          /* I2 */
+                       g_odometer.body_vel[y],                          /* I3 */
+                       (CAR_MODE_5 == car_mode_get()) ? g_car_mode5_state.velocity_strafe_target_mps : g_car_mode8_state.velocity_strafe_target_mps,    /* I4 */
+                       (CAR_MODE_5 == car_mode_get()) ? g_car_mode5_state.velocity_forward_target_mps : g_car_mode8_state.velocity_forward_target_mps,   /* I5 */
+                       g_euler.pitch,                                  /* I6 */
+                       g_euler.roll,                                   /* I7 */
+                       g_euler.yaw,                                    /* I8 */
+                       g_air_yaw_angle_target_deg,                     /* I9 */
+                       g_air_car_plan_valid,                           /* I10 */
+                       g_air_car_plan_strafe_mps,                      /* I11 */
+                       g_air_car_plan_forward_mps,                     /* I12 */
+                       g_air_car_plan_camera,                          /* I13 */
+                       g_air_car_plan_beacon_index,                    /* I14 */
+                       g_air_car_plan_dist_px);                        /* I15 */
+    }
+
+    // wifi_justfloat((float)car_mode_get(),
+    //                g_air_euler_yaw,
+    //                g_air_yaw_angle_target_deg,
+    //                control_yaw_angle_current,
+    //                g_car_mode8_state.velocity_forward_target_mps,
+    //                g_car_mode8_state.velocity_strafe_target_mps,
+    //                g_car_mode8_state.velocity_forward_feedback_mps,
+    //                g_car_mode8_state.velocity_strafe_feedback_mps,
+    //                g_car_mode8_state.forward_pid_output,
+    //                g_car_mode8_state.strafe_pid_output,
+    //                g_car_mode8_state.forward_target,
+    //                g_car_mode8_state.strafe_target,
+    //                (float)g_car_mode8_state.output_valid);
 
     // wifi_justfloat(g_air_tof_fused_height_mm,
     //             g_air_euler_roll,

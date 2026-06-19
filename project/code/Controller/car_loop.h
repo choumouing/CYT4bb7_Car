@@ -53,6 +53,13 @@ extern volatile float g_air_crsf_std_ch5;
 extern volatile float g_air_crsf_std_ch6;
 extern volatile float g_air_crsf_std_ch7;
 extern volatile float g_air_yaw_angle_target_deg;
+extern volatile float g_air_sync_time_ms;
+extern volatile float g_air_car_plan_valid;
+extern volatile float g_air_car_plan_strafe_mps;
+extern volatile float g_air_car_plan_forward_mps;
+extern volatile float g_air_car_plan_camera;
+extern volatile float g_air_car_plan_beacon_index;
+extern volatile float g_air_car_plan_dist_px;
 
 /* 初始化：清零所有状态和标志位 */
 void car_loop_init(void);
