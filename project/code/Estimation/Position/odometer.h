@@ -91,6 +91,7 @@ typedef struct
 {
     float position[ODOMETER_AXIS_NUM];  /* 累计位置 [m]，水平坐标系 */
     float vel[ODOMETER_AXIS_NUM];       /* 瞬时速度 [m/s]，水平坐标系 */
+    float body_vel[ODOMETER_AXIS_NUM];  /* 车体系速度 [m/s]，x右移，y前进 */
 } odometer_data_t;
 
 /**

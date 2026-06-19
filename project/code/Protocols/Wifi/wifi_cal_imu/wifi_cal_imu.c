@@ -1,20 +1,15 @@
-/**
- * @file wifi_cal_imu.c
- * @brief WiFi IMU 校准命令实现
- *
- * 命令解析流程：
- *   wifi_cal_imu_ProcessLine("imu start gyro")
- *     → token_root="imu", token_cmd="start", token_arg1="gyro"
- *     → wifi_cal_imu_process_start("gyro") → IMUCalib_StartGyro()
- *
- * 文本回传通道：
- *   校准过程中的状态文本通过 wifi_cal_imu_text_sink() → wifi_cmd_SendLine()
- *   发送失败时降级到 printf（调试串口）
- */
+/*****************************************************************************
+ * 文件: wifi_cal_imu.c
+ * 模块: WiFi IMU 校准命令转接
+ * 职责: 负责 imu 命令解析、状态约束检查、中文帮助输出与 IMU 校准接口转接
+ *****************************************************************************/
 
 #include "wifi_cal_imu.h"
 
+#include <string.h>
 
+#include "Estimation/Attitude/Accel_Calibration.h"
+#include "Protocols/wifi/wifi_cmd/wifi_cmd.h"
 
 /*
  * 函数功能: 判断当前是否允许执行 IMU 校准写操作
@@ -41,10 +36,7 @@ static void wifi_cal_imu_text_sink(const char *text)
         return;
     }
 
-    if (0U == wifi_cmd_SendLine("%s", text))
-    {
-        printf("%s\r\n", text);
-    }
+    (void)wifi_cmd_SendLine("%s", text);
 }
 
 /*

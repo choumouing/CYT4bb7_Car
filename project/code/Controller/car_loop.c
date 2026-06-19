@@ -38,18 +38,9 @@ volatile float g_air_crsf_std_ch4;
 volatile float g_air_crsf_std_ch5;
 volatile float g_air_crsf_std_ch6;
 volatile float g_air_crsf_std_ch7;
+volatile float g_air_yaw_angle_target_deg = 0.0f;
 
-volatile float g_air_mode2_target_valid = 0.0f;
-volatile float g_air_mode2_target_x = 0.0f;
-volatile float g_air_mode2_target_y = 0.0f;
-volatile float g_air_mode2_car_lamp_valid = 0.0f;
-volatile float g_air_mode2_car_lamp_cx = 0.0f;
-volatile float g_air_mode2_car_lamp_cy = 0.0f;
-volatile float g_air_mode2_lamp_angle_deg = 0.0f;
-
-#define AIR_RUN_DATA_BASE_COUNT (7U)
-#define AIR_RUN_DATA_CRSF_COUNT (15U)
-#define AIR_RUN_DATA_MODE2_COUNT (22U)
+#define AIR_RUN_DATA_COUNT (16U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -65,10 +56,13 @@ volatile float g_air_mode2_lamp_angle_deg = 0.0f;
 #define AIR_RUN_DATA_CRSF_STD_CH5 (12U)
 #define AIR_RUN_DATA_CRSF_STD_CH6 (13U)
 #define AIR_RUN_DATA_CRSF_STD_CH7 (14U)
+#define AIR_RUN_DATA_YAW_ANGLE_TARGET_DEG (15U)
+
+#define AIR_YAW_TARGET_DEG_TO_RAD (-0.017453292519943295f)
 
 static void on_air_data(const float *data, uint8 count)
 {
-    if (count < AIR_RUN_DATA_CRSF_COUNT)
+    if (count != AIR_RUN_DATA_COUNT)
     {
         return;
     }
@@ -88,27 +82,7 @@ static void on_air_data(const float *data, uint8 count)
     g_air_crsf_std_ch5 = data[12];
     g_air_crsf_std_ch6 = data[13];
     g_air_crsf_std_ch7 = data[14];
-
-    if(count >= AIR_RUN_DATA_MODE2_COUNT)
-    {
-        g_air_mode2_target_valid   = data[15];
-        g_air_mode2_target_x       = data[16];
-        g_air_mode2_target_y       = data[17];
-        g_air_mode2_car_lamp_valid = data[18];
-        g_air_mode2_car_lamp_cx    = data[19];
-        g_air_mode2_car_lamp_cy    = data[20];
-        g_air_mode2_lamp_angle_deg = data[21];
-    }
-    else
-    {
-        g_air_mode2_target_valid   = 0.0f;
-        g_air_mode2_target_x       = 0.0f;
-        g_air_mode2_target_y       = 0.0f;
-        g_air_mode2_car_lamp_valid = 0.0f;
-        g_air_mode2_car_lamp_cx    = 0.0f;
-        g_air_mode2_car_lamp_cy    = 0.0f;
-        g_air_mode2_lamp_angle_deg = 0.0f;
-    }
+    g_air_yaw_angle_target_deg = data[AIR_RUN_DATA_YAW_ANGLE_TARGET_DEG];
 }
 
 static void car_loop_runtime_reset(void)
@@ -222,15 +196,22 @@ static void car_loop_100HZ(void)
 
     if ((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
     {
-        Control_100Hz(car_forward_target, car_strafe_target);
+        float yaw_target_rad = 0.0f;
+
+        if(CAR_MODE_8 == car_mode_get())
+        {
+            yaw_target_rad = g_air_yaw_angle_target_deg * AIR_YAW_TARGET_DEG_TO_RAD;
+        }
+
+        Control_100Hz(car_forward_target, car_strafe_target, yaw_target_rad);
     }
     else
     {
         Control_Stop();
     }
 
-    car_data[0] = g_odometer.vel[x];            //水平横移速度，正值偏右，负值偏左
-    car_data[1] = g_odometer.vel[y];            //水平前进速度，正值前进，负值后退
+    car_data[0] = g_car_mode8_state.velocity_strafe_target_mps;   // mode8车体系横移目标速度，正值向右
+    car_data[1] = g_car_mode8_state.velocity_forward_target_mps;  // mode8车体系前进目标速度，正值向前
     car_data[2] = 0.0f;
     car_data[3] = 0.0f;
     car_data[4] = 0.0f;
@@ -242,9 +223,9 @@ static void car_loop_100HZ(void)
     air_comm_send_run_data(car_data, 10);
 
     wifi_justfloat((float)car_mode_get(),
-                   g_air_mode2_target_valid,
-                   g_air_mode2_target_x,
-                   g_air_mode2_target_y,
+                   g_air_euler_yaw,
+                   g_air_yaw_angle_target_deg,
+                   control_yaw_angle_current,
                    g_car_mode8_state.velocity_forward_target_mps,
                    g_car_mode8_state.velocity_strafe_target_mps,
                    g_car_mode8_state.velocity_forward_feedback_mps,

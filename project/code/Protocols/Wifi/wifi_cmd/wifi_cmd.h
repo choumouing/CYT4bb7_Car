@@ -1,27 +1,13 @@
-/**
- * @file wifi_cmd.h
- * @brief WiFi 命令基础层
- *
- * 功能：WiFi SPI 初始化、UDP socket 建立、文本命令收发与基础文本解析
- * 链路配置：WiFi SSID/密码通过宏定义，UDP 连接到上位机指定 IP:Port
- *
- * 文本命令协议：
- *   - 发送/接收格式：UTF-8 文本 + CRLF 结尾
- *   - 接收状态机逐字节喂入，按 CR/LF 拆行
- *   - 命令路由到上层模块（如 imu 命令路由到 wifi_cal_imu）
- *
- * 发送接口：
- *   - wifi_cmd_SendBuffer: 提交二进制数据 + 触发 UDP 发包
- *   - wifi_cmd_SendBufferNoFlush: 只提交不发包（用于批量写入）
- *   - wifi_cmd_FlushNow: 立即触发 UDP 发包
- *   - wifi_cmd_SendLine: 发送文本行（自动补 CRLF）
- */
+/*****************************************************************************
+ * 文件: wifi_cmd.h
+ * 模块: WiFi 命令基础层
+ * 职责: 负责 wifi_spi 初始化、UDP socket 建立、文本命令收发与基础文本解析工具
+ *****************************************************************************/
 
-#include "zf_common_headfile.h"
 #ifndef WIFI_CMD_H
 #define WIFI_CMD_H
 
-
+#include "zf_common_headfile.h"
 
 #ifndef WIFI_SSID_TEST
 #define WIFI_SSID_TEST      "HDUASC_saidao"      /* WiFi 路由器 SSID */
@@ -29,6 +15,18 @@
 
 #ifndef WIFI_PASSWORD_TEST
 #define WIFI_PASSWORD_TEST  "zyz520520"          /* WiFi 路由器密码 */
+#endif
+
+#ifndef WIFI_IMAGE_ENABLE
+#define WIFI_IMAGE_ENABLE   (0U)                 /* WiFi image mode switch: 0=normal UDP command mode, 1=image TCP mode */
+#endif
+
+#ifndef WIFI_IMAGE_TCP_SERVER_TRANSPORT
+#define WIFI_IMAGE_TCP_SERVER_TRANSPORT  "TCP_SERVER" /* Preferred TCP transport token in image mode */
+#endif
+
+#ifndef WIFI_IMAGE_TCP_CLIENT_TRANSPORT
+#define WIFI_IMAGE_TCP_CLIENT_TRANSPORT  "TCP"   /* Fallback TCP transport token in image mode */
 #endif
 
 #ifndef UDP_REMOTE_IP
@@ -75,6 +73,8 @@ uint8_t wifi_cmd_IsReady(void);
 
 /* Query whether text replies are queued or in flight. */
 uint8_t wifi_cmd_IsTextBusy(void);
+/* Query whether the raw WiFi SPI transmit path is busy. */
+uint8_t wifi_cmd_IsRawBusy(void);
 
 /*
  * 函数名: wifi_cmd_SendBuffer

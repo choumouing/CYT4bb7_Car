@@ -1,28 +1,22 @@
-/**
- * @file wifi_cmd.c
- * @brief WiFi 命令基础层实现
- *
- * 文本接收状态机（逐字节）：
- *   - 收到 CR → 期望 LF
- *   - 收到 LF（在期望中）→ 完整一行 → 路由分发
- *   - 非法字符（<32 或 >126，且非 TAB）→ 标记 invalid
- *   - 超过 WIFI_CMD_LINE_MAX → 标记 overflow
- *   - invalid 或 overflow 的行收到 LF 时回复 ERR format
- *
- * 命令路由：wifi_cmd_dispatch_line() 按首 token 分发
- *   ping → "OK ping"
- *   help → "OK help commands=..."
- *   start/stop → 控制 JustFloat 遥测开关
- *   imu → 转发到 wifi_cal_imu_ProcessLine()
- *   其他 → "ERR unknown command"
- */
+/*****************************************************************************
+ * 文件: wifi_cmd.c
+ * 模块: WiFi 命令基础层
+ * 职责: 负责 wifi_spi 初始化、UDP socket 建立、文本命令收发与命令路由
+ *****************************************************************************/
 
 #include "wifi_cmd.h"
 
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 
+#include "zf_device_wifi_spi.h"
+#include "HW_Drivers/Beep/Beep.h"
+#include "../wifi_cal_imu/wifi_cal_imu.h"
+#include "../wifi_justfloat/wifi_justfloat.h"
+#include "../wifi_params/wifi_params.h"
 
 #define WIFI_CMD_TEXT_SEND_POLL_LIMIT   (20000U)
-#define WIFI_CMD_SPI_DETECT_TIMEOUT_MS  (5000U)
 
 static uint8 s_wifi_cmd_text_tx_active = 0U;
 
@@ -36,30 +30,6 @@ static uint16 s_wifi_cmd_line_len = 0U;        /* 当前文本行长度 */
 static uint8 s_wifi_cmd_line_overflow = 0U;    /* 当前文本行是否溢出 */
 static uint8 s_wifi_cmd_line_invalid = 0U;     /* 当前文本行是否包含非法字符 */
 static uint8 s_wifi_cmd_line_expect_lf = 0U;   /* 当前是否已收到 CR，等待 LF */
-
-static uint8 wifi_cmd_wait_spi_module(uint32 timeout_ms)
-{
-    uint32 elapsed_ms = 0U;
-
-    gpio_init(WIFI_SPI_RST_PIN, GPO, 1, GPO_PUSH_PULL);
-    gpio_init(WIFI_SPI_INT_PIN, GPI, 0, GPI_PULL_DOWN);
-
-    gpio_set_level(WIFI_SPI_RST_PIN, 0);
-    system_delay_ms(10);
-    gpio_set_level(WIFI_SPI_RST_PIN, 1);
-
-    while(elapsed_ms < timeout_ms)
-    {
-        if(0U != gpio_get_level(WIFI_SPI_INT_PIN))
-        {
-            return 1U;
-        }
-        system_delay_ms(1);
-        elapsed_ms++;
-    }
-
-    return 0U;
-}
 
 /*
  * 函数名: wifi_cmd_is_space_char
@@ -181,43 +151,13 @@ static void wifi_cmd_dispatch_line(char *line)
 
     wifi_cmd_ascii_strtolower(token_cmd);
 
-    if (0 == strcmp(token_cmd, "ping"))
+    if (0 == strcmp(token_cmd, "imu"))
     {
-        (void)wifi_cmd_SendLine("OK ping");
+        wifi_cal_imu_ProcessLine(trimmed_line);
         return;
     }
 
-    if (0 == strcmp(token_cmd, "help"))
-    {
-        (void)wifi_cmd_SendLine("OK help commands=ping,help,start,stop");
-        return;
-    }
-
-    if (0 == strcmp(token_cmd, "start"))
-    {
-        wifi_justfloat_SetStandbyUserEnable(1U);
-        (void)wifi_cmd_SendLine("OK start telemetry=on");
-        return;
-    }
-
-    if (0 == strcmp(token_cmd, "stop"))
-    {
-        wifi_justfloat_SetStandbyUserEnable(0U);
-        (void)wifi_cmd_SendLine("OK stop telemetry=off");
-        return;
-    }
-
-    if ((0 == strcmp(token_cmd, "get")) ||
-        (0 == strcmp(token_cmd, "set")) ||
-        (0 == strcmp(token_cmd, "save")) ||
-        (0 == strcmp(token_cmd, "load")) ||
-        (0 == strcmp(token_cmd, "list")))
-    {
-        (void)wifi_cmd_SendLine("ERR unsupported");
-        return;
-    }
-
-    (void)wifi_cmd_SendLine("ERR unknown command");
+    wifi_params_ProcessLine(trimmed_line);
 }
 
 /*
@@ -299,21 +239,32 @@ void wifi_cmd_Init(void)
     memset(s_wifi_cmd_line, 0, sizeof(s_wifi_cmd_line));
     wifi_cmd_reset_line_state();
 
-    if (0U == wifi_cmd_wait_spi_module(WIFI_CMD_SPI_DETECT_TIMEOUT_MS))
-    {
-        return;
-    }
-
     ret = wifi_spi_init((char *)WIFI_SSID_TEST, (char *)WIFI_PASSWORD_TEST);
     if (0U == ret)
     {
+#if (0U == WIFI_IMAGE_ENABLE)
         ret = wifi_spi_socket_connect("UDP", (char *)UDP_REMOTE_IP, (char *)UDP_REMOTE_PORT, (char *)UDP_LOCAL_PORT);
+#else
+        ret = wifi_spi_socket_connect((char *)WIFI_IMAGE_TCP_CLIENT_TRANSPORT,
+                                      (char *)UDP_REMOTE_IP,
+                                      (char *)UDP_REMOTE_PORT,
+                                      (char *)UDP_LOCAL_PORT);
+#endif
     }
 
     if (0U == ret)
     {
+#if (0U == WIFI_IMAGE_ENABLE)
         s_wifi_cmd_use_udp_flush = 1U;
+#else
+        s_wifi_cmd_use_udp_flush = 0U;
+#endif
         s_wifi_cmd_ready = 1U;
+    }
+    else
+    {
+        Beep_Stop();
+        Beep_Play(50U, 0.5f, 5U);
     }
 }
 
@@ -341,6 +292,9 @@ void wifi_cmd_Poll(void)
         }
     }
 
+    /* 仅在非飞行状态下轮询 */
+    (void)wifi_justfloat_Poll();
+
     read_len = wifi_spi_read_buffer(rx_buffer, (uint32)sizeof(rx_buffer));
     for (i = 0U; i < read_len; i++)
     {
@@ -356,6 +310,11 @@ uint8 wifi_cmd_IsReady(void)
 uint8 wifi_cmd_IsTextBusy(void)
 {
     return s_wifi_cmd_text_tx_active;
+}
+
+uint8 wifi_cmd_IsRawBusy(void)
+{
+    return ((0U != wifi_spi_is_busy()) || (0U != s_wifi_cmd_flush_pending)) ? 1U : 0U;
 }
 
 /*

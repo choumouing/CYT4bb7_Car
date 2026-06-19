@@ -134,8 +134,8 @@ float Control_GetYawAngle(void)
     return yaw;
 }
 
-/* 100Hz：yaw锁0 + 麦克纳姆解算 + 四轮速度环 + 电机输出 */
-void Control_100Hz(float forward, float strafe)
+/* 100Hz：yaw目标 + 麦克纳姆解算 + 四轮速度环 + 电机输出 */
+void Control_100Hz(float forward, float strafe, float yaw_target_rad)
 {
     float rot, lf, rf, lr, rr;
     float lf_feedback, rf_feedback, lr_feedback, rr_feedback;
@@ -144,7 +144,7 @@ void Control_100Hz(float forward, float strafe)
     control_pid_apply_all();
 
     control_yaw_angle_current = Control_GetYawAngle();
-    control_yaw_angle_output = PositionalPID_Update(&yaw_angle_pid, 0.0f, control_yaw_angle_current);
+    control_yaw_angle_output = PositionalPID_Update(&yaw_angle_pid, yaw_target_rad, control_yaw_angle_current);
     control_yaw_rate_target = control_yaw_angle_output;
 
     control_yaw_rate_current = -g_imufilter_1000hz.gyroz * CONTROL_DEG_TO_RAD;

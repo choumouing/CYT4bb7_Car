@@ -1377,6 +1377,15 @@
                         <name>$PROJ_DIR$\..\..\code\Protocols\Wifi\wifi_cal_imu\wifi_cal_imu.h</name>
                     </file>
                 </group>
+                <group>
+                    <name>wifi_params</name>
+                    <file>
+                        <name>$PROJ_DIR$\..\..\code\Protocols\Wifi\wifi_params\wifi_params.c</name>
+                    </file>
+                    <file>
+                        <name>$PROJ_DIR$\..\..\code\Protocols\Wifi\wifi_params\wifi_params.h</name>
+                    </file>
+                </group>
             </group>
             <group>
                 <name>WirelessControl</name>

@@ -52,14 +52,7 @@ extern volatile float g_air_crsf_std_ch4;
 extern volatile float g_air_crsf_std_ch5;
 extern volatile float g_air_crsf_std_ch6;
 extern volatile float g_air_crsf_std_ch7;
-
-extern volatile float g_air_mode2_target_valid;
-extern volatile float g_air_mode2_target_x;
-extern volatile float g_air_mode2_target_y;
-extern volatile float g_air_mode2_car_lamp_valid;
-extern volatile float g_air_mode2_car_lamp_cx;
-extern volatile float g_air_mode2_car_lamp_cy;
-extern volatile float g_air_mode2_lamp_angle_deg;
+extern volatile float g_air_yaw_angle_target_deg;
 
 /* 初始化：清零所有状态和标志位 */
 void car_loop_init(void);

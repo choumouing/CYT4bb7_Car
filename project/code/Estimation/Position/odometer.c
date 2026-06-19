@@ -154,10 +154,14 @@ void odometer_update_100HZ(void)
 
     if (odometer_norm2(horizontal_vel[x], horizontal_vel[y]) < ODOMETER_STATIC_ENCODER_SPEED_MPS)
     {
+        body_vel[x] = 0.0f;
+        body_vel[y] = 0.0f;
         horizontal_vel[x] = 0.0f;
         horizontal_vel[y] = 0.0f;
     }
 
+    g_odometer.body_vel[x] = body_vel[x];
+    g_odometer.body_vel[y] = body_vel[y];
     g_odometer.vel[x] = horizontal_vel[x];
     g_odometer.vel[y] = horizontal_vel[y];
     g_odometer.position[x] += g_odometer.vel[x] * ODOMETER_UPDATE_DT_S;

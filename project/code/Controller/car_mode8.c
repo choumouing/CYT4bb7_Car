@@ -1,6 +1,6 @@
-/* Mode8: remote horizontal velocity closed loop.
- * Remote gives horizontal forward/right velocity targets in m/s.
- * Odometer gives horizontal velocity feedback in m/s, X positive means right, Y positive means forward.
+/* Mode8: remote body velocity closed loop.
+ * Remote gives body forward/right velocity targets in m/s.
+ * Odometer gives body velocity feedback in m/s, X positive means right, Y positive means forward.
  * Output converts right-positive velocity to the wheel-space strafe command.
  */
 #include "car_mode.h"
@@ -126,8 +126,8 @@ void car_mode8_update_100HZ(uint32 now_ms)
                               ODOMETER_UPDATE_DT_S,
                               mode8_velocity_smooth_tau_s);
 
-    g_car_mode8_state.velocity_forward_feedback_mps = g_odometer.vel[y];
-    g_car_mode8_state.velocity_strafe_feedback_mps = g_odometer.vel[x];
+    g_car_mode8_state.velocity_forward_feedback_mps = g_odometer.body_vel[y];
+    g_car_mode8_state.velocity_strafe_feedback_mps = g_odometer.body_vel[x];
 
     g_car_mode8_state.forward_feedforward =
         g_car_mode8_state.velocity_forward_target_mps *
