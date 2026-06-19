@@ -124,6 +124,8 @@ void car_mode3_reset(void);
 
 void car_mode4_init(void);
 void car_mode4_reset(void);
+void car_mode4_update_100HZ(uint32 now_ms);
+float car_mode4_get_yaw_target_rad(void);
 
 void car_mode5_init(void);
 void car_mode5_reset(void);

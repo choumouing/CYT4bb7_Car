@@ -19,13 +19,13 @@ float yaw_angle_kp = 3.0f;
 float yaw_angle_ki = 0.0f;
 float yaw_angle_kd = 3.20f;
 float yaw_angle_i_limit = 4.0f;
-float yaw_angle_output_limit = 1.95f;
+float yaw_angle_output_limit = 100.0f;
 
 float yaw_rate_kp = 125.0f;
 float yaw_rate_ki = 1.2f;
 float yaw_rate_kd = 0.0f;
 float yaw_rate_i_limit = 500.0f;
-float yaw_rate_output_limit = 1000.0f;
+float yaw_rate_output_limit = 3000.0f;
 
 float mode7_velocity_smooth_tau_s = 0.12f;
 float mode7_velocity_output_limit = 650.0f;
@@ -375,7 +375,7 @@ void menu_config_init(void)
     menu_register_param(&yaw_angle_ki, 0.01f, 0.0f, 50.0f);
     menu_register_param(&yaw_angle_kd, 0.01f, 0.0f, 50.0f);
     menu_register_param(&yaw_angle_i_limit, 0.1f, 0.0f, 100.0f);
-    menu_register_param(&yaw_angle_output_limit, 0.1f, 0.0f, 10.0f);
+    menu_register_param(&yaw_angle_output_limit, 0.1f, 0.0f, 100.0f);
 
     menu_register_param(&mode7_velocity_smooth_tau_s, 0.01f, 0.0f, 1.0f);
     menu_register_param(&mode7_velocity_output_limit, 10.0f, 0.0f, 1500.0f);

@@ -69,6 +69,13 @@ static float control_wheel_ff(float target, float feedback, float ks, float kv, 
     return ff;
 }
 
+static float control_wrap_pi(float angle)
+{
+    while(angle > CONTROL_PI) angle -= CONTROL_TWO_PI;
+    while(angle < -CONTROL_PI) angle += CONTROL_TWO_PI;
+    return angle;
+}
+
 static void control_pid_init_all(void)
 {
     PositionalPID_Init(&wheel_left_front_pid, 0.0f, wheel_kp, wheel_ki, wheel_kd, wheel_i_limit, wheel_output_limit);
@@ -129,9 +136,7 @@ float Control_GetYawAngle(void)
 {
     float yaw = -g_euler.yaw * CONTROL_DEG_TO_RAD;
 
-    while (yaw > CONTROL_PI) yaw -= CONTROL_TWO_PI;
-    while (yaw < -CONTROL_PI) yaw += CONTROL_TWO_PI;
-    return yaw;
+    return control_wrap_pi(yaw);
 }
 
 /* 100Hz：yaw目标 + 麦克纳姆解算 + 四轮速度环 + 电机输出 */
@@ -140,11 +145,13 @@ void Control_100Hz(float forward, float strafe, float yaw_target_rad)
     float rot, lf, rf, lr, rr;
     float lf_feedback, rf_feedback, lr_feedback, rr_feedback;
     float lf_ff, rf_ff, lr_ff, rr_ff;
+    float yaw_error;
 
     control_pid_apply_all();
 
     control_yaw_angle_current = Control_GetYawAngle();
-    control_yaw_angle_output = PositionalPID_Update(&yaw_angle_pid, yaw_target_rad, control_yaw_angle_current);
+    yaw_error = control_wrap_pi(yaw_target_rad - control_yaw_angle_current);
+    control_yaw_angle_output = PositionalPID_Update(&yaw_angle_pid, yaw_error, 0.0f);
     control_yaw_rate_target = control_yaw_angle_output;
 
     control_yaw_rate_current = -g_imufilter_1000hz.gyroz * CONTROL_DEG_TO_RAD;
