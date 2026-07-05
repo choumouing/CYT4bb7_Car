@@ -281,21 +281,6 @@ static void car_loop_100HZ(void)
                        g_air_car_plan_dist_px);                        /* I15 */
     }
 
-    if ( (CAR_MODE_4 == car_mode_get()))
-    {
-        wifi_justfloat(car_mode4_get_yaw_target_rad(),  /* I1: target yaw */
-                       control_yaw_angle_current,       /* I2: measured yaw */
-                       control_yaw_rate_target,         /* I3: target yaw rate */
-                       control_yaw_rate_current,        /* I4: measured yaw rate */
-                       yaw_angle_pid.p_term,            /* I5: yaw angle P */
-                       yaw_angle_pid.i_term,            /* I6: yaw angle I */
-                       yaw_angle_pid.d_term,            /* I7: yaw angle D */
-                       control_yaw_angle_output,        /* I8: yaw angle output */
-                       yaw_rate_pid.p_term,             /* I9: yaw rate P */
-                       yaw_rate_pid.i_term,             /* I10: yaw rate I */
-                       yaw_rate_pid.d_term,             /* I11: yaw rate D */
-                       control_yaw_rate_output);        /* I12: yaw rate output */
-    }
 
 
     // wifi_justfloat((float)car_mode_get(),
