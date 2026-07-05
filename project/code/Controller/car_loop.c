@@ -262,13 +262,13 @@ static void car_loop_100HZ(void)
     car_data[10] = (float)s_system_time_ms;
     air_comm_send_run_data(car_data, 11);
 
-    if ((CAR_MODE_5 == car_mode_get()) || (CAR_MODE_8 == car_mode_get()))
-    {
+    // if ((CAR_MODE_5 == car_mode_get()) || (CAR_MODE_8 == car_mode_get()))
+    // {
         wifi_justfloat(g_air_sync_time_ms,                              /* I1 */
                        g_odometer.body_vel[x],                          /* I2 */
                        g_odometer.body_vel[y],                          /* I3 */
-                       (CAR_MODE_5 == car_mode_get()) ? g_car_mode5_state.velocity_strafe_target_mps : g_car_mode8_state.velocity_strafe_target_mps,    /* I4 */
-                       (CAR_MODE_5 == car_mode_get()) ? g_car_mode5_state.velocity_forward_target_mps : g_car_mode8_state.velocity_forward_target_mps,   /* I5 */
+                       g_odometer.body_vel[x],                          /* I4 */
+                       g_odometer.body_vel[y],                          /* I5 */
                        g_euler.pitch,                                  /* I6 */
                        g_euler.roll,                                   /* I7 */
                        g_euler.yaw,                                    /* I8 */
@@ -279,7 +279,7 @@ static void car_loop_100HZ(void)
                        g_air_car_plan_camera,                          /* I13 */
                        g_air_car_plan_beacon_index,                    /* I14 */
                        g_air_car_plan_dist_px);                        /* I15 */
-    }
+    // }
 
 
 
