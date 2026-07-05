@@ -15,13 +15,13 @@ float wheel_output_limit = 5000.0f;     // 输出限幅 (PWM)
 float wheel_i_limit = 2500.0f;          // 积分限幅
 
 //====================================================用户函数声明====================================================
-float yaw_angle_kp = 4.8f;
+float yaw_angle_kp = 3.8f;
 float yaw_angle_ki = 0.0f;
-float yaw_angle_kd = 1.2f;
+float yaw_angle_kd = 1.0f;
 float yaw_angle_i_limit = 4.0f;
 float yaw_angle_output_limit = 100.0f;
 
-float yaw_rate_kp = 155.0f;
+float yaw_rate_kp = 125.0f;
 float yaw_rate_ki = 0.03f;
 float yaw_rate_kd = 0.0f;
 float yaw_rate_i_limit = 50.0f;
