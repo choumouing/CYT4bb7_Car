@@ -55,6 +55,8 @@
  * @brief 接收状态机
  * 逐字节解析帧，state 跟踪当前阶段
  */
+#define COMM_RUN_DATA_TIMEOUT_MS           (100U)
+
 typedef struct
 {
     uint8 state;                        /* 状态机状态：0=帧头, 1=信息, 2=payload, 3=CRC */
@@ -111,6 +113,7 @@ static uint32 s_air_comm_last_peer_ms;              /* 最近一次收到对端�
 static uint32 s_air_comm_last_heartbeat_ms;         /* 最近一次发送心跳的时间 */
 static uint8 s_air_comm_seq;                        /* 下一个发送帧的序号 */
 static uint8 s_air_comm_initialized;                /* 初始化标志 */
+static uint32 s_air_comm_last_run_data_ms;
 static float s_air_comm_last_ack_value;
 static char s_air_comm_last_ack_name[AIR_COMM_PARAM_NAME_MAX + 1U];
 
@@ -547,13 +550,13 @@ static void air_comm_handle_run_data(const uint8 *payload, uint8 len)
     }
 
     count = payload[0];
-    if(count > AIR_COMM_RUN_DATA_MAX_FLOATS)
+    if((count == 0U) || (count > AIR_COMM_RUN_DATA_MAX_FLOATS))
     {
         return;
     }
 
     required_len = (uint16)(1U + ((uint16)count * 4U));
-    if((uint16)len < required_len)
+    if((uint16)len != required_len)
     {
         return;
     }
@@ -563,12 +566,10 @@ static void air_comm_handle_run_data(const uint8 *payload, uint8 len)
         data[index] = air_comm_read_float(&payload[1U + ((uint16)index * 4U)]);
     }
 
-    if(count > 0U)
-    {
-        memcpy(s_air_comm_last_run_data, data, (size_t)count * sizeof(float));
-    }
+    memcpy(s_air_comm_last_run_data, data, (size_t)count * sizeof(float));
     s_air_comm_last_run_data_count = count;
     s_air_comm_last_run_data_valid = 1U;
+    s_air_comm_last_run_data_ms = s_air_comm_tick_ms;
 
     if(s_air_comm_run_data_callback != NULL)
     {
@@ -894,6 +895,7 @@ void air_comm_car_init(void)
     s_air_comm_tick_ms = 0U;
     s_air_comm_last_peer_ms = 0U;
     s_air_comm_last_heartbeat_ms = 0U;
+    s_air_comm_last_run_data_ms = 0U;
     s_air_comm_seq = 0U;
     s_air_comm_initialized = 1U;
     s_air_comm_last_ack_value = 0.0f;
@@ -986,6 +988,16 @@ uint8 air_comm_car_is_online(void)
 uint8 air_comm_car_get_online_status(void)
 {
     return s_air_comm_stats.online_status;
+}
+
+uint8 air_comm_car_is_run_data_fresh(void)
+{
+    if((s_air_comm_initialized == 0U) || (s_air_comm_last_run_data_valid == 0U))
+    {
+        return 0U;
+    }
+
+    return ((s_air_comm_tick_ms - s_air_comm_last_run_data_ms) <= COMM_RUN_DATA_TIMEOUT_MS) ? 1U : 0U;
 }
 
 uint32 air_comm_car_get_tick(void)

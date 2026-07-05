@@ -97,6 +97,17 @@ car_mode_e car_mode_get(void)
 
 void car_mode_update_25HZ(uint32 now_ms)
 {
+    if(air_comm_car_is_run_data_fresh() == 0U)
+    {
+        car_control_enabled = 0U;
+        s_car_mode = CAR_MODE_0;
+        car_emergency_stop_active = 1U;
+        car_mode_handle_transition_25HZ(s_car_mode, car_control_enabled);
+        car_forward_target = 0.0f;
+        car_strafe_target = 0.0f;
+        return;
+    }
+
     car_control_enabled = (g_air_crsf_std_ch4 >= CAR_MODE_CH4_ENABLE_THRESHOLD) ? 1U : 0U;
     if(0U == car_control_enabled)
     {

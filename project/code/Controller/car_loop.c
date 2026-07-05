@@ -221,7 +221,9 @@ static void car_loop_100HZ(void)
 
     Beep_Update_100HZ();
 
-    if ((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
+    if ((car_control_enabled != 0U) &&
+        (car_emergency_stop_active == 0U) &&
+        (air_comm_car_is_run_data_fresh() != 0U))
     {
         float yaw_target_rad = 0.0f;
 

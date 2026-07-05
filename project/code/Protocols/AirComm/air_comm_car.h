@@ -150,6 +150,7 @@ uint8 air_comm_car_is_online(void);
  * @return 0=初始, 1=在线, 2=离线
  */
 uint8 air_comm_car_get_online_status(void);
+uint8 air_comm_car_is_run_data_fresh(void);
 
 /**
  * @brief 获取当前 tick 计数
