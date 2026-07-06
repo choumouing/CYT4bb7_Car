@@ -19,6 +19,7 @@ uint8 car_emergency_stop_active = 1U;
 static uint32 s_telemetry_timestamp_count = 0U;
 static uint32 s_system_time_ms = 0U;
 static uint16 s_air_comm_beep_tick = 200U;
+static uint32 s_beacon_beep_enter_count = 0U;
 
 volatile float g_air_tof_fused_height_mm;
 volatile float g_air_euler_roll;
@@ -125,6 +126,7 @@ static void car_loop_runtime_reset(void)
     g_air_car_plan_dist_px = 0.0f;
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
+    s_beacon_beep_enter_count = 0U;
     beacon_config_init();
 }
 
@@ -171,13 +173,11 @@ static void car_loop_100HZ(void)
     beacon_detection_update_100HZ();
     fixator_update_100HZ();
 
-    if (g_beacon_detection.enter_event != 0U)
+    if ((g_beacon_detection.enter_event != 0U) &&
+        (g_beacon_detection.enter_count != s_beacon_beep_enter_count))
     {
-        Beep_Enable();
-    }
-    if (g_beacon_detection.exit_event != 0U)
-    {
-        Beep_Disable();
+        s_beacon_beep_enter_count = g_beacon_detection.enter_count;
+        Beep_Play(100U, 0.10f, 1U);
     }
 
     if ((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
@@ -253,7 +253,7 @@ static void car_loop_100HZ(void)
         car_data[0] = g_car_mode8_state.velocity_strafe_target_mps;
         car_data[1] = g_car_mode8_state.velocity_forward_target_mps;
     }
-    car_data[2] = 0.0f;
+    car_data[2] = (g_beacon_detection.on_beacon != 0U) ? 1.0f : 0.0f;
     car_data[3] = 0.0f;
     car_data[4] = 0.0f;
     car_data[5] = 0.0f;
