@@ -70,7 +70,7 @@ static float odometer_yaw_delta_rad(void)
         s_yaw_ready = 1U;
     }
 
-    return odometer_normalize_angle(yaw_now_rad - s_yaw_zero_rad);
+    return odometer_normalize_angle(s_yaw_zero_rad - yaw_now_rad);
 }
 
 static float odometer_norm2(float vx, float vy)
@@ -173,7 +173,6 @@ void odometer_update_100HZ(void)
     {
         float fixed_position[ODOMETER_AXIS_NUM];
 
-        /* fixator 在本周期信标检测后产出方案，这里通常消费上一 100Hz 周期的修正。 */
         if(fixator_get_position_fix(fixed_position) != 0U)
         {
             g_odometer.position[x] = fixed_position[x];

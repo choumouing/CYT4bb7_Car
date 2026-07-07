@@ -18,19 +18,19 @@ typedef struct
  */
 static const beacon_config_point_t s_default_beacons[] =
 {
-    {4.0f, 4.5f},
-    {3.0f, 4.5f},
-    {1.0f, 3.5f},
-    {2.0f, 2.0f},
-    {2.0f, 0.5f},
-    {4.0f, 2.0f},
-    {5.0f, 1.0f}
+    {2.25f, 2.5f},
+    {0.9f, 4.0f},
+    {3.15f, 4.0f},
+    {4.2f, 2.0f},
+    {0.0f, 5.0f},
+    {1.35f, 1.0f},
+    {3.6f, 1.0f}
 };
 
 static const float s_default_initial_position[2] =
 {
-    6.0f,
-    1.0f
+    2.5f,
+    0.25f
 };
 
 static beacon_config_state_t s_beacon_config;

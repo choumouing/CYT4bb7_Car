@@ -164,6 +164,9 @@ static void car_loop_1000HZ(void)
 static void car_loop_100HZ(void)
 {
     float car_data[11];
+    float odometer_raw_position[2];
+    float odometer_fixed_position[2];
+    float beacon_detected_flag;
 
     s_telemetry_timestamp_count++;
     s_system_time_ms = s_telemetry_timestamp_count * 10U;
@@ -172,6 +175,20 @@ static void car_loop_100HZ(void)
     odometer_update_100HZ();
     beacon_detection_update_100HZ();
     fixator_update_100HZ();
+
+    odometer_raw_position[x] = g_odometer.position[x];
+    odometer_raw_position[y] = g_odometer.position[y];
+    odometer_fixed_position[x] = g_odometer.position[x];
+    odometer_fixed_position[y] = g_odometer.position[y];
+    beacon_detected_flag = (g_beacon_detection.enter_event != 0U) ? 1.0f : 0.0f;
+
+    if((g_fixator.pending_fix != 0U) && (g_fixator.last_match_valid != 0U))
+    {
+        odometer_raw_position[x] = g_fixator.before_position[x];
+        odometer_raw_position[y] = g_fixator.before_position[y];
+        odometer_fixed_position[x] = g_fixator.fixed_position[x];
+        odometer_fixed_position[y] = g_fixator.fixed_position[y];
+    }
 
     if ((g_beacon_detection.enter_event != 0U) &&
         (g_beacon_detection.enter_count != s_beacon_beep_enter_count))
@@ -266,21 +283,28 @@ static void car_loop_100HZ(void)
 
     // if ((CAR_MODE_5 == car_mode_get()) || (CAR_MODE_8 == car_mode_get()))
     // {
-        wifi_justfloat(g_air_sync_time_ms,                              /* I1 */
-                       g_odometer.body_vel[x],                          /* I2 */
-                       g_odometer.body_vel[y],                          /* I3 */
-                       g_odometer.body_vel[x],                          /* I4 */
-                       g_odometer.body_vel[y],                          /* I5 */
-                       g_euler.pitch,                                  /* I6 */
-                       g_euler.roll,                                   /* I7 */
-                       g_euler.yaw,                                    /* I8 */
-                       g_air_yaw_angle_target_deg,                     /* I9 */
-                       g_air_car_plan_valid,                           /* I10 */
-                       g_air_car_plan_strafe_mps,                      /* I11 */
-                       g_air_car_plan_forward_mps,                     /* I12 */
-                       g_air_car_plan_camera,                          /* I13 */
-                       g_air_car_plan_beacon_index,                    /* I14 */
-                       g_air_car_plan_dist_px);                        /* I15 */
+        wifi_justfloat(g_imufilter_1000hz.gyrox,                       /* I1 */
+                       g_imufilter_1000hz.gyroy,                       /* I2 */
+                       g_imufilter_1000hz.gyroz,                       /* I3 */
+                       g_imufilter_1000hz.accx,                        /* I4 */
+                       g_imufilter_1000hz.accy,                        /* I5 */
+                       g_imufilter_1000hz.accz,                        /* I6 */
+                       g_euler.pitch,                                  /* I7 */
+                       g_euler.roll,                                   /* I8 */
+                       g_euler.yaw,                                    /* I9 */
+                       encoder_get_left_front_filtered_count(),         /* I10 */
+                       encoder_get_right_front_filtered_count(),        /* I11 */
+                       encoder_get_left_rear_filtered_count(),          /* I12 */
+                       encoder_get_right_rear_filtered_count(),         /* I13 */
+                       g_odometer.body_vel[x],                         /* I14 */
+                       g_odometer.body_vel[y],                         /* I15 */
+                       g_odometer.vel[x],                              /* I16 */
+                       g_odometer.vel[y],                              /* I17 */
+                       odometer_raw_position[x],                       /* I18 */
+                       odometer_raw_position[y],                       /* I19 */
+                       beacon_detected_flag,                           /* I20 */
+                       odometer_fixed_position[x],                     /* I21 */
+                       odometer_fixed_position[y]);                    /* I22 */
     // }
 
 
