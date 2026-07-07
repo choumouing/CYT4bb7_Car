@@ -11,7 +11,7 @@ typedef struct
     uint8 pending_fix;
     uint8 last_match_valid;
     uint8 counts_in_sequence;       /* 1=计入信标序列，0=只做位置校准 */
-    uint8 fix_source;               /* 0=无，1=enter 事件，2=轨迹近邻 */
+    uint8 fix_source;               /* 0=无，1=Air 灭信标灯 */
     uint16 beacon_index;
     uint16 previous_beacon_index;
     float before_position[2];

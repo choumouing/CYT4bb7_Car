@@ -47,8 +47,9 @@ volatile float g_air_car_plan_forward_mps = 0.0f;
 volatile float g_air_car_plan_camera = 0.0f;
 volatile float g_air_car_plan_beacon_index = 0.0f;
 volatile float g_air_car_plan_dist_px = 0.0f;
+volatile float g_air_beacon_lost_flag = 0.0f;
 
-#define AIR_RUN_DATA_COUNT (23U)
+#define AIR_RUN_DATA_COUNT (24U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -72,6 +73,7 @@ volatile float g_air_car_plan_dist_px = 0.0f;
 #define AIR_RUN_DATA_CAR_PLAN_CAMERA (20U)
 #define AIR_RUN_DATA_CAR_PLAN_BEACON_INDEX (21U)
 #define AIR_RUN_DATA_CAR_PLAN_DIST_PX (22U)
+#define AIR_RUN_DATA_BEACON_LOST_FLAG (23U)
 
 #define AIR_YAW_TARGET_DEG_TO_RAD (-0.017453292519943295f)
 
@@ -105,6 +107,7 @@ static void on_air_data(const float *data, uint8 count)
     g_air_car_plan_camera = data[AIR_RUN_DATA_CAR_PLAN_CAMERA];
     g_air_car_plan_beacon_index = data[AIR_RUN_DATA_CAR_PLAN_BEACON_INDEX];
     g_air_car_plan_dist_px = data[AIR_RUN_DATA_CAR_PLAN_DIST_PX];
+    g_air_beacon_lost_flag = data[AIR_RUN_DATA_BEACON_LOST_FLAG];
 }
 
 static void car_loop_runtime_reset(void)
@@ -124,6 +127,7 @@ static void car_loop_runtime_reset(void)
     g_air_car_plan_camera = 0.0f;
     g_air_car_plan_beacon_index = 0.0f;
     g_air_car_plan_dist_px = 0.0f;
+    g_air_beacon_lost_flag = 0.0f;
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
     s_beacon_beep_enter_count = 0U;
