@@ -162,6 +162,7 @@ void car_loop_init(void)
 static void car_loop_1000HZ(void)
 {
     IMU_Update_1000HZ();
+    odometer_update_1000HZ();
     beacon_detection_update_1000HZ();
 }
 
@@ -305,10 +306,13 @@ static void car_loop_100HZ(void)
                        g_odometer.vel[x],                              /* I16 */
                        g_odometer.vel[y],                              /* I17 */
                        odometer_raw_position[x],                       /* I18 */
-                       odometer_raw_position[y],                       /* I19 */
-                       beacon_detected_flag,                           /* I20 */
+                       odometer_raw_position[y],                       /* I19 */                           /* I20 */
                        odometer_fixed_position[x],                     /* I21 */
-                       odometer_fixed_position[y]);                    /* I22 */
+                       odometer_fixed_position[y],                     /* I22 */
+                       g_air_car_plan_strafe_mps,                      /* I23: Air target velocity X */
+                       g_air_car_plan_forward_mps,                     /* I24: Air target velocity Y */
+                       g_air_beacon_lost_flag,
+                       beacon_detected_flag);                        /* I25 */
     // }
 
 

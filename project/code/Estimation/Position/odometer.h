@@ -55,6 +55,7 @@
 /* ---- 周期与标定常量 ---- */
 
 #define ODOMETER_UPDATE_DT_S                (0.01f)     /* 更新周期 10ms（100Hz 调用） */
+#define ODOMETER_IMU_UPDATE_DT_S            (0.001f)
 #define ODOMETER_FORWARD_COUNT_PER_METER    (13915.0f)  /* 离线融合扫参标定：14750 / 1.06 */
 #define ODOMETER_STRAFE_COUNT_PER_METER_ABS (14000.0f)  /* 横移方向：每米对应的编码器脉冲数（绝对值） */
                                                         /* 横移标定值略小于前进，因麦轮 45° 滚子滑移率不同 */
@@ -62,10 +63,13 @@
 /* ---- 鲁棒滤波与静态门限 ---- */
 
 #define ODOMETER_STATIC_ENCODER_SPEED_MPS   (0.03f)     /* 静态死区：合速度 < 0.03 m/s 时视为静止，输出归零 */
-#define ODOMETER_WHEEL_Q_THRESH             (40.0f)     /* 打滑检测阈值：|LF+RF-LR-RR| > 40 脉冲/周期时触发 */
-                                                        /* 该值衡量四轮"旋转不一致性"，纯平移时应接近 0 */
-#define ODOMETER_WHEEL_ROBUST_BLEND         (1.00f)     /* 打滑时鲁棒混合系数：1.0 = 完全替换为中值平均 */
-#define ODOMETER_WHEEL_GATE_HOLD_TICKS      (4U)        /* 打滑触发后保持鲁棒模式的周期数（4×10ms = 40ms） */
+#define ODOMETER_STATIC_ACCEL_MPS2          (0.25f)
+#define ODOMETER_ACCEL_BIAS_ALPHA_STATIC    (0.005f)
+#define ODOMETER_ENCODER_BLEND_ALPHA        (1.00f)
+#define ODOMETER_SLIP_BLEND_ALPHA           (0.15f)
+#define ODOMETER_SLIP_INNOVATION_THRESH     (0.50f)
+#define ODOMETER_SLIP_ACCEL_DIFF_THRESH     (3.00f)
+#define ODOMETER_SLIP_HOLD_TICKS            (8U)
 
 /* ---- 轴索引 ---- */
 
@@ -92,6 +96,7 @@ typedef struct
 {
     float position[ODOMETER_AXIS_NUM];  /* 累计位置 [m]，水平坐标系 */
     float vel[ODOMETER_AXIS_NUM];       /* 瞬时速度 [m/s]，水平坐标系 */
+    float acc[ODOMETER_AXIS_NUM];       /* 水平坐标系加速度 [m/s^2] */
     float body_vel[ODOMETER_AXIS_NUM];  /* 车体系速度 [m/s]，x右移，y前进 */
 } odometer_data_t;
 
@@ -118,5 +123,6 @@ void odometer_reset(void);
 
 /* 100Hz 周期更新：读取四轮编码器 → 正运动学 → 坐标变换 → 积分 */
 void odometer_update_100HZ(void);
+void odometer_update_1000HZ(void);
 
 #endif
