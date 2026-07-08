@@ -294,7 +294,7 @@ static void car_loop_100HZ(void)
 
     // if ((CAR_MODE_5 == car_mode_get()) || (CAR_MODE_8 == car_mode_get()))
     // {
-        wifi_justfloat(g_imufilter_1000hz.gyrox,                       /* I1 */
+wifi_justfloat(g_imufilter_1000hz.gyrox,                       /* I1 */
                        g_imufilter_1000hz.gyroy,                       /* I2 */
                        g_imufilter_1000hz.gyroz,                       /* I3 */
                        g_imufilter_1000hz.accx,                        /* I4 */
@@ -312,10 +312,13 @@ static void car_loop_100HZ(void)
                        g_odometer.vel[x],                              /* I16 */
                        g_odometer.vel[y],                              /* I17 */
                        odometer_raw_position[x],                       /* I18 */
-                       odometer_raw_position[y],                       /* I19 */
-                       beacon_detected_flag,                           /* I20 */
+                       odometer_raw_position[y],                       /* I19 */                           /* I20 */
                        odometer_fixed_position[x],                     /* I21 */
-                       odometer_fixed_position[y]);                    /* I22 */
+                       odometer_fixed_position[y],                     /* I22 */
+                       g_air_car_plan_strafe_mps,                      /* I23: Air target velocity X */
+                       g_air_car_plan_forward_mps,                     /* I24: Air target velocity Y */
+                       g_air_beacon_lost_flag,
+                       beacon_detected_flag);
     // }
 
 
