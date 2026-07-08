@@ -252,7 +252,9 @@ static void car_loop_100HZ(void)
         {
             yaw_target_rad = car_mode4_get_yaw_target_rad();
         }
-        else if((CAR_MODE_5 == car_mode_get()) || (CAR_MODE_8 == car_mode_get()))
+        else if((CAR_MODE_2 == car_mode_get()) ||
+                (CAR_MODE_5 == car_mode_get()) ||
+                (CAR_MODE_8 == car_mode_get()))
         {
             yaw_target_rad = g_air_yaw_angle_target_deg * AIR_YAW_TARGET_DEG_TO_RAD;
         }
@@ -264,7 +266,12 @@ static void car_loop_100HZ(void)
         Control_Stop();
     }
 
-    if(CAR_MODE_5 == car_mode_get())
+    if(CAR_MODE_2 == car_mode_get())
+    {
+        car_data[0] = g_car_mode2_state.velocity_strafe_target_mps;
+        car_data[1] = g_car_mode2_state.velocity_forward_target_mps;
+    }
+    else if(CAR_MODE_5 == car_mode_get())
     {
         car_data[0] = g_car_mode5_state.velocity_strafe_target_mps;
         car_data[1] = g_car_mode5_state.velocity_forward_target_mps;

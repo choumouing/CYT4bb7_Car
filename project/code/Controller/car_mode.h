@@ -75,6 +75,29 @@ typedef struct
     float strafe_pid_i_term;
     float strafe_pid_d_term;
     uint8 output_valid;
+} car_mode2_state_t;
+
+typedef struct
+{
+    float raw_forward_mps;
+    float raw_strafe_mps;
+    float velocity_forward_target_mps;
+    float velocity_strafe_target_mps;
+    float velocity_forward_feedback_mps;
+    float velocity_strafe_feedback_mps;
+    float forward_feedforward;
+    float strafe_feedforward;
+    float forward_pid_output;
+    float strafe_pid_output;
+    float forward_target;
+    float strafe_target;
+    float forward_pid_p_term;
+    float forward_pid_i_term;
+    float forward_pid_d_term;
+    float strafe_pid_p_term;
+    float strafe_pid_i_term;
+    float strafe_pid_d_term;
+    uint8 output_valid;
 } car_mode7_state_t;
 
 typedef struct
@@ -100,6 +123,7 @@ typedef struct
     uint8 output_valid;
 } car_mode8_state_t;
 
+extern car_mode2_state_t g_car_mode2_state;
 extern car_mode5_state_t g_car_mode5_state;
 extern car_mode7_state_t g_car_mode7_state;
 extern car_mode8_state_t g_car_mode8_state;
@@ -118,6 +142,8 @@ void car_mode1_reset(void);
 
 void car_mode2_init(void);
 void car_mode2_reset(void);
+void car_mode2_update_25HZ(uint32 now_ms);
+void car_mode2_update_100HZ(uint32 now_ms);
 
 void car_mode3_init(void);
 void car_mode3_reset(void);
