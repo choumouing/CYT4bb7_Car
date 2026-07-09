@@ -57,7 +57,7 @@
 #define ODOMETER_UPDATE_DT_S                (0.01f)     /* 更新周期 10ms（100Hz 调用） */
 #define ODOMETER_IMU_UPDATE_DT_S            (0.001f)
 #define ODOMETER_FORWARD_COUNT_PER_METER    (13000.0f)  /* 惯导日志标定：前向稳健拟合 */
-#define ODOMETER_STRAFE_COUNT_PER_METER_ABS (13850.0f)  /* 惯导日志标定：横向左右合并保守拟合 */
+#define ODOMETER_STRAFE_COUNT_PER_METER_ABS (14100.0f)  /* 惯导日志标定：横向左右合并保守拟合 */
                                                         /* 前向与横向分轴标定，避免用单一比例覆盖麦轮滑移差异 */
 
 /* ---- 鲁棒滤波与静态门限 ---- */
@@ -70,6 +70,9 @@
 #define ODOMETER_SLIP_INNOVATION_THRESH     (0.50f)
 #define ODOMETER_SLIP_ACCEL_DIFF_THRESH     (3.00f)
 #define ODOMETER_SLIP_HOLD_TICKS            (8U)
+#define ODOMETER_CROSSTALK_Y_FROM_X_GAIN    (0.25f)
+#define ODOMETER_CROSSTALK_Y_CORR_MIN_MPS   (0.08f)
+#define ODOMETER_CROSSTALK_Y_CORR_RATIO_MIN (0.30f)
 
 /* ---- 轴索引 ---- */
 

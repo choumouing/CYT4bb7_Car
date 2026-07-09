@@ -60,6 +60,27 @@ static void odometer_body_to_horizontal(const float body[ODOMETER_AXIS_NUM],
     horizontal[y] = (sin_yaw * body[x]) + (cos_yaw * body[y]);
 }
 
+static void odometer_compensate_xy_crosstalk(float body_vel[ODOMETER_AXIS_NUM])
+{
+    float correction_y = ODOMETER_CROSSTALK_Y_FROM_X_GAIN * body_vel[x];
+    float abs_correction_y = fabsf(correction_y);
+    float abs_body_y = fabsf(body_vel[y]);
+
+    if ((correction_y * body_vel[y] > 0.0f) &&
+        (abs_correction_y >= ODOMETER_CROSSTALK_Y_CORR_MIN_MPS) &&
+        (abs_correction_y >= (ODOMETER_CROSSTALK_Y_CORR_RATIO_MIN * abs_body_y)))
+    {
+        if (abs_correction_y > abs_body_y)
+        {
+            body_vel[y] = 0.0f;
+        }
+        else
+        {
+            body_vel[y] -= correction_y;
+        }
+    }
+}
+
 static void odometer_update_accel(void)
 {
     float body_acc[ODOMETER_AXIS_NUM];
@@ -123,6 +144,8 @@ void odometer_update_100HZ(void)
     body_vel[y] =
         (left_front + right_front + left_rear + right_rear) *
         (0.25f / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S);
+
+    odometer_compensate_xy_crosstalk(body_vel);
 
     g_odometer.body_vel[x] = body_vel[x];
     g_odometer.body_vel[y] = body_vel[y];
