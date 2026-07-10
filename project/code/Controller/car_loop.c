@@ -267,21 +267,8 @@ static void car_loop_100HZ(void)
         Control_Stop();
     }
 
-    if(CAR_MODE_2 == car_mode_get())
-    {
-        car_data[0] = g_car_mode2_state.velocity_strafe_target_mps;
-        car_data[1] = g_car_mode2_state.velocity_forward_target_mps;
-    }
-    else if(CAR_MODE_5 == car_mode_get())
-    {
-        car_data[0] = g_car_mode5_state.velocity_strafe_target_mps;
-        car_data[1] = g_car_mode5_state.velocity_forward_target_mps;
-    }
-    else
-    {
-        car_data[0] = g_car_mode8_state.velocity_strafe_target_mps;
-        car_data[1] = g_car_mode8_state.velocity_forward_target_mps;
-    }
+    car_data[0] = g_odometer.body_vel[x];  /* 车体系横移实测速度，右正，m/s */
+    car_data[1] = g_odometer.body_vel[y];  /* 车体系前进实测速度，前正，m/s */
     car_data[2] = (g_beacon_detection.on_beacon != 0U) ? 1.0f : 0.0f;
     car_data[3] = 0.0f;
     car_data[4] = 0.0f;
