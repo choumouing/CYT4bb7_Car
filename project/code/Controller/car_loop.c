@@ -162,6 +162,7 @@ void car_loop_init(void)
 static void car_loop_1000HZ(void)
 {
     IMU_Update_1000HZ();
+    odometer_update_1000HZ();
     beacon_detection_update_1000HZ();
 }
 
@@ -294,7 +295,7 @@ static void car_loop_100HZ(void)
 
     // if ((CAR_MODE_5 == car_mode_get()) || (CAR_MODE_8 == car_mode_get()))
     // {
-wifi_justfloat(g_imufilter_1000hz.gyrox,                       /* I1 */
+        wifi_justfloat(g_imufilter_1000hz.gyrox,                       /* I1 */
                        g_imufilter_1000hz.gyroy,                       /* I2 */
                        g_imufilter_1000hz.gyroz,                       /* I3 */
                        g_imufilter_1000hz.accx,                        /* I4 */
@@ -318,7 +319,7 @@ wifi_justfloat(g_imufilter_1000hz.gyrox,                       /* I1 */
                        g_air_car_plan_strafe_mps,                      /* I23: Air target velocity X */
                        g_air_car_plan_forward_mps,                     /* I24: Air target velocity Y */
                        g_air_beacon_lost_flag,
-                       beacon_detected_flag);
+                       beacon_detected_flag);                        /* I25 */
     // }
 
 
