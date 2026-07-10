@@ -1,4 +1,5 @@
 #include "odometer.h"
+#include "Estimation/Attitude/Accel_Calibration.h"
 
 #define ODOMETER_DEG_TO_RAD (0.017453292519943295f)
 #define ODOMETER_PI (3.14159265358979323846f)
@@ -7,8 +8,13 @@
 odometer_data_t g_odometer = {0};
 
 static float s_yaw_zero_rad;
+static float s_accel_bias[ODOMETER_AXIS_NUM];
+static float s_imu_vel[ODOMETER_AXIS_NUM];
+static float s_encoder_vel[ODOMETER_AXIS_NUM];
+static float s_prev_encoder_vel[ODOMETER_AXIS_NUM];
 static uint8 s_yaw_ready;
-static uint8 s_wheel_gate_hold_ticks;
+static uint8 s_accel_bias_ready;
+static uint8 s_slip_hold_ticks;
 
 static float odometer_normalize_angle(float angle)
 {
@@ -25,39 +31,9 @@ static float odometer_normalize_angle(float angle)
     return angle;
 }
 
-static float odometer_mid2_average4(float a, float b, float c, float d)
+static float odometer_norm(const float value[ODOMETER_AXIS_NUM])
 {
-    float min_value = a;
-    float max_value = a;
-    float sum = a + b + c + d;
-
-    if (b < min_value)
-    {
-        min_value = b;
-    }
-    if (c < min_value)
-    {
-        min_value = c;
-    }
-    if (d < min_value)
-    {
-        min_value = d;
-    }
-
-    if (b > max_value)
-    {
-        max_value = b;
-    }
-    if (c > max_value)
-    {
-        max_value = c;
-    }
-    if (d > max_value)
-    {
-        max_value = d;
-    }
-
-    return 0.5f * (sum - min_value - max_value);
+    return sqrtf((value[x] * value[x]) + (value[y] * value[y]));
 }
 
 static float odometer_yaw_delta_rad(void)
@@ -73,11 +49,6 @@ static float odometer_yaw_delta_rad(void)
     return odometer_normalize_angle(s_yaw_zero_rad - yaw_now_rad);
 }
 
-static float odometer_norm2(float vx, float vy)
-{
-    return sqrtf((vx * vx) + (vy * vy));
-}
-
 static void odometer_body_to_horizontal(const float body[ODOMETER_AXIS_NUM],
                                         float horizontal[ODOMETER_AXIS_NUM])
 {
@@ -87,6 +58,49 @@ static void odometer_body_to_horizontal(const float body[ODOMETER_AXIS_NUM],
 
     horizontal[x] = (cos_yaw * body[x]) - (sin_yaw * body[y]);
     horizontal[y] = (sin_yaw * body[x]) + (cos_yaw * body[y]);
+}
+
+static void odometer_compensate_xy_crosstalk(float body_vel[ODOMETER_AXIS_NUM])
+{
+    float correction_y = ODOMETER_CROSSTALK_Y_FROM_X_GAIN * body_vel[x];
+    float abs_correction_y = fabsf(correction_y);
+    float abs_body_y = fabsf(body_vel[y]);
+
+    if ((correction_y * body_vel[y] > 0.0f) &&
+        (abs_correction_y >= ODOMETER_CROSSTALK_Y_CORR_MIN_MPS) &&
+        (abs_correction_y >= (ODOMETER_CROSSTALK_Y_CORR_RATIO_MIN * abs_body_y)))
+    {
+        if (abs_correction_y > abs_body_y)
+        {
+            body_vel[y] = 0.0f;
+        }
+        else
+        {
+            body_vel[y] -= correction_y;
+        }
+    }
+}
+
+static void odometer_update_accel(void)
+{
+    float body_acc[ODOMETER_AXIS_NUM];
+    float acc_forward;
+    float acc_right;
+
+    AccelCalibration_GetBodyLevelAccelNoYawMps2(&acc_forward, &acc_right);
+    body_acc[x] = acc_right;
+    body_acc[y] = acc_forward;
+    odometer_body_to_horizontal(body_acc, g_odometer.acc);
+
+    if (0U == s_accel_bias_ready)
+    {
+        s_accel_bias[x] = g_odometer.acc[x];
+        s_accel_bias[y] = g_odometer.acc[y];
+        s_accel_bias_ready = 1U;
+    }
+
+    g_odometer.acc[x] -= s_accel_bias[x];
+    g_odometer.acc[y] -= s_accel_bias[y];
 }
 
 void odometer_init(void)
@@ -103,25 +117,26 @@ void odometer_reset(void)
     g_odometer.position[x] = initial_position[x];
     g_odometer.position[y] = initial_position[y];
     s_yaw_zero_rad = 0.0f;
+    s_accel_bias[x] = 0.0f;
+    s_accel_bias[y] = 0.0f;
+    s_imu_vel[x] = 0.0f;
+    s_imu_vel[y] = 0.0f;
+    s_encoder_vel[x] = 0.0f;
+    s_encoder_vel[y] = 0.0f;
+    s_prev_encoder_vel[x] = 0.0f;
+    s_prev_encoder_vel[y] = 0.0f;
     s_yaw_ready = 0U;
-    s_wheel_gate_hold_ticks = 0U;
+    s_accel_bias_ready = 0U;
+    s_slip_hold_ticks = 0U;
 }
 
 void odometer_update_100HZ(void)
 {
     float body_vel[ODOMETER_AXIS_NUM];
-    float horizontal_vel[ODOMETER_AXIS_NUM];
-    float inertial_position[ODOMETER_AXIS_NUM];
-    uint8 fix_applied = 0U;
-    int16_t left_front_raw = encoder_get_left_front_count();
-    int16_t right_front_raw = encoder_get_right_front_count();
-    int16_t left_rear_raw = encoder_get_left_rear_count();
-    int16_t right_rear_raw = encoder_get_right_rear_count();
     float left_front = encoder_get_left_front_filtered_count();
     float right_front = encoder_get_right_front_filtered_count();
     float left_rear = encoder_get_left_rear_filtered_count();
     float right_rear = encoder_get_right_rear_filtered_count();
-    float wheel_q = fabsf(left_front + right_front - left_rear - right_rear);
 
     body_vel[x] =
         (left_front - right_front - left_rear + right_rear) *
@@ -130,44 +145,60 @@ void odometer_update_100HZ(void)
         (left_front + right_front + left_rear + right_rear) *
         (0.25f / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S);
 
-    if (wheel_q > ODOMETER_WHEEL_Q_THRESH)
-    {
-        s_wheel_gate_hold_ticks = ODOMETER_WHEEL_GATE_HOLD_TICKS;
-    }
-
-    if (s_wheel_gate_hold_ticks > 0U)
-    {
-        float robust_body_vel[ODOMETER_AXIS_NUM];
-
-        robust_body_vel[x] =
-            odometer_mid2_average4(left_front, -right_front, -left_rear, right_rear) *
-            (1.0f / ODOMETER_STRAFE_COUNT_PER_METER_ABS / ODOMETER_UPDATE_DT_S);
-        robust_body_vel[y] =
-            odometer_mid2_average4(left_front, right_front, left_rear, right_rear) *
-            (1.0f / ODOMETER_FORWARD_COUNT_PER_METER / ODOMETER_UPDATE_DT_S);
-        body_vel[x] += ODOMETER_WHEEL_ROBUST_BLEND * (robust_body_vel[x] - body_vel[x]);
-        body_vel[y] += ODOMETER_WHEEL_ROBUST_BLEND * (robust_body_vel[y] - body_vel[y]);
-        s_wheel_gate_hold_ticks--;
-    }
-
-    odometer_body_to_horizontal(body_vel, horizontal_vel);
-
-    if (odometer_norm2(horizontal_vel[x], horizontal_vel[y]) < ODOMETER_STATIC_ENCODER_SPEED_MPS)
-    {
-        body_vel[x] = 0.0f;
-        body_vel[y] = 0.0f;
-        horizontal_vel[x] = 0.0f;
-        horizontal_vel[y] = 0.0f;
-    }
+    odometer_compensate_xy_crosstalk(body_vel);
 
     g_odometer.body_vel[x] = body_vel[x];
     g_odometer.body_vel[y] = body_vel[y];
-    g_odometer.vel[x] = horizontal_vel[x];
-    g_odometer.vel[y] = horizontal_vel[y];
+    odometer_body_to_horizontal(body_vel, s_encoder_vel);
+    odometer_update_accel();
+
+    if ((odometer_norm(s_encoder_vel) < ODOMETER_STATIC_ENCODER_SPEED_MPS) &&
+        (odometer_norm(g_odometer.acc) < ODOMETER_STATIC_ACCEL_MPS2))
+    {
+        s_accel_bias[x] += ODOMETER_ACCEL_BIAS_ALPHA_STATIC * g_odometer.acc[x];
+        s_accel_bias[y] += ODOMETER_ACCEL_BIAS_ALPHA_STATIC * g_odometer.acc[y];
+        s_imu_vel[x] = 0.0f;
+        s_imu_vel[y] = 0.0f;
+        g_odometer.body_vel[x] = 0.0f;
+        g_odometer.body_vel[y] = 0.0f;
+        s_slip_hold_ticks = 0U;
+    }
+    else
+    {
+        float innovation[ODOMETER_AXIS_NUM];
+        float enc_acc_x = (s_encoder_vel[x] - s_prev_encoder_vel[x]) / ODOMETER_UPDATE_DT_S;
+        float enc_acc_y = (s_encoder_vel[y] - s_prev_encoder_vel[y]) / ODOMETER_UPDATE_DT_S;
+        float diff_x = enc_acc_x - g_odometer.acc[x];
+        float diff_y = enc_acc_y - g_odometer.acc[y];
+        float diff_mag = sqrtf((diff_x * diff_x) + (diff_y * diff_y));
+        float alpha;
+
+        innovation[x] = s_encoder_vel[x] - s_imu_vel[x];
+        innovation[y] = s_encoder_vel[y] - s_imu_vel[y];
+
+        if ((odometer_norm(innovation) > ODOMETER_SLIP_INNOVATION_THRESH) &&
+            (diff_mag > ODOMETER_SLIP_ACCEL_DIFF_THRESH))
+        {
+            s_slip_hold_ticks = ODOMETER_SLIP_HOLD_TICKS;
+        }
+
+        alpha = (s_slip_hold_ticks > 0U) ? ODOMETER_SLIP_BLEND_ALPHA : ODOMETER_ENCODER_BLEND_ALPHA;
+        s_imu_vel[x] += alpha * (s_encoder_vel[x] - s_imu_vel[x]);
+        s_imu_vel[y] += alpha * (s_encoder_vel[y] - s_imu_vel[y]);
+
+        if (s_slip_hold_ticks > 0U)
+        {
+            s_slip_hold_ticks--;
+        }
+    }
+
+    s_prev_encoder_vel[x] = s_encoder_vel[x];
+    s_prev_encoder_vel[y] = s_encoder_vel[y];
+
+    g_odometer.vel[x] = s_imu_vel[x];
+    g_odometer.vel[y] = s_imu_vel[y];
     g_odometer.position[x] += g_odometer.vel[x] * ODOMETER_UPDATE_DT_S;
     g_odometer.position[y] += g_odometer.vel[y] * ODOMETER_UPDATE_DT_S;
-    inertial_position[x] = g_odometer.position[x];
-    inertial_position[y] = g_odometer.position[y];
 
 #if (ODOMETER_BEACON_FIXATOR_ENABLE != 0U)
     {
@@ -177,11 +208,21 @@ void odometer_update_100HZ(void)
         {
             g_odometer.position[x] = fixed_position[x];
             g_odometer.position[y] = fixed_position[y];
-            fix_applied = 1U;
         }
     }
 #endif
 
     wifi_core_Poll();
 
+}
+
+void odometer_update_1000HZ(void)
+{
+    odometer_update_accel();
+
+    s_imu_vel[x] += g_odometer.acc[x] * ODOMETER_IMU_UPDATE_DT_S;
+    s_imu_vel[y] += g_odometer.acc[y] * ODOMETER_IMU_UPDATE_DT_S;
+
+    g_odometer.vel[x] = s_imu_vel[x];
+    g_odometer.vel[y] = s_imu_vel[y];
 }
