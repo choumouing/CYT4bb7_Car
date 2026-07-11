@@ -47,6 +47,9 @@ static uint8_t key_press_consumed[KEY_NUMBER] = {0};    // 是否已经在按下
 static const gpio_pin_enum menu_key_pins[KEY_NUMBER] = KEY_LIST; // 按键引脚映射
 static uint8_t menu_wait_key_release = 0U;
 
+static void menu_render_beacon_recorder(void);
+static void menu_exit_beacon_recorder_mode(void);
+
 // Flash操作延迟执行
 static uint8_t pending_flash_operation = 0;            // 待执行的Flash操作
 static uint8_t pending_slot_number = 0;                // 待操作的存档号
@@ -389,7 +392,10 @@ void menu_discard_key_events(void)
 void menu_runtime_suspend(void)
 {
     menu_air_edit_reset();
-    menu_state = MENU_STATE_NORMAL;
+    if(menu_state != MENU_STATE_BEACON_RECORDER)
+    {
+        menu_state = MENU_STATE_NORMAL;
+    }
     diag_refresh_divider = 0U;
     pending_flash_operation = FLASH_OP_NONE;
     pending_slot_number = 0U;
@@ -456,7 +462,8 @@ void menu_init(void)
  */
 void menu_update_100HZ(void)
 {
-    if(car_menu_is_runtime_locked() != 0U)
+    if((car_menu_is_runtime_locked() != 0U) &&
+       (menu_state != MENU_STATE_BEACON_RECORDER))
     {
         menu_discard_key_events();
         return;
@@ -464,15 +471,20 @@ void menu_update_100HZ(void)
 
     menu_process_keys();
 
-    if(menu_state == MENU_STATE_DIAG_VIEW)
+    if((menu_state == MENU_STATE_DIAG_VIEW) ||
+       (menu_state == MENU_STATE_BEACON_RECORDER))
     {
         diag_refresh_divider++;
         if(diag_refresh_divider >= 10U)
         {
             diag_refresh_divider = 0U;
-            if((current_index < current_item_count) &&
-               (current_menu[current_index].type == MENU_TYPE_DIAG_VIEW) &&
-               (current_menu[current_index].function != NULL))
+            if(menu_state == MENU_STATE_BEACON_RECORDER)
+            {
+                menu_render_beacon_recorder();
+            }
+            else if((current_index < current_item_count) &&
+                    (current_menu[current_index].type == MENU_TYPE_DIAG_VIEW) &&
+                    (current_menu[current_index].function != NULL))
             {
                 current_menu[current_index].function();
             }
@@ -783,6 +795,35 @@ void menu_reset_to_first(void)
     menu_request_refresh(REFRESH_FULL);  // 重置到第一项需要全屏刷新
 }
 
+void menu_enter_beacon_recorder_mode(void)
+{
+    if((car_menu_is_runtime_locked() != 0U) ||
+       (menu_state != MENU_STATE_NORMAL))
+    {
+        return;
+    }
+
+    beacon_position_recorder_enter();
+    menu_state = MENU_STATE_BEACON_RECORDER;
+    diag_refresh_divider = 0U;
+    menu_render_beacon_recorder();
+}
+
+uint8_t menu_beacon_recorder_mode_active(void)
+{
+    return (menu_state == MENU_STATE_BEACON_RECORDER) ? 1U : 0U;
+}
+
+static void menu_exit_beacon_recorder_mode(void)
+{
+    beacon_position_recorder_exit();
+    menu_state = MENU_STATE_NORMAL;
+    diag_refresh_divider = 0U;
+    menu_wait_key_release = 1U;
+    menu_clear_key_tracking();
+    menu_request_refresh(REFRESH_FULL);
+}
+
 //====================================================按键处理====================================================
 
 /**
@@ -808,6 +849,14 @@ void menu_process_keys(void)
         {
             menu_wait_key_release = 0U;
         }
+        return;
+    }
+
+    if((menu_state == MENU_STATE_BEACON_RECORDER) &&
+       (key_get_state(KEY_4) == KEY_LONG_PRESS))
+    {
+        key_clear_state(KEY_4);
+        menu_exit_beacon_recorder_mode();
         return;
     }
 
@@ -882,7 +931,9 @@ void menu_process_keys(void)
  */
 void menu_key_handler(menu_key_t key)
 {
-    if((car_menu_is_runtime_locked() != 0U) || (current_menu == NULL)) return;
+    if(current_menu == NULL) return;
+    if((car_menu_is_runtime_locked() != 0U) &&
+       (menu_state != MENU_STATE_BEACON_RECORDER)) return;
 
     switch(menu_state)
     {
@@ -1145,6 +1196,10 @@ void menu_key_handler(menu_key_t key)
                 menu_request_refresh(REFRESH_FULL);
             }
             break;
+
+        case MENU_STATE_BEACON_RECORDER:
+            /* 采集模式仅允许 menu_process_keys() 处理长按返回退出。 */
+            break;
     }
 }
 
@@ -1342,6 +1397,49 @@ void menu_render_current(void)
             ips114_show_string(0, 112, command_status.last_ack_text);
         }
     }
+}
+
+static void menu_render_beacon_recorder(void)
+{
+    char text[32];
+    uint16_t last_index;
+
+    ips114_clear();
+    ips114_set_color(UI_COLOR_NORMAL, UI_COLOR_BG);
+    ips114_set_font(UI_FONT_NORMAL);
+
+    ips114_show_string(0, 0, "Beacon Recorder");
+    sprintf(text, "Active:%u Full:%u",
+            (unsigned int)g_beacon_position_recorder.active,
+            (unsigned int)g_beacon_position_recorder.full);
+    ips114_show_string(0, 16, text);
+    sprintf(text, "Count:%u/%u",
+            (unsigned int)g_beacon_position_recorder.point_count,
+            (unsigned int)BEACON_POSITION_RECORDER_MAX_POINTS);
+    ips114_show_string(0, 32, text);
+    sprintf(text, "Pos X:%8.3f", (double)g_beacon_position_recorder.position[x]);
+    ips114_show_string(0, 48, text);
+    sprintf(text, "Pos Y:%8.3f", (double)g_beacon_position_recorder.position[y]);
+    ips114_show_string(0, 64, text);
+
+    if(g_beacon_position_recorder.point_count > 0U)
+    {
+        last_index = g_beacon_position_recorder.point_count - 1U;
+        sprintf(text, "Last X:%7.3f",
+                (double)g_beacon_position_recorder.points[last_index][x]);
+        ips114_show_string(0, 80, text);
+        sprintf(text, "Last Y:%7.3f",
+                (double)g_beacon_position_recorder.points[last_index][y]);
+        ips114_show_string(0, 96, text);
+    }
+    else
+    {
+        ips114_show_string(0, 80, "Last X: --");
+        ips114_show_string(0, 96, "Last Y: --");
+    }
+
+    ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);
+    ips114_show_string(0, 112, "Hold Back Exit");
 }
 
 /**

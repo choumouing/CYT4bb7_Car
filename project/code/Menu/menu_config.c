@@ -289,6 +289,7 @@ static menu_item_t car_menu[] = {
     {"C_Diag", MENU_TYPE_SUBMENU, .submenu = car_diag_menu},
     {"C_Load", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
     {"C_Save", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
+    {"C_BeaconRec", MENU_TYPE_FUNCTION, .function = menu_enter_beacon_recorder_mode},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 

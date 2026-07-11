@@ -114,7 +114,8 @@ typedef struct {
 typedef enum {
     MENU_STATE_NORMAL = 0,      // 普通浏览模式
     MENU_STATE_EDIT,            // 参数编辑模式
-    MENU_STATE_DIAG_VIEW        // 只读诊断页模式
+    MENU_STATE_DIAG_VIEW,       // 只读诊断页模式
+    MENU_STATE_BEACON_RECORDER  // 信标位置采集模式
 } menu_state_t;
 
 // 按键定义
@@ -162,6 +163,8 @@ void menu_set_root(menu_item_t* root_menu);           // 设置根菜单
 void menu_enter_submenu(menu_item_t* submenu);        // 进入子菜单
 void menu_return_to_parent(void);                     // 返回上级菜单
 void menu_reset_to_first(void);                       // 重置选择到第一项
+void menu_enter_beacon_recorder_mode(void);           // 进入信标位置采集模式
+uint8_t menu_beacon_recorder_mode_active(void);       // 查询信标位置采集页面是否激活
 
 // 显示控制
 void menu_set_need_refresh(void);                     // 设置需要刷新标志
