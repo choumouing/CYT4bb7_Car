@@ -62,6 +62,8 @@ extern volatile float g_air_car_plan_beacon_index;
 extern volatile float g_air_car_plan_dist_px;
 extern volatile float g_air_beacon_lost_flag;
 
+/* Car实际输出或Air处于起飞、飞行、降落时返回1。 */
+uint8 car_menu_is_runtime_locked(void);
 /* 初始化：清零所有状态和标志位 */
 void car_loop_init(void);
 /* 主循环轮询：内部按 1000/100/25Hz 分频执行各周期任务 */

@@ -24,6 +24,9 @@ static menu_state_t menu_state = MENU_STATE_NORMAL;    // 菜单状态
 static param_config_t param_configs[MENU_MAX_PARAMS];  // 参数配置表
 static uint8_t param_count = 0;                        // 已注册参数数量（会在注册时递增）
 static uint8_t current_slot = 0;                       // 当前存档号
+static uint8_t air_edit_active = 0U;
+static uint8_t air_edit_index = 0U;
+static float air_edit_value = 0.0f;
 
 // 显示控制变量
 static uint8_t need_refresh = 1;                       // 需要刷新标志
@@ -42,6 +45,7 @@ static uint8_t key_hold_ticks[KEY_NUMBER] = {0};        // 按键按下计时
 static uint8_t key_repeat_counters[KEY_NUMBER] = {0};   // 长按重复计数器
 static uint8_t key_press_consumed[KEY_NUMBER] = {0};    // 是否已经在按下过程中处理
 static const gpio_pin_enum menu_key_pins[KEY_NUMBER] = KEY_LIST; // 按键引脚映射
+static uint8_t menu_wait_key_release = 0U;
 
 // Flash操作延迟执行
 static uint8_t pending_flash_operation = 0;            // 待执行的Flash操作
@@ -60,6 +64,112 @@ static uint8_t menu_is_param_item(const menu_item_t *item)
 
     return ((item->type == MENU_TYPE_PARAMETER) ||
             (item->type == MENU_TYPE_AIR_PARAMETER)) ? 1U : 0U;
+}
+
+static void menu_clear_key_tracking(void)
+{
+    key_clear_all_state();
+    memset(key_hold_ticks, 0, sizeof(key_hold_ticks));
+    memset(key_repeat_counters, 0, sizeof(key_repeat_counters));
+    memset(key_press_consumed, 0, sizeof(key_press_consumed));
+}
+
+static void menu_air_edit_reset(void)
+{
+    air_edit_active = 0U;
+    air_edit_index = 0U;
+    air_edit_value = 0.0f;
+}
+
+static uint8_t menu_air_edit_begin(uint8_t index)
+{
+    if(index >= menu_get_air_param_count())
+    {
+        menu_air_edit_reset();
+        return 1U;
+    }
+
+    air_edit_index = index;
+    air_edit_value = menu_get_air_param_by_index(index);
+    air_edit_active = 1U;
+    return 0U;
+}
+
+static uint8_t menu_air_get_display_value(uint8_t index, float *value)
+{
+    if((value == NULL) || (index >= menu_get_air_param_count()))
+    {
+        return 0U;
+    }
+
+    if((air_edit_active != 0U) &&
+       (air_edit_index == index) &&
+       (menu_state == MENU_STATE_EDIT))
+    {
+        *value = air_edit_value;
+        return 1U;
+    }
+
+    *value = menu_get_air_param_by_index(index);
+    return 1U;
+}
+
+static uint8_t menu_air_edit_adjust(const menu_item_t *item, float delta)
+{
+    const menu_air_param_config_t *config;
+
+    if((item == NULL) || (item->type != MENU_TYPE_AIR_PARAMETER))
+    {
+        return 1U;
+    }
+
+    config = menu_get_air_param_config(item->param_index);
+    if(config == NULL)
+    {
+        return 1U;
+    }
+
+    if((air_edit_active == 0U) || (air_edit_index != item->param_index))
+    {
+        if(menu_air_edit_begin(item->param_index) != 0U)
+        {
+            return 1U;
+        }
+    }
+
+    air_edit_value += delta;
+    if(air_edit_value < config->min_val)
+    {
+        air_edit_value = config->min_val;
+    }
+    if(air_edit_value > config->max_val)
+    {
+        air_edit_value = config->max_val;
+    }
+    return 0U;
+}
+
+static uint8_t menu_air_edit_commit(const menu_item_t *item)
+{
+    uint8_t result;
+
+    if((item == NULL) || (item->type != MENU_TYPE_AIR_PARAMETER))
+    {
+        menu_air_edit_reset();
+        return 1U;
+    }
+
+    if((air_edit_active == 0U) || (air_edit_index != item->param_index))
+    {
+        if(menu_air_edit_begin(item->param_index) != 0U)
+        {
+            return 1U;
+        }
+    }
+
+    result = menu_air_commit_param_value(item->param_index, air_edit_value);
+    menu_air_edit_reset();
+    return result;
 }
 
 /* 获取菜单项对应的参数值（统一处理本地/Air参数） */
@@ -82,12 +192,7 @@ static uint8_t menu_get_item_param_value(const menu_item_t *item, float *value)
 
     if(item->type == MENU_TYPE_AIR_PARAMETER)
     {
-        if(item->param_index >= menu_get_air_param_count())
-        {
-            return 0U;
-        }
-        *value = menu_get_air_param_by_index(item->param_index);
-        return 1U;
+        return menu_air_get_display_value(item->param_index, value);
     }
 
     return 0U;
@@ -277,10 +382,23 @@ void menu_timer_handler(void)
 
 void menu_discard_key_events(void)
 {
-    key_clear_all_state();
-    memset(key_hold_ticks, 0, sizeof(key_hold_ticks));
-    memset(key_repeat_counters, 0, sizeof(key_repeat_counters));
-    memset(key_press_consumed, 0, sizeof(key_press_consumed));
+    menu_wait_key_release = 1U;
+    menu_clear_key_tracking();
+}
+
+void menu_runtime_suspend(void)
+{
+    menu_air_edit_reset();
+    menu_state = MENU_STATE_NORMAL;
+    diag_refresh_divider = 0U;
+    pending_flash_operation = FLASH_OP_NONE;
+    pending_slot_number = 0U;
+    menu_discard_key_events();
+}
+
+void menu_runtime_resume(void)
+{
+    menu_request_refresh(REFRESH_FULL);
 }
 
 /**
@@ -310,6 +428,8 @@ void menu_init(void)
     param_count = 0;
     current_slot = 0;
     display_offset = 0;
+    menu_air_edit_reset();
+    menu_wait_key_release = 0U;
 
     // 初始化局部刷新变量
     refresh_type = REFRESH_FULL;
@@ -336,6 +456,12 @@ void menu_init(void)
  */
 void menu_update_100HZ(void)
 {
+    if(car_menu_is_runtime_locked() != 0U)
+    {
+        menu_discard_key_events();
+        return;
+    }
+
     menu_process_keys();
 
     if(menu_state == MENU_STATE_DIAG_VIEW)
@@ -664,6 +790,27 @@ void menu_reset_to_first(void)
  */
 void menu_process_keys(void)
 {
+    uint8_t all_released = 1U;
+    uint8_t i;
+
+    if(menu_wait_key_release != 0U)
+    {
+        for(i = 0U; i < KEY_NUMBER; i++)
+        {
+            if(gpio_get_level(menu_key_pins[i]) != KEY_RELEASE_LEVEL)
+            {
+                all_released = 0U;
+            }
+        }
+
+        menu_clear_key_tracking();
+        if(all_released != 0U)
+        {
+            menu_wait_key_release = 0U;
+        }
+        return;
+    }
+
     // 检测按键按下事件（使用逐飞按键库的状态）
     if(key_get_state(KEY_1) == KEY_SHORT_PRESS)
     {
@@ -696,7 +843,7 @@ void menu_process_keys(void)
     }
 
     // 自定义长按加速处理（基于按键实时电平）
-    for(uint8_t i = 0; i < 2; i++)
+    for(i = 0U; i < 2U; i++)
     {
         if(gpio_get_level(menu_key_pins[i]) != KEY_RELEASE_LEVEL)
         {
@@ -735,7 +882,7 @@ void menu_process_keys(void)
  */
 void menu_key_handler(menu_key_t key)
 {
-    if(current_menu == NULL) return;
+    if((car_menu_is_runtime_locked() != 0U) || (current_menu == NULL)) return;
 
     switch(menu_state)
     {
@@ -845,6 +992,10 @@ void menu_key_handler(menu_key_t key)
                             }
                             break;
 
+                        case MENU_TYPE_AIR_COMMAND:
+                            (void)menu_air_command_start(current_menu[current_index].param_index);
+                            break;
+
                         case MENU_TYPE_PARAMETER:
                         case MENU_TYPE_AIR_PARAMETER:
                             if(menu_is_param_item(&current_menu[current_index]) != 0U)
@@ -853,7 +1004,15 @@ void menu_key_handler(menu_key_t key)
                                    (menu_can_edit_air_params() == 0U))
                                 {
                                     menu_show_error((menu_is_air_connected() == 0U) ?
-                                                    "Air Offline" : "Car Active");
+                                                    "Air Offline" :
+                                                    ((car_menu_is_runtime_locked() != 0U) ?
+                                                     "Runtime Lock" : "Air Not Ready"));
+                                    break;
+                                }
+                                if((current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER) &&
+                                   (menu_air_edit_begin(current_menu[current_index].param_index) != 0U))
+                                {
+                                    menu_show_error("Set Fail");
                                     break;
                                 }
                                 menu_state = MENU_STATE_EDIT;
@@ -864,7 +1023,11 @@ void menu_key_handler(menu_key_t key)
                     break;
 
                 case KEY_BACK:
-                    if(menu_depth > 0)
+                    if(menu_air_command_is_active() != 0U)
+                    {
+                        (void)menu_air_command_stop();
+                    }
+                    else if(menu_depth > 0)
                     {
                         menu_return_to_parent();
                     }
@@ -888,6 +1051,22 @@ void menu_key_handler(menu_key_t key)
                 switch(key)
                 {
                     case KEY_UP:
+                        if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
+                        {
+                            if((menu_get_item_param_step(&current_menu[current_index], &step) != 0U) &&
+                               (menu_air_edit_adjust(&current_menu[current_index], step) == 0U))
+                            {
+                                menu_request_refresh(REFRESH_VALUE);
+                            }
+                            else
+                            {
+                                menu_air_edit_reset();
+                                menu_state = MENU_STATE_NORMAL;
+                                menu_show_error("Set Fail");
+                            }
+                            break;
+                        }
+
                         if((menu_get_item_param_value(&current_menu[current_index], &current_val) != 0U) &&
                            (menu_get_item_param_step(&current_menu[current_index], &step) != 0U) &&
                            (menu_set_item_param_value(&current_menu[current_index], current_val + step) == 0U))
@@ -902,6 +1081,22 @@ void menu_key_handler(menu_key_t key)
                         break;
 
                     case KEY_DOWN:
+                        if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
+                        {
+                            if((menu_get_item_param_step(&current_menu[current_index], &step) != 0U) &&
+                               (menu_air_edit_adjust(&current_menu[current_index], -step) == 0U))
+                            {
+                                menu_request_refresh(REFRESH_VALUE);
+                            }
+                            else
+                            {
+                                menu_air_edit_reset();
+                                menu_state = MENU_STATE_NORMAL;
+                                menu_show_error("Set Fail");
+                            }
+                            break;
+                        }
+
                         if((menu_get_item_param_value(&current_menu[current_index], &current_val) != 0U) &&
                            (menu_get_item_param_step(&current_menu[current_index], &step) != 0U) &&
                            (menu_set_item_param_value(&current_menu[current_index], current_val - step) == 0U))
@@ -918,8 +1113,8 @@ void menu_key_handler(menu_key_t key)
                     case KEY_ENTER:
                         if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
                         {
-                            (void)menu_air_commit_param(current_menu[current_index].param_index);
                             menu_state = MENU_STATE_NORMAL;
+                            (void)menu_air_edit_commit(&current_menu[current_index]);
                             break;
                         }
                         // 确认键：保存参数并退出编辑模式
@@ -930,8 +1125,8 @@ void menu_key_handler(menu_key_t key)
                     case KEY_BACK:
                         if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
                         {
-                            (void)menu_air_commit_param(current_menu[current_index].param_index);
                             menu_state = MENU_STATE_NORMAL;
+                            (void)menu_air_edit_commit(&current_menu[current_index]);
                             break;
                         }
                         // 返回键：保存参数并退出编辑模式（与确认键相同）
@@ -1120,6 +1315,33 @@ void menu_render_current(void)
 
         menu_render_item(i, &current_menu[item_index], selected, editing);
     }
+
+    if(current_menu[0].type == MENU_TYPE_AIR_COMMAND)
+    {
+        menu_air_cmd_status_t command_status;
+        const char *state_text = "IDLE";
+
+        menu_get_air_command_status(&command_status);
+        if(command_status.state == MENU_AIR_CMD_STATE_WAIT_START_ACK)
+        {
+            state_text = "WAIT ACK";
+        }
+        else if(command_status.state == MENU_AIR_CMD_STATE_INSTANT_RUNNING)
+        {
+            state_text = "RUNNING";
+        }
+        else if(command_status.state == MENU_AIR_CMD_STATE_WAIT_EXIT_ACK)
+        {
+            state_text = "WAIT EXIT";
+        }
+
+        ips114_set_color(UI_COLOR_VALUE, UI_COLOR_BG);
+        ips114_show_string(0, 96, state_text);
+        if(command_status.last_ack_text[0] != '\0')
+        {
+            ips114_show_string(0, 112, command_status.last_ack_text);
+        }
+    }
 }
 
 /**
@@ -1141,7 +1363,12 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
     if(y > 120) return;  // 留点余量
 
     // 设置颜色
-    if(editing)
+    if((item->type == MENU_TYPE_AIR_COMMAND) &&
+       (menu_air_command_is_running(item->param_index) != 0U))
+    {
+        ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);
+    }
+    else if(editing)
     {
         ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);  // 黄色编辑状态
     }

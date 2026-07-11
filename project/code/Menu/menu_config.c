@@ -6,6 +6,15 @@
 
 #include "menu_config.h"
 
+#define MENU_CAR_S_CURVE_MAX_ITER_INDEX  (55U)
+#define MENU_CAR_S_CURVE_CONV_TOL_INDEX  (56U)
+#define MENU_CAR_S_CURVE_MIN_DIST_INDEX  (57U)
+#define MENU_CAR_EXPECTED_PARAM_COUNT     (58U)
+
+#if (MENU_CAR_EXPECTED_PARAM_COUNT > MENU_MAX_PARAMS)
+#error "Car menu parameter count exceeds MENU_MAX_PARAMS"
+#endif
+
 //====================================================参数变量区====================================================
 // 轮速PID参数（四个电机共用）
 float wheel_kp = 2.3f;                  // 比例系数
@@ -71,22 +80,6 @@ float mode8_velocity_forward_kp = 80.0f;
 float mode8_velocity_forward_ki = 0.0f;
 float mode8_velocity_forward_kd = 20.0f;
 
-float mode2_image_target_deadband_px = 0.0f;
-float mode2_distance_mid_threshold_px = 30.0f;
-float mode2_distance_far_threshold_px = 60.0f;
-float mode2_distance_near_speed_mps = 1.0f;
-float mode2_distance_mid_speed_mps = 1.0f;
-float mode2_distance_far_speed_mps = 1.0f;
-float mode2_image_pid_output_limit = 300.0f;
-float mode2_image_i_limit = 0.0f;
-float mode2_image_strafe_kp = 1.0f;
-float mode2_image_strafe_ki = 0.0f;
-float mode2_image_strafe_kd = 0.0f;
-float mode2_image_forward_kp = 0.8f;
-float mode2_image_forward_ki = 0.0f;
-float mode2_image_forward_kd = 0.0f;
-float mode2_max_accel_mps2 = 30.0f;
-
 float s_curve_max_iter = 50.0f;
 float s_curve_conv_tol = 0.001f;
 float s_curve_min_dist = 5.0f;
@@ -128,15 +121,15 @@ static menu_item_t yaw_rate_pid_menu[] = {
 
 // 加载存档子菜单
 static menu_item_t load_slot_menu[] = {
-    {"Load Slot0", MENU_TYPE_FUNCTION, .function = load_slot_0_function},
-    {"Load Slot1", MENU_TYPE_FUNCTION, .function = load_slot_1_function},
+    {"Load Car0", MENU_TYPE_FUNCTION, .function = load_slot_0_function},
+    {"Load Car1", MENU_TYPE_FUNCTION, .function = load_slot_1_function},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
 // 保存存档子菜单
 static menu_item_t save_slot_menu[] = {
-    {"Save Slot0", MENU_TYPE_FUNCTION, .function = save_slot_0_function},
-    {"Save Slot1", MENU_TYPE_FUNCTION, .function = save_slot_1_function},
+    {"Save Car0", MENU_TYPE_FUNCTION, .function = save_slot_0_function},
+    {"Save Car1", MENU_TYPE_FUNCTION, .function = save_slot_1_function},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -165,170 +158,73 @@ static menu_item_t mode7_velocity_pid_menu[] = {
 };
 
 static menu_item_t mode5_velocity_pid_menu[] = {
-    {"Smooth", MENU_TYPE_PARAMETER, .param_index = 50},
-    {"CmdLimit", MENU_TYPE_PARAMETER, .param_index = 51},
-    {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 52},
-    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 53},
-    {"SKp", MENU_TYPE_PARAMETER, .param_index = 54},
-    {"SKi", MENU_TYPE_PARAMETER, .param_index = 55},
-    {"SKd", MENU_TYPE_PARAMETER, .param_index = 56},
-    {"FKp", MENU_TYPE_PARAMETER, .param_index = 57},
-    {"FKi", MENU_TYPE_PARAMETER, .param_index = 58},
-    {"FKd", MENU_TYPE_PARAMETER, .param_index = 59},
+    {"Smooth", MENU_TYPE_PARAMETER, .param_index = 35},
+    {"CmdLimit", MENU_TYPE_PARAMETER, .param_index = 36},
+    {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 37},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 38},
+    {"SKp", MENU_TYPE_PARAMETER, .param_index = 39},
+    {"SKi", MENU_TYPE_PARAMETER, .param_index = 40},
+    {"SKd", MENU_TYPE_PARAMETER, .param_index = 41},
+    {"FKp", MENU_TYPE_PARAMETER, .param_index = 42},
+    {"FKi", MENU_TYPE_PARAMETER, .param_index = 43},
+    {"FKd", MENU_TYPE_PARAMETER, .param_index = 44},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
 static menu_item_t mode2_velocity_pid_menu[] = {
-    {"Smooth", MENU_TYPE_PARAMETER, .param_index = 60},
-    {"CmdLimit", MENU_TYPE_PARAMETER, .param_index = 61},
-    {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 62},
-    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 63},
-    {"SKp", MENU_TYPE_PARAMETER, .param_index = 64},
-    {"SKi", MENU_TYPE_PARAMETER, .param_index = 65},
-    {"SKd", MENU_TYPE_PARAMETER, .param_index = 66},
-    {"FKp", MENU_TYPE_PARAMETER, .param_index = 67},
-    {"FKi", MENU_TYPE_PARAMETER, .param_index = 68},
-    {"FKd", MENU_TYPE_PARAMETER, .param_index = 69},
+    {"Smooth", MENU_TYPE_PARAMETER, .param_index = 45},
+    {"CmdLimit", MENU_TYPE_PARAMETER, .param_index = 46},
+    {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 47},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 48},
+    {"SKp", MENU_TYPE_PARAMETER, .param_index = 49},
+    {"SKi", MENU_TYPE_PARAMETER, .param_index = 50},
+    {"SKd", MENU_TYPE_PARAMETER, .param_index = 51},
+    {"FKp", MENU_TYPE_PARAMETER, .param_index = 52},
+    {"FKi", MENU_TYPE_PARAMETER, .param_index = 53},
+    {"FKd", MENU_TYPE_PARAMETER, .param_index = 54},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
 static menu_item_t mode8_velocity_pid_menu[] = {
-    {"Smooth", MENU_TYPE_PARAMETER, .param_index = 40},
-    {"CmdLimit", MENU_TYPE_PARAMETER, .param_index = 41},
-    {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 42},
-    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 43},
-    {"SKp", MENU_TYPE_PARAMETER, .param_index = 44},
-    {"SKi", MENU_TYPE_PARAMETER, .param_index = 45},
-    {"SKd", MENU_TYPE_PARAMETER, .param_index = 46},
-    {"FKp", MENU_TYPE_PARAMETER, .param_index = 47},
-    {"FKi", MENU_TYPE_PARAMETER, .param_index = 48},
-    {"FKd", MENU_TYPE_PARAMETER, .param_index = 49},
+    {"Smooth", MENU_TYPE_PARAMETER, .param_index = 25},
+    {"CmdLimit", MENU_TYPE_PARAMETER, .param_index = 26},
+    {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 27},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 28},
+    {"SKp", MENU_TYPE_PARAMETER, .param_index = 29},
+    {"SKi", MENU_TYPE_PARAMETER, .param_index = 30},
+    {"SKd", MENU_TYPE_PARAMETER, .param_index = 31},
+    {"FKp", MENU_TYPE_PARAMETER, .param_index = 32},
+    {"FKi", MENU_TYPE_PARAMETER, .param_index = 33},
+    {"FKd", MENU_TYPE_PARAMETER, .param_index = 34},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-static menu_item_t air_basic_menu[] = {
-    {"gyro_dt", MENU_TYPE_AIR_PARAMETER, .param_index = 0},
-    {"angle_dt", MENU_TYPE_AIR_PARAMETER, .param_index = 1},
-    {"pos_xy_dt", MENU_TYPE_AIR_PARAMETER, .param_index = 2},
-    {"pos_z_dt", MENU_TYPE_AIR_PARAMETER, .param_index = 3},
-    {"vel_xy_dt", MENU_TYPE_AIR_PARAMETER, .param_index = 4},
-    {"vel_z_dt", MENU_TYPE_AIR_PARAMETER, .param_index = 5},
-    {"base_throttle", MENU_TYPE_AIR_PARAMETER, .param_index = 6},
-    {"roll_mech_trim_deg", MENU_TYPE_AIR_PARAMETER, .param_index = 7},
-    {"pitch_mech_trim_deg", MENU_TYPE_AIR_PARAMETER, .param_index = 8},
+static menu_item_t s_curve_menu[] = {
+    {"MaxIter", MENU_TYPE_PARAMETER, .param_index = MENU_CAR_S_CURVE_MAX_ITER_INDEX},
+    {"ConvTol", MENU_TYPE_PARAMETER, .param_index = MENU_CAR_S_CURVE_CONV_TOL_INDEX},
+    {"MinDist", MENU_TYPE_PARAMETER, .param_index = MENU_CAR_S_CURVE_MIN_DIST_INDEX},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-static menu_item_t air_gyro_menu[] = {
-    {"roll_gyro_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 9},
-    {"roll_gyro_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 10},
-    {"roll_gyro_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 11},
-    {"roll_gyro_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 12},
-    {"roll_gyro_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 13},
-    {"roll_gyro_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 14},
-    {"pitch_gyro_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 15},
-    {"pitch_gyro_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 16},
-    {"pitch_gyro_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 17},
-    {"pitch_gyro_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 18},
-    {"pitch_gyro_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 19},
-    {"pitch_gyro_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 20},
-    {"yaw_gyro_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 21},
-    {"yaw_gyro_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 22},
-    {"yaw_gyro_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 23},
-    {"yaw_gyro_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 24},
-    {"yaw_gyro_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 25},
-    {"yaw_gyro_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 26},
-    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
-};
+#define AIR_PARAM_MENU_STORAGE_COUNT \
+    (MENU_AIR_EXPECTED_PARAM_COUNT + MENU_AIR_GROUP_COUNT)
 
-static menu_item_t air_angle_menu[] = {
-    {"roll_angle_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 27},
-    {"roll_angle_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 28},
-    {"roll_angle_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 29},
-    {"roll_angle_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 30},
-    {"roll_angle_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 31},
-    {"roll_angle_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 32},
-    {"pitch_angle_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 33},
-    {"pitch_angle_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 34},
-    {"pitch_angle_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 35},
-    {"pitch_angle_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 36},
-    {"pitch_angle_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 37},
-    {"pitch_angle_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 38},
-    {"yaw_angle_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 39},
-    {"yaw_angle_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 40},
-    {"yaw_angle_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 41},
-    {"yaw_angle_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 42},
-    {"yaw_angle_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 43},
-    {"yaw_angle_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 44},
-    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
-};
+static menu_item_t s_air_param_menu_storage[AIR_PARAM_MENU_STORAGE_COUNT];
+static menu_item_t *s_air_group_menus[MENU_AIR_GROUP_COUNT];
+static menu_item_t air_command_menu[2U];
 
-static menu_item_t air_pos_menu[] = {
-    {"pos_x_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 45},
-    {"pos_x_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 46},
-    {"pos_x_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 47},
-    {"pos_x_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 48},
-    {"pos_x_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 49},
-    {"pos_x_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 50},
-    {"pos_y_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 51},
-    {"pos_y_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 52},
-    {"pos_y_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 53},
-    {"pos_y_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 54},
-    {"pos_y_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 55},
-    {"pos_y_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 56},
-    {"pos_z_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 57},
-    {"pos_z_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 58},
-    {"pos_z_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 59},
-    {"pos_z_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 60},
-    {"pos_z_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 61},
-    {"pos_z_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 62},
-    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
-};
-
-static menu_item_t air_vel_menu[] = {
-    {"vel_x_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 63},
-    {"vel_x_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 64},
-    {"vel_x_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 65},
-    {"vel_x_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 66},
-    {"vel_x_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 67},
-    {"vel_x_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 68},
-    {"vel_y_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 69},
-    {"vel_y_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 70},
-    {"vel_y_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 71},
-    {"vel_y_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 72},
-    {"vel_y_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 73},
-    {"vel_y_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 74},
-    {"vel_z_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 75},
-    {"vel_z_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 76},
-    {"vel_z_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 77},
-    {"vel_z_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 78},
-    {"vel_z_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 79},
-    {"vel_z_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 80},
-    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
-};
-
-static menu_item_t air_mode_menu[] = {
-    {"mode1_track_ff_deg_per_cmps", MENU_TYPE_AIR_PARAMETER, .param_index = 81},
-    {"mode1_brake_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 82},
-    {"mode1_brake_exit_vel_cmps", MENU_TYPE_AIR_PARAMETER, .param_index = 83},
-    {"pos_est_k_flow", MENU_TYPE_AIR_PARAMETER, .param_index = 84},
-    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
-};
-
-static menu_item_t air_mode8_menu[] = {
-    {"mode8_img_x_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 85},
-    {"mode8_img_x_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 86},
-    {"mode8_img_x_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 87},
-    {"mode8_img_x_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 88},
-    {"mode8_img_x_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 89},
-    {"mode8_img_x_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 90},
-    {"mode8_img_y_kp", MENU_TYPE_AIR_PARAMETER, .param_index = 91},
-    {"mode8_img_y_ki", MENU_TYPE_AIR_PARAMETER, .param_index = 92},
-    {"mode8_img_y_kd", MENU_TYPE_AIR_PARAMETER, .param_index = 93},
-    {"mode8_img_y_kff", MENU_TYPE_AIR_PARAMETER, .param_index = 94},
-    {"mode8_img_y_i_limit", MENU_TYPE_AIR_PARAMETER, .param_index = 95},
-    {"mode8_img_y_d_lpf", MENU_TYPE_AIR_PARAMETER, .param_index = 96},
-    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+enum
+{
+    AIR_MENU_BASIC = 0,
+    AIR_MENU_GYRO,
+    AIR_MENU_ANGLE,
+    AIR_MENU_VELOCITY,
+    AIR_MENU_MODE7,
+    AIR_MENU_ESTIMATION,
+    AIR_MENU_MODE5,
+    AIR_MENU_MODE8_IMAGE,
+    AIR_MENU_MODE8_VELOCITY,
+    AIR_MENU_COMMAND
 };
 
 static menu_item_t load_air_slot_menu[] = {
@@ -344,13 +240,16 @@ static menu_item_t save_air_slot_menu[] = {
 };
 
 static menu_item_t air_menu[] = {
-    {"Basic", MENU_TYPE_SUBMENU, .submenu = air_basic_menu},
-    {"Gyro PID", MENU_TYPE_SUBMENU, .submenu = air_gyro_menu},
-    {"Angle PID", MENU_TYPE_SUBMENU, .submenu = air_angle_menu},
-    {"Pos PID", MENU_TYPE_SUBMENU, .submenu = air_pos_menu},
-    {"Vel PID", MENU_TYPE_SUBMENU, .submenu = air_vel_menu},
-    {"Mode1/Est", MENU_TYPE_SUBMENU, .submenu = air_mode_menu},
-    {"Mode8", MENU_TYPE_SUBMENU, .submenu = air_mode8_menu},
+    {"Basic", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Gyro PID", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Angle PID", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Vel PID", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode7", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Estimation", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode5", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode8 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Air Command", MENU_TYPE_SUBMENU, .submenu = air_command_menu},
     {"Sync Air", MENU_TYPE_FUNCTION, .function = sync_air_function},
     {"Load Air", MENU_TYPE_SUBMENU, .submenu = load_air_slot_menu},
     {"Save Air", MENU_TYPE_SUBMENU, .submenu = save_air_slot_menu},
@@ -374,12 +273,91 @@ static menu_item_t main_menu[] = {
     {"Mode5 Vel", MENU_TYPE_SUBMENU, .submenu = mode5_velocity_pid_menu},
     {"Mode7 Vel", MENU_TYPE_SUBMENU, .submenu = mode7_velocity_pid_menu},
     {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = mode8_velocity_pid_menu},
+    {"S Curve", MENU_TYPE_SUBMENU, .submenu = s_curve_menu},
     {"Air", MENU_TYPE_SUBMENU, .submenu = air_menu},
     {"Diag", MENU_TYPE_SUBMENU, .submenu = diag_menu},
-    {"Load Slot", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
-    {"Save Slot", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
+    {"Load Car", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
+    {"Save Car", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
+
+static uint8 menu_build_air_param_menus(void)
+{
+    uint16 cursor = 0U;
+    uint8 group;
+    uint8 index;
+    uint8 group_count;
+    const menu_air_param_config_t *config;
+    menu_item_t *item;
+
+    memset(s_air_param_menu_storage, 0, sizeof(s_air_param_menu_storage));
+    memset(s_air_group_menus, 0, sizeof(s_air_group_menus));
+
+    for(group = 0U; group < MENU_AIR_GROUP_COUNT; group++)
+    {
+        s_air_group_menus[group] = &s_air_param_menu_storage[cursor];
+        group_count = 0U;
+
+        for(index = 0U; index < menu_get_air_param_count(); index++)
+        {
+            config = menu_get_air_param_config(index);
+            if((config == NULL) || (config->group != group))
+            {
+                continue;
+            }
+
+            if((group_count >= MENU_MAX_ITEMS) ||
+               (cursor >= AIR_PARAM_MENU_STORAGE_COUNT))
+            {
+                return 1U;
+            }
+
+            item = &s_air_param_menu_storage[cursor++];
+            strncpy(item->name, config->name, sizeof(item->name) - 1U);
+            item->name[sizeof(item->name) - 1U] = '\0';
+            item->type = MENU_TYPE_AIR_PARAMETER;
+            item->param_index = index;
+            group_count++;
+        }
+
+        if(cursor >= AIR_PARAM_MENU_STORAGE_COUNT)
+        {
+            return 1U;
+        }
+        item = &s_air_param_menu_storage[cursor++];
+        item->name[0] = '\0';
+        item->type = MENU_TYPE_SUBMENU;
+        item->submenu = NULL;
+    }
+
+    if((cursor != AIR_PARAM_MENU_STORAGE_COUNT) ||
+       (menu_air_command_get_count() != 1U))
+    {
+        return 1U;
+    }
+
+    memset(air_command_menu, 0, sizeof(air_command_menu));
+    strncpy(air_command_menu[0].name,
+            menu_air_command_get_name(0U),
+            sizeof(air_command_menu[0].name) - 1U);
+    air_command_menu[0].type = MENU_TYPE_AIR_COMMAND;
+    air_command_menu[0].param_index = 0U;
+    air_command_menu[1].type = MENU_TYPE_SUBMENU;
+    air_command_menu[1].submenu = NULL;
+
+    air_menu[AIR_MENU_BASIC].submenu = s_air_group_menus[MENU_AIR_GROUP_BASIC];
+    air_menu[AIR_MENU_GYRO].submenu = s_air_group_menus[MENU_AIR_GROUP_GYRO];
+    air_menu[AIR_MENU_ANGLE].submenu = s_air_group_menus[MENU_AIR_GROUP_ANGLE];
+    air_menu[AIR_MENU_VELOCITY].submenu = s_air_group_menus[MENU_AIR_GROUP_VELOCITY];
+    air_menu[AIR_MENU_MODE7].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE7];
+    air_menu[AIR_MENU_ESTIMATION].submenu = s_air_group_menus[MENU_AIR_GROUP_ESTIMATION];
+    air_menu[AIR_MENU_MODE5].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE5];
+    air_menu[AIR_MENU_MODE8_IMAGE].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE8_IMAGE];
+    air_menu[AIR_MENU_MODE8_VELOCITY].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE8_VELOCITY];
+    air_menu[AIR_MENU_COMMAND].submenu = air_command_menu;
+
+    return 0U;
+}
 
 //====================================================用户配置初始化====================================================
 void menu_config_init(void)
@@ -414,22 +392,6 @@ void menu_config_init(void)
     menu_register_param(&mode7_velocity_forward_ki, 0.01f, 0.0f, 500.0f);
     menu_register_param(&mode7_velocity_forward_kd, 1.0f, 0.0f, 500.0f);
 
-    menu_register_param(&mode2_image_target_deadband_px, 0.5f, 0.0f, 50.0f);
-    menu_register_param(&mode2_distance_mid_threshold_px, 1.0f, 0.0f, 220.0f);
-    menu_register_param(&mode2_distance_far_threshold_px, 1.0f, 0.0f, 220.0f);
-    menu_register_param(&mode2_distance_near_speed_mps, 0.01f, 0.0f, 2.0f);
-    menu_register_param(&mode2_distance_mid_speed_mps, 0.01f, 0.0f, 2.0f);
-    menu_register_param(&mode2_distance_far_speed_mps, 0.01f, 0.0f, 2.0f);
-    menu_register_param(&mode2_image_pid_output_limit, 10.0f, 0.0f, 1500.0f);
-    menu_register_param(&mode2_image_i_limit, 1.0f, 0.0f, 1000.0f);
-    menu_register_param(&mode2_image_strafe_kp, 0.1f, 0.0f, 500.0f);
-    menu_register_param(&mode2_image_strafe_ki, 0.01f, 0.0f, 500.0f);
-    menu_register_param(&mode2_image_strafe_kd, 0.1f, 0.0f, 500.0f);
-    menu_register_param(&mode2_image_forward_kp, 0.1f, 0.0f, 500.0f);
-    menu_register_param(&mode2_image_forward_ki, 0.01f, 0.0f, 500.0f);
-    menu_register_param(&mode2_image_forward_kd, 0.1f, 0.0f, 500.0f);
-    menu_register_param(&mode2_max_accel_mps2, 0.05f, 0.0f, 5.0f);
-
     menu_register_param(&mode8_velocity_smooth_tau_s, 0.01f, 0.0f, 1.0f);
     menu_register_param(&mode8_velocity_output_limit, 10.0f, 0.0f, 1500.0f);
     menu_register_param(&mode8_velocity_pid_output_limit, 10.0f, 0.0f, 1000.0f);
@@ -463,7 +425,22 @@ void menu_config_init(void)
     menu_register_param(&mode2_velocity_forward_ki, 0.01f, 0.0f, 500.0f);
     menu_register_param(&mode2_velocity_forward_kd, 1.0f, 0.0f, 500.0f);
 
+    menu_register_param(&s_curve_max_iter, 1.0f, 5.0f, 200.0f);
+    menu_register_param(&s_curve_conv_tol, 0.001f, 0.001f, 1000.0f);
+    menu_register_param(&s_curve_min_dist, 0.1f, 1.0f, 1000.0f);
+
+    if(menu_get_param_count() != MENU_CAR_EXPECTED_PARAM_COUNT)
+    {
+        menu_show_error("Car Menu Error");
+        return;
+    }
+
     menu_air_support_init();
+    if(menu_build_air_param_menus() != 0U)
+    {
+        menu_show_error("Air Menu Error");
+        return;
+    }
     menu_set_root(main_menu);
 }
 
@@ -492,7 +469,7 @@ static void load_air_slot_0_function(void)
 {
     if(menu_load_air_slot(0U) == 0U)
     {
-        menu_show_success("Air Load OK");
+        menu_show_progress("Air Loading");
     }
 }
 
@@ -500,7 +477,7 @@ static void load_air_slot_1_function(void)
 {
     if(menu_load_air_slot(1U) == 0U)
     {
-        menu_show_success("Air Load OK");
+        menu_show_progress("Air Loading");
     }
 }
 
@@ -537,6 +514,9 @@ static const char *diag_air_sync_mode_text(uint8 mode)
 
         case MENU_AIR_SYNC_MODE_FULL:
             return "syncing";
+
+        case MENU_AIR_SYNC_MODE_PULL:
+            return "reading";
 
         case MENU_AIR_SYNC_MODE_DONE:
             return "done";
