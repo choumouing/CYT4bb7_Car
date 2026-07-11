@@ -97,7 +97,11 @@ static void diag_imu_function(void);
 static void diag_encoder_function(void);
 static void diag_position_function(void);
 static void diag_pid_function(void);
-static void diag_air_function(void);
+static void diag_air_state_function(void);
+static void diag_air_attitude_function(void);
+static void diag_air_rc_function(void);
+static void diag_air_plan_function(void);
+static void diag_air_comm_function(void);
 
 //====================================================菜单树定义====================================================
 // 轮速PID子菜单（增量式）
@@ -215,16 +219,15 @@ static menu_item_t air_command_menu[2U];
 
 enum
 {
-    AIR_MENU_BASIC = 0,
-    AIR_MENU_GYRO,
-    AIR_MENU_ANGLE,
-    AIR_MENU_VELOCITY,
-    AIR_MENU_MODE7,
-    AIR_MENU_ESTIMATION,
-    AIR_MENU_MODE5,
-    AIR_MENU_MODE8_IMAGE,
-    AIR_MENU_MODE8_VELOCITY,
-    AIR_MENU_COMMAND
+    AIR_PARAM_MENU_BASIC = 0,
+    AIR_PARAM_MENU_GYRO,
+    AIR_PARAM_MENU_ANGLE,
+    AIR_PARAM_MENU_VELOCITY,
+    AIR_PARAM_MENU_MODE7,
+    AIR_PARAM_MENU_ESTIMATION,
+    AIR_PARAM_MENU_MODE5,
+    AIR_PARAM_MENU_MODE8_IMAGE,
+    AIR_PARAM_MENU_MODE8_VELOCITY
 };
 
 static menu_item_t load_air_slot_menu[] = {
@@ -239,7 +242,19 @@ static menu_item_t save_air_slot_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-static menu_item_t air_menu[] = {
+static menu_item_t car_param_menu[] = {
+    {"Wheel PID", MENU_TYPE_SUBMENU, .submenu = wheel_pid_menu},
+    {"YawRate PID", MENU_TYPE_SUBMENU, .submenu = yaw_rate_pid_menu},
+    {"YawAng PID", MENU_TYPE_SUBMENU, .submenu = yaw_angle_pid_menu},
+    {"Mode2 Vel", MENU_TYPE_SUBMENU, .submenu = mode2_velocity_pid_menu},
+    {"Mode5 Vel", MENU_TYPE_SUBMENU, .submenu = mode5_velocity_pid_menu},
+    {"Mode7 Vel", MENU_TYPE_SUBMENU, .submenu = mode7_velocity_pid_menu},
+    {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = mode8_velocity_pid_menu},
+    {"S Curve", MENU_TYPE_SUBMENU, .submenu = s_curve_menu},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+static menu_item_t air_param_menu[] = {
     {"Basic", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Gyro PID", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Angle PID", MENU_TYPE_SUBMENU, .submenu = NULL},
@@ -249,35 +264,47 @@ static menu_item_t air_menu[] = {
     {"Mode5", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode8 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
-    {"Air Command", MENU_TYPE_SUBMENU, .submenu = air_command_menu},
-    {"Sync Air", MENU_TYPE_FUNCTION, .function = sync_air_function},
-    {"Load Air", MENU_TYPE_SUBMENU, .submenu = load_air_slot_menu},
-    {"Save Air", MENU_TYPE_SUBMENU, .submenu = save_air_slot_menu},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-static menu_item_t diag_menu[] = {
+static menu_item_t car_diag_menu[] = {
     {"IMU", MENU_TYPE_DIAG_VIEW, .function = diag_imu_function},
     {"Encoder", MENU_TYPE_DIAG_VIEW, .function = diag_encoder_function},
     {"Position", MENU_TYPE_DIAG_VIEW, .function = diag_position_function},
     {"PID", MENU_TYPE_DIAG_VIEW, .function = diag_pid_function},
-    {"Air Ack", MENU_TYPE_DIAG_VIEW, .function = diag_air_function},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+static menu_item_t air_diag_menu[] = {
+    {"A_State", MENU_TYPE_DIAG_VIEW, .function = diag_air_state_function},
+    {"A_Attitude", MENU_TYPE_DIAG_VIEW, .function = diag_air_attitude_function},
+    {"A_RC", MENU_TYPE_DIAG_VIEW, .function = diag_air_rc_function},
+    {"A_Plan", MENU_TYPE_DIAG_VIEW, .function = diag_air_plan_function},
+    {"A_Comm", MENU_TYPE_DIAG_VIEW, .function = diag_air_comm_function},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+static menu_item_t car_menu[] = {
+    {"C_params", MENU_TYPE_SUBMENU, .submenu = car_param_menu},
+    {"C_Diag", MENU_TYPE_SUBMENU, .submenu = car_diag_menu},
+    {"C_Load", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
+    {"C_Save", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+static menu_item_t air_menu[] = {
+    {"A_params", MENU_TYPE_SUBMENU, .submenu = air_param_menu},
+    {"A_Command", MENU_TYPE_SUBMENU, .submenu = air_command_menu},
+    {"A_Diag", MENU_TYPE_SUBMENU, .submenu = air_diag_menu},
+    {"Sync Air", MENU_TYPE_FUNCTION, .function = sync_air_function},
+    {"A_Load", MENU_TYPE_SUBMENU, .submenu = load_air_slot_menu},
+    {"A_Save", MENU_TYPE_SUBMENU, .submenu = save_air_slot_menu},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
 static menu_item_t main_menu[] = {
-    {"Wheel PID", MENU_TYPE_SUBMENU, .submenu = wheel_pid_menu},
-    {"YawRate PID", MENU_TYPE_SUBMENU, .submenu = yaw_rate_pid_menu},
-    {"YawAng PID", MENU_TYPE_SUBMENU, .submenu = yaw_angle_pid_menu},
-    {"Mode2 Vel", MENU_TYPE_SUBMENU, .submenu = mode2_velocity_pid_menu},
-    {"Mode5 Vel", MENU_TYPE_SUBMENU, .submenu = mode5_velocity_pid_menu},
-    {"Mode7 Vel", MENU_TYPE_SUBMENU, .submenu = mode7_velocity_pid_menu},
-    {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = mode8_velocity_pid_menu},
-    {"S Curve", MENU_TYPE_SUBMENU, .submenu = s_curve_menu},
+    {"Car", MENU_TYPE_SUBMENU, .submenu = car_menu},
     {"Air", MENU_TYPE_SUBMENU, .submenu = air_menu},
-    {"Diag", MENU_TYPE_SUBMENU, .submenu = diag_menu},
-    {"Load Car", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
-    {"Save Car", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -345,16 +372,15 @@ static uint8 menu_build_air_param_menus(void)
     air_command_menu[1].type = MENU_TYPE_SUBMENU;
     air_command_menu[1].submenu = NULL;
 
-    air_menu[AIR_MENU_BASIC].submenu = s_air_group_menus[MENU_AIR_GROUP_BASIC];
-    air_menu[AIR_MENU_GYRO].submenu = s_air_group_menus[MENU_AIR_GROUP_GYRO];
-    air_menu[AIR_MENU_ANGLE].submenu = s_air_group_menus[MENU_AIR_GROUP_ANGLE];
-    air_menu[AIR_MENU_VELOCITY].submenu = s_air_group_menus[MENU_AIR_GROUP_VELOCITY];
-    air_menu[AIR_MENU_MODE7].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE7];
-    air_menu[AIR_MENU_ESTIMATION].submenu = s_air_group_menus[MENU_AIR_GROUP_ESTIMATION];
-    air_menu[AIR_MENU_MODE5].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE5];
-    air_menu[AIR_MENU_MODE8_IMAGE].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE8_IMAGE];
-    air_menu[AIR_MENU_MODE8_VELOCITY].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE8_VELOCITY];
-    air_menu[AIR_MENU_COMMAND].submenu = air_command_menu;
+    air_param_menu[AIR_PARAM_MENU_BASIC].submenu = s_air_group_menus[MENU_AIR_GROUP_BASIC];
+    air_param_menu[AIR_PARAM_MENU_GYRO].submenu = s_air_group_menus[MENU_AIR_GROUP_GYRO];
+    air_param_menu[AIR_PARAM_MENU_ANGLE].submenu = s_air_group_menus[MENU_AIR_GROUP_ANGLE];
+    air_param_menu[AIR_PARAM_MENU_VELOCITY].submenu = s_air_group_menus[MENU_AIR_GROUP_VELOCITY];
+    air_param_menu[AIR_PARAM_MENU_MODE7].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE7];
+    air_param_menu[AIR_PARAM_MENU_ESTIMATION].submenu = s_air_group_menus[MENU_AIR_GROUP_ESTIMATION];
+    air_param_menu[AIR_PARAM_MENU_MODE5].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE5];
+    air_param_menu[AIR_PARAM_MENU_MODE8_IMAGE].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE8_IMAGE];
+    air_param_menu[AIR_PARAM_MENU_MODE8_VELOCITY].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE8_VELOCITY];
 
     return 0U;
 }
@@ -649,8 +675,102 @@ static void diag_pid_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
-/* 诊断页：AirComm通信状态（在线/ACK/同步统计） */
-static void diag_air_function(void)
+/* Air诊断页：飞行状态、TOF高度、位置估计速度和同步时间 */
+static void diag_air_state_function(void)
+{
+    char text[32];
+
+    diag_begin();
+    diag_show_line(0U, "Air State");
+    sprintf(text, "On:%u Fresh:%u",
+            (unsigned int)air_comm_car_is_online(),
+            (unsigned int)air_comm_car_is_run_data_fresh());
+    diag_show_line(1U, text);
+    sprintf(text, "State:%u", (unsigned int)(uint8)g_air_state);
+    diag_show_line(2U, text);
+    sprintf(text, "TOF:%7.1fmm", (double)g_air_tof_fused_height_mm);
+    diag_show_line(3U, text);
+    sprintf(text, "Vx:%8.3f", (double)g_air_pos_est_vel_x);
+    diag_show_line(4U, text);
+    sprintf(text, "Vy:%8.3f", (double)g_air_pos_est_vel_y);
+    diag_show_line(5U, text);
+    sprintf(text, "Sync:%7.0fms", (double)g_air_sync_time_ms);
+    diag_show_line(6U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+/* Air诊断页：姿态角和航向目标 */
+static void diag_air_attitude_function(void)
+{
+    char text[32];
+
+    diag_begin();
+    diag_show_line(0U, "Air Attitude");
+    sprintf(text, "Roll:%8.2f", (double)g_air_euler_roll);
+    diag_show_line(1U, text);
+    sprintf(text, "Pitch:%7.2f", (double)g_air_euler_pitch);
+    diag_show_line(2U, text);
+    sprintf(text, "Yaw:%9.2f", (double)g_air_euler_yaw);
+    diag_show_line(3U, text);
+    sprintf(text, "YawT:%8.2f", (double)g_air_yaw_angle_target_deg);
+    diag_show_line(4U, text);
+    sprintf(text, "State:%u", (unsigned int)(uint8)g_air_state);
+    diag_show_line(5U, text);
+    sprintf(text, "Fresh:%u", (unsigned int)air_comm_car_is_run_data_fresh());
+    diag_show_line(6U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+/* Air诊断页：CRSF标准化通道0-8 */
+static void diag_air_rc_function(void)
+{
+    char text[32];
+
+    diag_begin();
+    diag_show_line(0U, "Air RC");
+    sprintf(text, "0:%5.0f 1:%5.0f", (double)g_air_crsf_std_ch0, (double)g_air_crsf_std_ch1);
+    diag_show_line(1U, text);
+    sprintf(text, "2:%5.0f 3:%5.0f", (double)g_air_crsf_std_ch2, (double)g_air_crsf_std_ch3);
+    diag_show_line(2U, text);
+    sprintf(text, "4:%5.0f 5:%5.0f", (double)g_air_crsf_std_ch4, (double)g_air_crsf_std_ch5);
+    diag_show_line(3U, text);
+    sprintf(text, "6:%5.0f 7:%5.0f", (double)g_air_crsf_std_ch6, (double)g_air_crsf_std_ch7);
+    diag_show_line(4U, text);
+    sprintf(text, "8:%5.0f", (double)g_air_crsf_std_ch8);
+    diag_show_line(5U, text);
+    sprintf(text, "State:%u", (unsigned int)(uint8)g_air_state);
+    diag_show_line(6U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+/* Air诊断页：Air为Car生成的规划结果 */
+static void diag_air_plan_function(void)
+{
+    char text[32];
+
+    diag_begin();
+    diag_show_line(0U, "Air Plan");
+    sprintf(text, "Valid:%u Lost:%u",
+            (unsigned int)(g_air_car_plan_valid > 0.5f),
+            (unsigned int)(g_air_beacon_lost_flag > 0.5f));
+    diag_show_line(1U, text);
+    sprintf(text, "Str:%8.3f", (double)g_air_car_plan_strafe_mps);
+    diag_show_line(2U, text);
+    sprintf(text, "Fwd:%8.3f", (double)g_air_car_plan_forward_mps);
+    diag_show_line(3U, text);
+    sprintf(text, "Cam:%u Bcn:%u",
+            (unsigned int)(uint8)g_air_car_plan_camera,
+            (unsigned int)(uint8)g_air_car_plan_beacon_index);
+    diag_show_line(4U, text);
+    sprintf(text, "Dist:%7.1fpx", (double)g_air_car_plan_dist_px);
+    diag_show_line(5U, text);
+    sprintf(text, "State:%u", (unsigned int)(uint8)g_air_state);
+    diag_show_line(6U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+/* Air诊断页：AirComm通信状态（在线/ACK/同步统计） */
+static void diag_air_comm_function(void)
 {
     char text[32];
     air_comm_stats_t stats;
