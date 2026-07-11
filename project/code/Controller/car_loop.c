@@ -145,6 +145,7 @@ void car_loop_init(void)
     odometer_init();
     beacon_detection_reset();
     fixator_init();
+    LightSequence_Reset();
     IMU_Init_All();
     AccelCalibration_Init();
     IMUCalib_Init();
@@ -172,6 +173,7 @@ static void car_loop_100HZ(void)
     float odometer_raw_position[2];
     float odometer_fixed_position[2];
     float beacon_detected_flag;
+    light_sequence_result_t light_sequence_result;
 
     s_telemetry_timestamp_count++;
     s_system_time_ms = s_telemetry_timestamp_count * 10U;
@@ -194,6 +196,14 @@ static void car_loop_100HZ(void)
         odometer_fixed_position[x] = g_fixator.fixed_position[x];
         odometer_fixed_position[y] = g_fixator.fixed_position[y];
     }
+
+    /* 同一Air灭灯事件先应用fixator修正，再用修正后的里程计坐标分析灯序。 */
+    odometer_apply_pending_fix();
+    LightSequence_Update((g_air_beacon_lost_flag > 0.5f) ? 1U : 0U,
+                         g_odometer.position[x],
+                         g_odometer.position[y],
+                         tick_1000us_cnt);
+    LightSequence_GetResult(&light_sequence_result);
 
     if ((g_beacon_detection.enter_event != 0U) &&
         (g_beacon_detection.enter_count != s_beacon_beep_enter_count))
@@ -283,8 +293,8 @@ static void car_loop_100HZ(void)
         car_data[1] = g_car_mode8_state.velocity_forward_target_mps;
     }
     car_data[2] = (g_beacon_detection.on_beacon != 0U) ? 1.0f : 0.0f;
-    car_data[3] = g_odometer.position[x];
-    car_data[4] = g_odometer.position[y];
+    car_data[3] = 0.0f;
+    car_data[4] = 0.0f;
     car_data[5] = 0.0f;
     car_data[6] = 0.0f;
     car_data[7] = 0.0f;
@@ -295,34 +305,57 @@ static void car_loop_100HZ(void)
 
     // if ((CAR_MODE_5 == car_mode_get()) || (CAR_MODE_8 == car_mode_get()))
     // {
-        wifi_justfloat(g_imufilter_1000hz.gyrox,                       /* I1 */
-                       g_imufilter_1000hz.gyroy,                       /* I2 */
-                       g_imufilter_1000hz.gyroz,                       /* I3 */
-                       g_imufilter_1000hz.accx,                        /* I4 */
-                       g_imufilter_1000hz.accy,                        /* I5 */
-                       g_imufilter_1000hz.accz,                        /* I6 */
-                       g_euler.pitch,                                  /* I7 */
-                       g_euler.roll,                                   /* I8 */
-                       g_euler.yaw,                                    /* I9 */
-                       encoder_get_left_front_filtered_count(),         /* I10 */
-                       encoder_get_right_front_filtered_count(),        /* I11 */
-                       encoder_get_left_rear_filtered_count(),          /* I12 */
-                       encoder_get_right_rear_filtered_count(),         /* I13 */
-                       g_odometer.body_vel[x],                         /* I14 */
-                       g_odometer.body_vel[y],                         /* I15 */
-                       g_odometer.vel[x],                              /* I16 */
-                       g_odometer.vel[y],                              /* I17 */
-                       odometer_raw_position[x],                       /* I18 */
-                       odometer_raw_position[y],                       /* I19 */                           /* I20 */
-                       odometer_fixed_position[x],                     /* I21 */
-                       odometer_fixed_position[y],                     /* I22 */
-                       g_air_car_plan_strafe_mps,                      /* I23: Air target velocity X */
-                       g_air_car_plan_forward_mps,                     /* I24: Air target velocity Y */
-                       g_air_beacon_lost_flag,
-                       beacon_detected_flag);                        /* I25 */
+/*          wifi_justfloat(g_imufilter_1000hz.gyrox,                       //I1
+                       g_imufilter_1000hz.gyroy,                       //I2 
+                       g_imufilter_1000hz.gyroz,                       //I3 
+                       g_imufilter_1000hz.accx,                        //I4 
+                       g_imufilter_1000hz.accy,                        //I5 
+                       g_imufilter_1000hz.accz,                        //I6 
+                       g_euler.pitch,                                  //I7 
+                       g_euler.roll,                                   //I8 
+                       g_euler.yaw,                                    //I9 
+                       encoder_get_left_front_filtered_count(),         //I10 
+                       encoder_get_right_front_filtered_count(),        //I11 
+                       encoder_get_left_rear_filtered_count(),          //I12 
+                       encoder_get_right_rear_filtered_count(),         //I13 
+                       g_odometer.body_vel[x],                         //I14 
+                       g_odometer.body_vel[y],                         //I15 
+                       g_odometer.vel[x],                              //I16 
+                       g_odometer.vel[y],                              //I17 
+                       odometer_raw_position[x],                       //I18 
+                       odometer_raw_position[y],                       //I19
+                       odometer_fixed_position[x],                     //I20 
+                       odometer_fixed_position[y],                     //I21 
+                       g_air_car_plan_strafe_mps,                      //I22: Air target velocity X
+                       g_air_car_plan_forward_mps,                     //I23: Air target velocity Y
+                       g_air_beacon_lost_flag,                         //24
+                       beacon_detected_flag);                          //I25   */
     // }
 
-
+ {
+        wifi_justfloat((float)light_sequence_result.status,             /* I1: 识别状态 */
+                       (float)light_sequence_result.last_beacon_id,     /* I2: 最近熄灭灯号 */
+                       (float)light_sequence_result.sequence_id,        /* I3: 唯一序列号 */
+                       (float)light_sequence_result.candidate_count,    /* I4: 剩余候选数量 */
+                       ((light_sequence_result.candidate_mask & 0x001U) != 0U) ? 1.0f : 0.0f, /* I5: 序列1 */
+                       ((light_sequence_result.candidate_mask & 0x002U) != 0U) ? 1.0f : 0.0f, /* I6: 序列2 */
+                       ((light_sequence_result.candidate_mask & 0x004U) != 0U) ? 1.0f : 0.0f, /* I7: 序列3 */
+                       ((light_sequence_result.candidate_mask & 0x008U) != 0U) ? 1.0f : 0.0f, /* I8: 序列4 */
+                       ((light_sequence_result.candidate_mask & 0x010U) != 0U) ? 1.0f : 0.0f, /* I9: 序列5 */
+                       ((light_sequence_result.candidate_mask & 0x020U) != 0U) ? 1.0f : 0.0f, /* I10: 序列6 */
+                       ((light_sequence_result.candidate_mask & 0x040U) != 0U) ? 1.0f : 0.0f, /* I11: 序列7 */
+                       ((light_sequence_result.candidate_mask & 0x080U) != 0U) ? 1.0f : 0.0f, /* I12: 序列8 */
+                       ((light_sequence_result.candidate_mask & 0x100U) != 0U) ? 1.0f : 0.0f, /* I13: 序列9 */
+                       ((light_sequence_result.candidate_mask & 0x200U) != 0U) ? 1.0f : 0.0f, /* I14: 序列10 */
+                       g_odometer.position[x],                                /* I15: 修正后全局X坐标，单位m */
+                       g_odometer.position[y],                                /* I16: 修正后全局Y坐标，单位m */
+                       g_air_beacon_lost_flag,
+                       encoder_get_left_front_count(),
+                       encoder_get_right_front_count(),
+                       encoder_get_left_rear_count(),
+                       encoder_get_right_rear_count()
+                    );                               /* I17: Air灭灯事件标志 */
+    } 
 
     // wifi_justfloat((float)car_mode_get(),
     //                g_air_euler_yaw,

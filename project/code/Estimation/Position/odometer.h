@@ -128,4 +128,11 @@ void odometer_reset(void);
 void odometer_update_100HZ(void);
 void odometer_update_1000HZ(void);
 
+/**
+ * @brief 立即应用fixator生成的待修正位置，使后续模块读取修正后的全局坐标。
+ * @param 无。
+ * @return 无。
+ */
+void odometer_apply_pending_fix(void);
+
 #endif

@@ -134,6 +134,7 @@
 #include "Estimation/Position/odometer.h"
 #include "Estimation/Beacon_Detection/beacon_detection.h"
 #include "Estimation/Position/fixator.h"
+#include "Estimation/lightsequence/light_sequence.h"
 
 #include "Menu/menu_air_support.h"
 #include "Menu/menu_core.h"

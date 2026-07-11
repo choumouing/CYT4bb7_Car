@@ -1241,6 +1241,21 @@
                 </file>
             </group>
             <group>
+                <name>lightsequence</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\lightsequence\light_sequence.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\lightsequence\light_sequence.h</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\lightsequence\light_sequence_config.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\lightsequence\light_sequence_config.h</name>
+                </file>
+            </group>
+            <group>
                 <name>Beacon_Detection</name>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Estimation\Beacon_Detection\beacon_detection.c</name>
