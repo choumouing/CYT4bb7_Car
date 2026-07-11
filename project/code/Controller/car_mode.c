@@ -109,6 +109,26 @@ void car_mode_update_25HZ(uint32 now_ms)
         return;
     }
 
+    /* 信标采集期间固定复用 Mode8 遥控，只由 Air 转发的 CH4 停车开关放行。 */
+    if(beacon_position_recorder_is_active() != 0U)
+    {
+        car_control_enabled =
+            (g_air_crsf_std_ch4 >= CAR_MODE_CH4_ENABLE_THRESHOLD) ? 1U : 0U;
+        s_car_mode = (car_control_enabled != 0U) ? CAR_MODE_8 : CAR_MODE_0;
+        car_emergency_stop_active = (car_control_enabled != 0U) ? 0U : 1U;
+        car_mode_handle_transition_25HZ(s_car_mode, car_control_enabled);
+
+        if(car_control_enabled == 0U)
+        {
+            car_forward_target = 0.0f;
+            car_strafe_target = 0.0f;
+            return;
+        }
+
+        car_mode8_update_25HZ(now_ms);
+        return;
+    }
+
     car_control_enabled = (g_air_crsf_std_ch4 >= CAR_MODE_CH4_ENABLE_THRESHOLD) ? 1U : 0U;
     if(0U == car_control_enabled)
     {

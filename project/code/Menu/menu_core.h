@@ -43,7 +43,6 @@ extern volatile uint8_t timer_100HZ_flag;    // 100HZ定时器标志
 // Flash存档安全配置 (CYT4BB7: 96页，每页2KB)
 #define MENU_SLOT_COUNT         4           // 存档数量
 #define MENU_SLOT_BASE_PAGE     72          // Car菜单存档使用72-79页，避开IMU page 95
-#define MENU_LEGACY_SLOT_BASE_PAGE 88       // 旧菜单只做一次兼容读取，不再写回
 #define MENU_SLOT_SIZE          2           // 每个存档占用2页(4KB)
 #define MENU_MAGIC_NUMBER       0x5A5A5A5A  // 存档验证魔数
 #define MENU_VERSION            0x03        // 参数目录变化后使旧位置式存档失效
@@ -61,6 +60,7 @@ typedef enum {
     MENU_TYPE_FUNCTION,         // 函数项
     MENU_TYPE_PARAMETER,        // 参数项
     MENU_TYPE_AIR_PARAMETER,    // Air远程参数项
+    MENU_TYPE_EXTERNAL_PARAMETER, // 外部模块浮点参数项
     MENU_TYPE_AIR_COMMAND,      // Air远程命令项
     MENU_TYPE_DIAG_VIEW         // 只读诊断页
 } menu_type_t;
@@ -73,6 +73,23 @@ typedef enum {
     REFRESH_VALUE               // 数值刷新（参数编辑）
 } refresh_type_t;
 
+typedef struct
+{
+    float *variable;
+    float step;
+    float min_val;
+    float max_val;
+} menu_external_param_config_t;
+
+typedef struct
+{
+    void (*render)(void);
+    void (*on_exit)(void);
+    uint8_t refresh_10hz;
+    uint8_t long_back_only;
+    uint8_t allow_runtime_locked;
+} menu_external_view_config_t;
+
 // 菜单项结构
 typedef struct menu_item {
     char name[32];              // 菜单项名称
@@ -81,6 +98,7 @@ typedef struct menu_item {
         struct menu_item* submenu;      // 子菜单指针
         void (*function)(void);         // 函数指针
         uint8_t param_index;           // 参数索引
+        menu_external_param_config_t *external_param;
     };
 } menu_item_t;
 
@@ -115,7 +133,7 @@ typedef enum {
     MENU_STATE_NORMAL = 0,      // 普通浏览模式
     MENU_STATE_EDIT,            // 参数编辑模式
     MENU_STATE_DIAG_VIEW,       // 只读诊断页模式
-    MENU_STATE_BEACON_RECORDER  // 信标位置采集模式
+    MENU_STATE_EXTERNAL_VIEW    // 外部模块页面模式
 } menu_state_t;
 
 // 按键定义
@@ -163,8 +181,8 @@ void menu_set_root(menu_item_t* root_menu);           // 设置根菜单
 void menu_enter_submenu(menu_item_t* submenu);        // 进入子菜单
 void menu_return_to_parent(void);                     // 返回上级菜单
 void menu_reset_to_first(void);                       // 重置选择到第一项
-void menu_enter_beacon_recorder_mode(void);           // 进入信标位置采集模式
-uint8_t menu_beacon_recorder_mode_active(void);       // 查询信标位置采集页面是否激活
+uint8_t menu_enter_external_view(const menu_external_view_config_t *config);
+uint8_t menu_external_view_runtime_active(void);
 
 // 显示控制
 void menu_set_need_refresh(void);                     // 设置需要刷新标志

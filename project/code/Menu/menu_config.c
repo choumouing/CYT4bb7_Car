@@ -289,7 +289,7 @@ static menu_item_t car_menu[] = {
     {"C_Diag", MENU_TYPE_SUBMENU, .submenu = car_diag_menu},
     {"C_Load", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
     {"C_Save", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
-    {"C_BeaconRec", MENU_TYPE_FUNCTION, .function = menu_enter_beacon_recorder_mode},
+    {"C_BeaconRec", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -466,6 +466,12 @@ void menu_config_init(void)
     if(menu_build_air_param_menus() != 0U)
     {
         menu_show_error("Air Menu Error");
+        return;
+    }
+    car_menu[4].submenu = beacon_position_recorder_get_menu();
+    if(car_menu[4].submenu == NULL)
+    {
+        menu_show_error("Beacon Menu Error");
         return;
     }
     menu_set_root(main_menu);

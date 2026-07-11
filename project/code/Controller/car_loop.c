@@ -274,7 +274,7 @@ static void car_loop_100HZ(void)
             menu_air_command_abort_runtime();
             menu_runtime_suspend();
         }
-        else if(menu_beacon_recorder_mode_active() == 0U)
+        else if(menu_external_view_runtime_active() == 0U)
         {
             menu_discard_key_events();
         }
@@ -292,9 +292,9 @@ static void car_loop_100HZ(void)
         menu_air_update_100HZ();
         menu_update_100HZ();
     }
-    else if(menu_beacon_recorder_mode_active() != 0U)
+    else if(menu_external_view_runtime_active() != 0U)
     {
-        /* 运行锁定期间只保留采集页面的长按返回退出能力。 */
+        /* 运行锁定期间只处理明确允许的外部页面输入。 */
         menu_update_100HZ();
     }
     s_menu_runtime_was_locked = menu_runtime_locked;

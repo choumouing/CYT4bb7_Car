@@ -46,9 +46,7 @@ static uint8_t key_repeat_counters[KEY_NUMBER] = {0};   // 长按重复计数器
 static uint8_t key_press_consumed[KEY_NUMBER] = {0};    // 是否已经在按下过程中处理
 static const gpio_pin_enum menu_key_pins[KEY_NUMBER] = KEY_LIST; // 按键引脚映射
 static uint8_t menu_wait_key_release = 0U;
-
-static void menu_render_beacon_recorder(void);
-static void menu_exit_beacon_recorder_mode(void);
+static menu_external_view_config_t external_view_config;
 
 // Flash操作延迟执行
 static uint8_t pending_flash_operation = 0;            // 待执行的Flash操作
@@ -66,7 +64,8 @@ static uint8_t menu_is_param_item(const menu_item_t *item)
     }
 
     return ((item->type == MENU_TYPE_PARAMETER) ||
-            (item->type == MENU_TYPE_AIR_PARAMETER)) ? 1U : 0U;
+            (item->type == MENU_TYPE_AIR_PARAMETER) ||
+            (item->type == MENU_TYPE_EXTERNAL_PARAMETER)) ? 1U : 0U;
 }
 
 static void menu_clear_key_tracking(void)
@@ -198,6 +197,14 @@ static uint8_t menu_get_item_param_value(const menu_item_t *item, float *value)
         return menu_air_get_display_value(item->param_index, value);
     }
 
+    if((item->type == MENU_TYPE_EXTERNAL_PARAMETER) &&
+       (item->external_param != NULL) &&
+       (item->external_param->variable != NULL))
+    {
+        *value = *(item->external_param->variable);
+        return 1U;
+    }
+
     return 0U;
 }
 
@@ -232,6 +239,14 @@ static uint8_t menu_get_item_param_step(const menu_item_t *item, float *step)
         return 1U;
     }
 
+    if((item->type == MENU_TYPE_EXTERNAL_PARAMETER) &&
+       (item->external_param != NULL) &&
+       (item->external_param->variable != NULL))
+    {
+        *step = item->external_param->step;
+        return 1U;
+    }
+
     return 0U;
 }
 
@@ -258,6 +273,22 @@ static uint8_t menu_set_item_param_value(const menu_item_t *item, float value)
         return menu_set_air_param_by_index(item->param_index, value);
     }
 
+    if((item->type == MENU_TYPE_EXTERNAL_PARAMETER) &&
+       (item->external_param != NULL) &&
+       (item->external_param->variable != NULL))
+    {
+        if(value < item->external_param->min_val)
+        {
+            value = item->external_param->min_val;
+        }
+        if(value > item->external_param->max_val)
+        {
+            value = item->external_param->max_val;
+        }
+        *(item->external_param->variable) = value;
+        return 0U;
+    }
+
     return 1U;
 }
 
@@ -272,8 +303,8 @@ typedef struct
     char slot_name[16];
 } menu_flash_slot_header_t;
 
-/* 获取存档对应的Flash页号（legacy=1使用旧地址88+，兼容旧版数据） */
-static uint32_t menu_get_slot_page(uint8_t slot, uint8_t legacy);
+/* 获取当前格式存档对应的 Flash 页号。 */
+static uint32_t menu_get_slot_page(uint8_t slot);
 
 static uint32_t menu_flash_calc_data_checksum(uint16_t count, uint32_t offset)
 {
@@ -321,7 +352,7 @@ static uint8_t menu_flash_slot_valid(uint8_t slot, menu_flash_slot_header_t *out
         return 0U;
     }
 
-    page_num = menu_get_slot_page(slot, 0U);
+    page_num = menu_get_slot_page(slot);
     if((page_num + MENU_SLOT_SIZE - 1U) >= FLASH_PAGE_NUM)
     {
         return 0U;
@@ -363,12 +394,9 @@ static uint8_t menu_flash_slot_valid(uint8_t slot, menu_flash_slot_header_t *out
     return 1U;
 }
 
-static uint32_t menu_get_slot_page(uint8_t slot, uint8_t legacy)
+static uint32_t menu_get_slot_page(uint8_t slot)
 {
-    uint32_t base_page;
-
-    base_page = (legacy != 0U) ? MENU_LEGACY_SLOT_BASE_PAGE : MENU_SLOT_BASE_PAGE;
-    return base_page + ((uint32_t)slot * MENU_SLOT_SIZE);
+    return MENU_SLOT_BASE_PAGE + ((uint32_t)slot * MENU_SLOT_SIZE);
 }
 
 //====================================================菜单核心功能====================================================
@@ -392,7 +420,17 @@ void menu_discard_key_events(void)
 void menu_runtime_suspend(void)
 {
     menu_air_edit_reset();
-    if(menu_state != MENU_STATE_BEACON_RECORDER)
+    if((menu_state == MENU_STATE_EXTERNAL_VIEW) &&
+       (external_view_config.allow_runtime_locked == 0U))
+    {
+        if(external_view_config.on_exit != NULL)
+        {
+            external_view_config.on_exit();
+        }
+        memset(&external_view_config, 0, sizeof(external_view_config));
+        menu_state = MENU_STATE_NORMAL;
+    }
+    else if(menu_state != MENU_STATE_EXTERNAL_VIEW)
     {
         menu_state = MENU_STATE_NORMAL;
     }
@@ -436,6 +474,7 @@ void menu_init(void)
     display_offset = 0;
     menu_air_edit_reset();
     menu_wait_key_release = 0U;
+    memset(&external_view_config, 0, sizeof(external_view_config));
 
     // 初始化局部刷新变量
     refresh_type = REFRESH_FULL;
@@ -463,7 +502,7 @@ void menu_init(void)
 void menu_update_100HZ(void)
 {
     if((car_menu_is_runtime_locked() != 0U) &&
-       (menu_state != MENU_STATE_BEACON_RECORDER))
+       (menu_external_view_runtime_active() == 0U))
     {
         menu_discard_key_events();
         return;
@@ -471,20 +510,32 @@ void menu_update_100HZ(void)
 
     menu_process_keys();
 
-    if((menu_state == MENU_STATE_DIAG_VIEW) ||
-       (menu_state == MENU_STATE_BEACON_RECORDER))
+    if(menu_state == MENU_STATE_EXTERNAL_VIEW)
+    {
+        if(external_view_config.refresh_10hz != 0U)
+        {
+            diag_refresh_divider++;
+            if(diag_refresh_divider >= 10U)
+            {
+                diag_refresh_divider = 0U;
+                if(external_view_config.render != NULL)
+                {
+                    external_view_config.render();
+                }
+            }
+        }
+        return;
+    }
+
+    if(menu_state == MENU_STATE_DIAG_VIEW)
     {
         diag_refresh_divider++;
         if(diag_refresh_divider >= 10U)
         {
             diag_refresh_divider = 0U;
-            if(menu_state == MENU_STATE_BEACON_RECORDER)
-            {
-                menu_render_beacon_recorder();
-            }
-            else if((current_index < current_item_count) &&
-                    (current_menu[current_index].type == MENU_TYPE_DIAG_VIEW) &&
-                    (current_menu[current_index].function != NULL))
+            if((current_index < current_item_count) &&
+               (current_menu[current_index].type == MENU_TYPE_DIAG_VIEW) &&
+               (current_menu[current_index].function != NULL))
             {
                 current_menu[current_index].function();
             }
@@ -795,32 +846,42 @@ void menu_reset_to_first(void)
     menu_request_refresh(REFRESH_FULL);  // 重置到第一项需要全屏刷新
 }
 
-void menu_enter_beacon_recorder_mode(void)
+uint8_t menu_enter_external_view(const menu_external_view_config_t *config)
 {
-    if((car_menu_is_runtime_locked() != 0U) ||
+    if((config == NULL) || (config->render == NULL) ||
+       (car_menu_is_runtime_locked() != 0U) ||
        (menu_state != MENU_STATE_NORMAL))
     {
-        return;
+        return 1U;
     }
 
-    beacon_position_recorder_enter();
-    menu_state = MENU_STATE_BEACON_RECORDER;
+    external_view_config = *config;
+    menu_state = MENU_STATE_EXTERNAL_VIEW;
     diag_refresh_divider = 0U;
-    menu_render_beacon_recorder();
+    external_view_config.render();
+    return 0U;
 }
 
-uint8_t menu_beacon_recorder_mode_active(void)
+uint8_t menu_external_view_runtime_active(void)
 {
-    return (menu_state == MENU_STATE_BEACON_RECORDER) ? 1U : 0U;
+    return ((menu_state == MENU_STATE_EXTERNAL_VIEW) &&
+            (external_view_config.allow_runtime_locked != 0U)) ? 1U : 0U;
 }
 
-static void menu_exit_beacon_recorder_mode(void)
+static void menu_exit_external_view(uint8_t wait_key_release)
 {
-    beacon_position_recorder_exit();
+    if(external_view_config.on_exit != NULL)
+    {
+        external_view_config.on_exit();
+    }
+    memset(&external_view_config, 0, sizeof(external_view_config));
     menu_state = MENU_STATE_NORMAL;
     diag_refresh_divider = 0U;
-    menu_wait_key_release = 1U;
-    menu_clear_key_tracking();
+    if(wait_key_release != 0U)
+    {
+        menu_wait_key_release = 1U;
+        menu_clear_key_tracking();
+    }
     menu_request_refresh(REFRESH_FULL);
 }
 
@@ -852,11 +913,12 @@ void menu_process_keys(void)
         return;
     }
 
-    if((menu_state == MENU_STATE_BEACON_RECORDER) &&
+    if((menu_state == MENU_STATE_EXTERNAL_VIEW) &&
+       (external_view_config.long_back_only != 0U) &&
        (key_get_state(KEY_4) == KEY_LONG_PRESS))
     {
         key_clear_state(KEY_4);
-        menu_exit_beacon_recorder_mode();
+        menu_exit_external_view(1U);
         return;
     }
 
@@ -933,7 +995,7 @@ void menu_key_handler(menu_key_t key)
 {
     if(current_menu == NULL) return;
     if((car_menu_is_runtime_locked() != 0U) &&
-       (menu_state != MENU_STATE_BEACON_RECORDER)) return;
+       (menu_external_view_runtime_active() == 0U)) return;
 
     switch(menu_state)
     {
@@ -1049,6 +1111,7 @@ void menu_key_handler(menu_key_t key)
 
                         case MENU_TYPE_PARAMETER:
                         case MENU_TYPE_AIR_PARAMETER:
+                        case MENU_TYPE_EXTERNAL_PARAMETER:
                             if(menu_is_param_item(&current_menu[current_index]) != 0U)
                             {
                                 if((current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER) &&
@@ -1197,8 +1260,12 @@ void menu_key_handler(menu_key_t key)
             }
             break;
 
-        case MENU_STATE_BEACON_RECORDER:
-            /* 采集模式仅允许 menu_process_keys() 处理长按返回退出。 */
+        case MENU_STATE_EXTERNAL_VIEW:
+            if((key == KEY_BACK) &&
+               (external_view_config.long_back_only == 0U))
+            {
+                menu_exit_external_view(0U);
+            }
             break;
     }
 }
@@ -1274,7 +1341,7 @@ void menu_flash_save_params(uint8_t slot)
         return;
     }
 
-    page_num = menu_get_slot_page(slot, 0U);
+    page_num = menu_get_slot_page(slot);
     if((page_num + MENU_SLOT_SIZE - 1U) >= FLASH_PAGE_NUM)
     {
         menu_show_error("Error");
@@ -1327,7 +1394,7 @@ void menu_flash_format_slot(uint8_t slot)
         return;
     }
 
-    page_num = menu_get_slot_page(slot, 0U);
+    page_num = menu_get_slot_page(slot);
     if((page_num + MENU_SLOT_SIZE - 1U) >= FLASH_PAGE_NUM)
     {
         menu_show_message("Page error");
@@ -1397,49 +1464,6 @@ void menu_render_current(void)
             ips114_show_string(0, 112, command_status.last_ack_text);
         }
     }
-}
-
-static void menu_render_beacon_recorder(void)
-{
-    char text[32];
-    uint16_t last_index;
-
-    ips114_clear();
-    ips114_set_color(UI_COLOR_NORMAL, UI_COLOR_BG);
-    ips114_set_font(UI_FONT_NORMAL);
-
-    ips114_show_string(0, 0, "Beacon Recorder");
-    sprintf(text, "Active:%u Full:%u",
-            (unsigned int)g_beacon_position_recorder.active,
-            (unsigned int)g_beacon_position_recorder.full);
-    ips114_show_string(0, 16, text);
-    sprintf(text, "Count:%u/%u",
-            (unsigned int)g_beacon_position_recorder.point_count,
-            (unsigned int)BEACON_POSITION_RECORDER_MAX_POINTS);
-    ips114_show_string(0, 32, text);
-    sprintf(text, "Pos X:%8.3f", (double)g_beacon_position_recorder.position[x]);
-    ips114_show_string(0, 48, text);
-    sprintf(text, "Pos Y:%8.3f", (double)g_beacon_position_recorder.position[y]);
-    ips114_show_string(0, 64, text);
-
-    if(g_beacon_position_recorder.point_count > 0U)
-    {
-        last_index = g_beacon_position_recorder.point_count - 1U;
-        sprintf(text, "Last X:%7.3f",
-                (double)g_beacon_position_recorder.points[last_index][x]);
-        ips114_show_string(0, 80, text);
-        sprintf(text, "Last Y:%7.3f",
-                (double)g_beacon_position_recorder.points[last_index][y]);
-        ips114_show_string(0, 96, text);
-    }
-    else
-    {
-        ips114_show_string(0, 80, "Last X: --");
-        ips114_show_string(0, 96, "Last Y: --");
-    }
-
-    ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);
-    ips114_show_string(0, 112, "Hold Back Exit");
 }
 
 /**
