@@ -13,6 +13,8 @@
 #define _MENU_CORE_H_
 
 void menu_discard_key_events(void);
+void menu_runtime_suspend(void);
+void menu_runtime_resume(void);
 
 
 
@@ -44,7 +46,7 @@ extern volatile uint8_t timer_100HZ_flag;    // 100HZ定时器标志
 #define MENU_LEGACY_SLOT_BASE_PAGE 88       // 旧菜单只做一次兼容读取，不再写回
 #define MENU_SLOT_SIZE          2           // 每个存档占用2页(4KB)
 #define MENU_MAGIC_NUMBER       0x5A5A5A5A  // 存档验证魔数
-#define MENU_VERSION            0x01        // 存档版本
+#define MENU_VERSION            0x03        // 参数目录变化后使旧位置式存档失效
 
 // Flash安全边界检查 (CYT4BB7有96页，确保不超出限制)
 #define FLASH_SAFE_START_PAGE   MENU_SLOT_BASE_PAGE
@@ -59,6 +61,7 @@ typedef enum {
     MENU_TYPE_FUNCTION,         // 函数项
     MENU_TYPE_PARAMETER,        // 参数项
     MENU_TYPE_AIR_PARAMETER,    // Air远程参数项
+    MENU_TYPE_AIR_COMMAND,      // Air远程命令项
     MENU_TYPE_DIAG_VIEW         // 只读诊断页
 } menu_type_t;
 

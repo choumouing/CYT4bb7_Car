@@ -20,6 +20,9 @@ static uint32 s_telemetry_timestamp_count = 0U;
 static uint32 s_system_time_ms = 0U;
 static uint16 s_air_comm_beep_tick = 200U;
 static uint32 s_beacon_beep_enter_count = 0U;
+static uint8 s_air_menu_runtime_locked = 0U;
+static uint8 s_air_run_data_seen = 0U;
+static uint8 s_menu_runtime_was_locked = 0U;
 
 volatile float g_air_tof_fused_height_mm;
 volatile float g_air_euler_roll;
@@ -78,6 +81,9 @@ volatile float g_air_beacon_lost_flag = 0.0f;
 #define AIR_RUN_DATA_CRSF_STD_CH8 (24U)
 
 #define AIR_YAW_TARGET_DEG_TO_RAD (-0.017453292519943295f)
+#define AIR_MENU_STATE_INIT (0.0f)
+#define AIR_MENU_STATE_STANDBY (1.0f)
+#define AIR_MENU_STATE_RUNTIME_MIN (2.0f)
 
 static void on_air_data(const float *data, uint8 count)
 {
@@ -92,7 +98,20 @@ static void on_air_data(const float *data, uint8 count)
     g_air_euler_yaw = data[3];
     g_air_pos_est_vel_x = data[4];
     g_air_pos_est_vel_y = data[5];
-    g_air_state = data[6];
+    g_air_state = data[AIR_RUN_DATA_STATE];
+    s_air_run_data_seen = 1U;
+    if(g_air_state >= AIR_MENU_STATE_RUNTIME_MIN)
+    {
+        s_air_menu_runtime_locked = 1U;
+    }
+    else if(g_air_state == AIR_MENU_STATE_STANDBY)
+    {
+        s_air_menu_runtime_locked = 0U;
+    }
+    else if(g_air_state != AIR_MENU_STATE_INIT)
+    {
+        s_air_menu_runtime_locked = 1U;
+    }
     g_air_crsf_std_ch0 = data[7];
     g_air_crsf_std_ch1 = data[8];
     g_air_crsf_std_ch2 = data[9];
@@ -124,6 +143,7 @@ static void car_loop_runtime_reset(void)
     car_strafe_target = 0.0f;
     car_control_enabled = 0U;
     car_emergency_stop_active = 1U;
+    g_air_state = 0.0f;
     g_air_car_plan_valid = 0.0f;
     g_air_car_plan_strafe_mps = 0.0f;
     g_air_car_plan_forward_mps = 0.0f;
@@ -134,15 +154,41 @@ static void car_loop_runtime_reset(void)
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
     s_beacon_beep_enter_count = 0U;
+    s_air_menu_runtime_locked = 0U;
+    s_air_run_data_seen = 0U;
+    s_menu_runtime_was_locked = 0U;
     beacon_config_init();
+}
+
+uint8 car_menu_is_runtime_locked(void)
+{
+    if((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
+    {
+        return 1U;
+    }
+
+    if(s_air_menu_runtime_locked != 0U)
+    {
+        return 1U;
+    }
+
+    if(((s_air_run_data_seen != 0U) &&
+        (air_comm_car_is_run_data_fresh() == 0U)) ||
+       ((s_air_run_data_seen == 0U) &&
+        (air_comm_car_is_online() != 0U)))
+    {
+        return 1U;
+    }
+
+    return 0U;
 }
 
 void car_loop_init(void)
 {
     car_loop_runtime_reset();
 
-    // menu_init();
-    // menu_config_init();
+    menu_init();
+    menu_config_init();
     mecanum_motor_init();
     encoder_control_init();
     odometer_init();
@@ -178,6 +224,7 @@ static void car_loop_100HZ(void)
     float odometer_fixed_position[2];
     float beacon_detected_flag;
     light_sequence_result_t light_sequence_result;
+    uint8 menu_runtime_locked;
 
     s_telemetry_timestamp_count++;
     s_system_time_ms = s_telemetry_timestamp_count * 10U;
@@ -217,21 +264,35 @@ static void car_loop_100HZ(void)
         Beep_Play(100U, 0.10f, 1U);
     }
 
-    if ((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
+    menu_runtime_locked = car_menu_is_runtime_locked();
+
+    if(menu_runtime_locked != 0U)
     {
-        // menu_air_stop_param_sync();
+        if(s_menu_runtime_was_locked == 0U)
+        {
+            menu_air_abort_param_sync_runtime();
+            menu_air_command_abort_runtime();
+            menu_runtime_suspend();
+        }
+        else
+        {
+            menu_discard_key_events();
+        }
     }
+
     air_comm_car_update_100HZ();
 
-    if ((car_control_enabled == 0U) || (car_emergency_stop_active != 0U))
+    if(menu_runtime_locked == 0U)
     {
-        // menu_air_update_100HZ();
-        // menu_update_100HZ();
+        if(s_menu_runtime_was_locked != 0U)
+        {
+            menu_runtime_resume();
+        }
+        menu_air_command_update_100HZ();
+        menu_air_update_100HZ();
+        menu_update_100HZ();
     }
-    else
-    {
-        // menu_discard_key_events();
-    }
+    s_menu_runtime_was_locked = menu_runtime_locked;
 
     car_mode_update_100HZ(s_system_time_ms);
 
@@ -308,36 +369,7 @@ static void car_loop_100HZ(void)
     car_data[10] = (float)s_system_time_ms;
     air_comm_send_run_data(car_data, 11);
 
-    // if ((CAR_MODE_5 == car_mode_get()) || (CAR_MODE_8 == car_mode_get()))
-    // {
-/*          wifi_justfloat(g_imufilter_1000hz.gyrox,                       //I1
-                       g_imufilter_1000hz.gyroy,                       //I2 
-                       g_imufilter_1000hz.gyroz,                       //I3 
-                       g_imufilter_1000hz.accx,                        //I4 
-                       g_imufilter_1000hz.accy,                        //I5 
-                       g_imufilter_1000hz.accz,                        //I6 
-                       g_euler.pitch,                                  //I7 
-                       g_euler.roll,                                   //I8 
-                       g_euler.yaw,                                    //I9 
-                       encoder_get_left_front_filtered_count(),         //I10 
-                       encoder_get_right_front_filtered_count(),        //I11 
-                       encoder_get_left_rear_filtered_count(),          //I12 
-                       encoder_get_right_rear_filtered_count(),         //I13 
-                       g_odometer.body_vel[x],                         //I14 
-                       g_odometer.body_vel[y],                         //I15 
-                       g_odometer.vel[x],                              //I16 
-                       g_odometer.vel[y],                              //I17 
-                       odometer_raw_position[x],                       //I18 
-                       odometer_raw_position[y],                       //I19
-                       odometer_fixed_position[x],                     //I20 
-                       odometer_fixed_position[y],                     //I21 
-                       g_air_car_plan_strafe_mps,                      //I22: Air target velocity X
-                       g_air_car_plan_forward_mps,                     //I23: Air target velocity Y
-                       g_air_beacon_lost_flag,                         //24
-                       beacon_detected_flag);                          //I25   */
-    // }
-
- {
+    {
         wifi_justfloat((float)light_sequence_result.status,             /* I1: 识别状态 */
                        (float)light_sequence_result.last_beacon_id,     /* I2: 最近熄灭灯号 */
                        (float)light_sequence_result.sequence_id,        /* I3: 唯一序列号 */
@@ -411,6 +443,8 @@ void car_loop_poll(void)
         imu_tick_guard++;
     }
 
+    air_comm_car_poll();
+
     if (timer_25HZ_flag)
     {
         timer_25HZ_flag = 0U;
@@ -424,5 +458,4 @@ void car_loop_poll(void)
     }
 
     wifi_core_Poll();
-    air_comm_car_poll();
 }
