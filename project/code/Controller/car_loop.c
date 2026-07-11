@@ -283,8 +283,8 @@ static void car_loop_100HZ(void)
         car_data[1] = g_car_mode8_state.velocity_forward_target_mps;
     }
     car_data[2] = (g_beacon_detection.on_beacon != 0U) ? 1.0f : 0.0f;
-    car_data[3] = 0.0f;
-    car_data[4] = 0.0f;
+    car_data[3] = g_odometer.position[x];
+    car_data[4] = g_odometer.position[y];
     car_data[5] = 0.0f;
     car_data[6] = 0.0f;
     car_data[7] = 0.0f;
