@@ -17,6 +17,11 @@
 #define MENU_AIR_MAX_PARAMS                  (128U)
 #define MENU_AIR_EXPECTED_PARAM_COUNT        (123U)
 
+/* 1=Car上电首次连接Air时使用Car Flash存档覆盖Air参数，0=保留Air代码参数。 */
+#define MENU_AIR_BOOT_OVERRIDE_ENABLE        (0U)
+/* 启动覆盖使用的Car端Air参数存档槽。 */
+#define MENU_AIR_BOOT_OVERRIDE_SLOT          (0U)
+
 #define MENU_AIR_SYNC_MODE_IDLE             (0U)
 #define MENU_AIR_SYNC_MODE_COMMIT           (1U)
 #define MENU_AIR_SYNC_MODE_FULL             (2U)
@@ -28,6 +33,7 @@
 #define MENU_AIR_SYNC_REASON_LOAD           (2U)
 #define MENU_AIR_SYNC_REASON_MANUAL         (3U)
 #define MENU_AIR_SYNC_REASON_COMMIT         (4U)
+#define MENU_AIR_SYNC_REASON_BOOT_OVERRIDE  (5U)
 
 #define MENU_AIR_CMD_STATE_IDLE             (0U)
 #define MENU_AIR_CMD_STATE_WAIT_START_ACK   (1U)
