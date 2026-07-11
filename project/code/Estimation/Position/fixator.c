@@ -2,14 +2,14 @@
 #include "Estimation/Beacon_Detection/beacon_detection.h"
 
 #define FIXATOR_EVENT_STRICT_RADIUS_M     (0.50f)
-#define FIXATOR_EVENT_LOOSE_RADIUS_M      (1.00f)
-#define FIXATOR_DUPLICATE_MIN_TICK        (650U)
+#define FIXATOR_EVENT_LOOSE_RADIUS_M      (0.90f)
+#define FIXATOR_DUPLICATE_MIN_TICK        (1000U)
 #define FIXATOR_BEACON_DETECTED_RADIUS_M  (0.20f)
 #define FIXATOR_BEACON_DETECTED_DEAD_TICK (1000U)
 
 #define FIXATOR_ALPHA_STRICT              (1.00f)
 #define FIXATOR_ALPHA_LOOSE               (0.80f)
-#define FIXATOR_ALPHA_DIRECT              (1.00f)
+#define FIXATOR_ALPHA_DIRECT              (0.60f)
 
 typedef enum
 {
