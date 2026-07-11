@@ -39,6 +39,7 @@ volatile float g_air_crsf_std_ch4;
 volatile float g_air_crsf_std_ch5;
 volatile float g_air_crsf_std_ch6;
 volatile float g_air_crsf_std_ch7;
+volatile float g_air_crsf_std_ch8;
 volatile float g_air_yaw_angle_target_deg = 0.0f;
 volatile float g_air_sync_time_ms = 0.0f;
 volatile float g_air_car_plan_valid = 0.0f;
@@ -49,7 +50,7 @@ volatile float g_air_car_plan_beacon_index = 0.0f;
 volatile float g_air_car_plan_dist_px = 0.0f;
 volatile float g_air_beacon_lost_flag = 0.0f;
 
-#define AIR_RUN_DATA_COUNT (24U)
+#define AIR_RUN_DATA_COUNT (25U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -74,6 +75,7 @@ volatile float g_air_beacon_lost_flag = 0.0f;
 #define AIR_RUN_DATA_CAR_PLAN_BEACON_INDEX (21U)
 #define AIR_RUN_DATA_CAR_PLAN_DIST_PX (22U)
 #define AIR_RUN_DATA_BEACON_LOST_FLAG (23U)
+#define AIR_RUN_DATA_CRSF_STD_CH8 (24U)
 
 #define AIR_YAW_TARGET_DEG_TO_RAD (-0.017453292519943295f)
 
@@ -100,6 +102,7 @@ static void on_air_data(const float *data, uint8 count)
     g_air_crsf_std_ch6 = data[13];
     g_air_crsf_std_ch7 = data[14];
     g_air_yaw_angle_target_deg = data[AIR_RUN_DATA_YAW_ANGLE_TARGET_DEG];
+    g_air_crsf_std_ch8 = data[AIR_RUN_DATA_CRSF_STD_CH8];
     g_air_sync_time_ms = data[AIR_RUN_DATA_SYNC_TIME_MS];
     g_air_car_plan_valid = data[AIR_RUN_DATA_CAR_PLAN_VALID];
     g_air_car_plan_strafe_mps = data[AIR_RUN_DATA_CAR_PLAN_STRAFE_MPS];
@@ -143,6 +146,7 @@ void car_loop_init(void)
     mecanum_motor_init();
     encoder_control_init();
     odometer_init();
+    beacon_position_recorder_init();
     beacon_detection_reset();
     fixator_init();
     LightSequence_Reset();
@@ -180,6 +184,7 @@ static void car_loop_100HZ(void)
 
     encoder_update_100HZ();
     odometer_update_100HZ();
+    beacon_position_recorder_update_100HZ();
     beacon_detection_update_100HZ();
     fixator_update_100HZ();
 
@@ -385,7 +390,8 @@ static void car_loop_100HZ(void)
     //             g_air_crsf_std_ch4,
     //             g_air_crsf_std_ch5,
     //             g_air_crsf_std_ch6,
-    //             g_air_crsf_std_ch7);
+    //             g_air_crsf_std_ch7,
+    //             g_air_crsf_std_ch8);
 }
 
 static void car_loop_25HZ(void)

@@ -8,7 +8,7 @@
  *
  * 数据来源：
  *   空地串口接收无人机运行数据和遥控通道。
- *   遥控通道来自无人机 CRSF 转发的 ch0~ch7。
+ *   遥控通道来自无人机 CRSF 转发的 ch0~ch8。
  */
 
 #ifndef CAR_LOOP_H
@@ -52,6 +52,7 @@ extern volatile float g_air_crsf_std_ch4;
 extern volatile float g_air_crsf_std_ch5;
 extern volatile float g_air_crsf_std_ch6;
 extern volatile float g_air_crsf_std_ch7;
+extern volatile float g_air_crsf_std_ch8;
 extern volatile float g_air_yaw_angle_target_deg;
 extern volatile float g_air_sync_time_ms;
 extern volatile float g_air_car_plan_valid;

@@ -1228,6 +1228,12 @@
                     <name>$PROJ_DIR$\..\..\code\Estimation\Position\beacon_config.h</name>
                 </file>
                 <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\Position\beacon_position_recorder.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\Position\beacon_position_recorder.h</name>
+                </file>
+                <file>
                     <name>$PROJ_DIR$\..\..\code\Estimation\Position\fixator.c</name>
                 </file>
                 <file>
