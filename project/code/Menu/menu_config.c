@@ -96,12 +96,9 @@ static void sync_air_function(void);
 static void diag_imu_function(void);
 static void diag_encoder_function(void);
 static void diag_position_function(void);
-static void diag_pid_function(void);
 static void diag_air_state_function(void);
 static void diag_air_attitude_function(void);
 static void diag_air_rc_function(void);
-static void diag_air_plan_function(void);
-static void diag_air_comm_function(void);
 
 //====================================================菜单树定义====================================================
 // 轮速PID子菜单（增量式）
@@ -271,7 +268,6 @@ static menu_item_t car_diag_menu[] = {
     {"IMU", MENU_TYPE_DIAG_VIEW, .function = diag_imu_function},
     {"Encoder", MENU_TYPE_DIAG_VIEW, .function = diag_encoder_function},
     {"Position", MENU_TYPE_DIAG_VIEW, .function = diag_position_function},
-    {"PID", MENU_TYPE_DIAG_VIEW, .function = diag_pid_function},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -279,8 +275,6 @@ static menu_item_t air_diag_menu[] = {
     {"A_State", MENU_TYPE_DIAG_VIEW, .function = diag_air_state_function},
     {"A_Attitude", MENU_TYPE_DIAG_VIEW, .function = diag_air_attitude_function},
     {"A_RC", MENU_TYPE_DIAG_VIEW, .function = diag_air_rc_function},
-    {"A_Plan", MENU_TYPE_DIAG_VIEW, .function = diag_air_plan_function},
-    {"A_Comm", MENU_TYPE_DIAG_VIEW, .function = diag_air_comm_function},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -538,30 +532,6 @@ static void sync_air_function(void)
     }
 }
 
-static const char *diag_air_sync_mode_text(uint8 mode)
-{
-    switch(mode)
-    {
-        case MENU_AIR_SYNC_MODE_COMMIT:
-            return "commit";
-
-        case MENU_AIR_SYNC_MODE_FULL:
-            return "syncing";
-
-        case MENU_AIR_SYNC_MODE_PULL:
-            return "reading";
-
-        case MENU_AIR_SYNC_MODE_DONE:
-            return "done";
-
-        case MENU_AIR_SYNC_MODE_FAIL:
-            return "fail";
-
-        default:
-            return "idle";
-    }
-}
-
 /* 显示一行诊断文本（line 0-7，每行16像素高） */
 static void diag_show_line(uint8 line, const char *text)
 {
@@ -626,17 +596,10 @@ static void diag_encoder_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
-/* 诊断页：位置信息（里程计 + UWB原始/滤波坐标） */
+/* 诊断页：里程计位置与全局速度。 */
 static void diag_position_function(void)
 {
     char text[32];
-    ALX_AOA_Position_t uwb = {0};
-    float filt_x_cm = 0.0f;
-    float filt_y_cm = 0.0f;
-    uint8 uwb_ok;
-
-    uwb_ok = ALX_AOA_GetLatest(&uwb);
-    (void)ALX_AOA_GetFilteredXY(&filt_x_cm, &filt_y_cm);
 
     diag_begin();
     sprintf(text, "Odo Xr:%6.3f", (double)g_odometer.position[x]);
@@ -647,42 +610,10 @@ static void diag_position_function(void)
             (double)g_odometer.vel[x],
             (double)g_odometer.vel[y]);
     diag_show_line(2U, text);
-    sprintf(text, "UWB ok:%u", (unsigned int)uwb_ok);
-    diag_show_line(3U, text);
-    sprintf(text, "Raw X:%ld", (long)uwb.x_cm);
-    diag_show_line(4U, text);
-    sprintf(text, "Raw Y:%ld", (long)uwb.y_cm);
-    diag_show_line(5U, text);
-    sprintf(text, "Filt:%5.1f %5.1f", (double)filt_x_cm, (double)filt_y_cm);
-    diag_show_line(6U, text);
     diag_show_line(7U, "Back/Enter Exit");
 }
 
-/* 诊断页：PID中间变量（航向环 + 左前轮P/I/Output） */
-static void diag_pid_function(void)
-{
-    char text[32];
-
-    diag_begin();
-    sprintf(text, "YawCur:%6.3f", (double)control_yaw_angle_current);
-    diag_show_line(0U, text);
-    sprintf(text, "YawOut:%6.3f", (double)control_yaw_angle_output);
-    diag_show_line(1U, text);
-    sprintf(text, "RateT:%6.3f", (double)control_yaw_rate_target);
-    diag_show_line(2U, text);
-    sprintf(text, "RateC:%6.3f", (double)control_yaw_rate_current);
-    diag_show_line(3U, text);
-    sprintf(text, "RateO:%7.1f", (double)control_yaw_rate_output);
-    diag_show_line(4U, text);
-    sprintf(text, "M1 P:%6.1f", (double)wheel_left_front_pid.p_term);
-    diag_show_line(5U, text);
-    sprintf(text, "M1 I:%6.1f O:%6.1f", (double)wheel_left_front_pid.i_term,
-            (double)wheel_left_front_pid.output);
-    diag_show_line(6U, text);
-    diag_show_line(7U, "Back/Enter Exit");
-}
-
-/* Air诊断页：飞行状态、TOF高度、位置估计速度和同步时间 */
+/* Air诊断页：通信在线状态、飞行状态和Air时间戳。 */
 static void diag_air_state_function(void)
 {
     char text[32];
@@ -695,18 +626,12 @@ static void diag_air_state_function(void)
     diag_show_line(1U, text);
     sprintf(text, "State:%u", (unsigned int)(uint8)g_air_state);
     diag_show_line(2U, text);
-    sprintf(text, "TOF:%7.1fmm", (double)g_air_tof_fused_height_mm);
-    diag_show_line(3U, text);
-    sprintf(text, "Vx:%8.3f", (double)g_air_pos_est_vel_x);
-    diag_show_line(4U, text);
-    sprintf(text, "Vy:%8.3f", (double)g_air_pos_est_vel_y);
-    diag_show_line(5U, text);
     sprintf(text, "Sync:%7.0fms", (double)g_air_sync_time_ms);
-    diag_show_line(6U, text);
+    diag_show_line(3U, text);
     diag_show_line(7U, "Back/Enter Exit");
 }
 
-/* Air诊断页：姿态角和航向目标 */
+/* Air诊断页：姿态角、TOF高度和位置估计速度。 */
 static void diag_air_attitude_function(void)
 {
     char text[32];
@@ -719,11 +644,11 @@ static void diag_air_attitude_function(void)
     diag_show_line(2U, text);
     sprintf(text, "Yaw:%9.2f", (double)g_air_euler_yaw);
     diag_show_line(3U, text);
-    sprintf(text, "YawT:%8.2f", (double)g_air_yaw_angle_target_deg);
+    sprintf(text, "TOF:%7.1fmm", (double)g_air_tof_fused_height_mm);
     diag_show_line(4U, text);
-    sprintf(text, "State:%u", (unsigned int)(uint8)g_air_state);
+    sprintf(text, "Vx:%8.3f", (double)g_air_pos_est_vel_x);
     diag_show_line(5U, text);
-    sprintf(text, "Fresh:%u", (unsigned int)air_comm_car_is_run_data_fresh());
+    sprintf(text, "Vy:%8.3f", (double)g_air_pos_est_vel_y);
     diag_show_line(6U, text);
     diag_show_line(7U, "Back/Enter Exit");
 }
@@ -746,66 +671,6 @@ static void diag_air_rc_function(void)
     sprintf(text, "8:%5.0f", (double)g_air_crsf_std_ch8);
     diag_show_line(5U, text);
     sprintf(text, "State:%u", (unsigned int)(uint8)g_air_state);
-    diag_show_line(6U, text);
-    diag_show_line(7U, "Back/Enter Exit");
-}
-
-/* Air诊断页：Air为Car生成的规划结果 */
-static void diag_air_plan_function(void)
-{
-    char text[32];
-
-    diag_begin();
-    diag_show_line(0U, "Air Plan");
-    sprintf(text, "Valid:%u Lost:%u",
-            (unsigned int)(g_air_car_plan_valid > 0.5f),
-            (unsigned int)(g_air_beacon_lost_flag > 0.5f));
-    diag_show_line(1U, text);
-    sprintf(text, "Str:%8.3f", (double)g_air_car_plan_strafe_mps);
-    diag_show_line(2U, text);
-    sprintf(text, "Fwd:%8.3f", (double)g_air_car_plan_forward_mps);
-    diag_show_line(3U, text);
-    sprintf(text, "Cam:%u Bcn:%u",
-            (unsigned int)(uint8)g_air_car_plan_camera,
-            (unsigned int)(uint8)g_air_car_plan_beacon_index);
-    diag_show_line(4U, text);
-    sprintf(text, "Dist:%7.1fpx", (double)g_air_car_plan_dist_px);
-    diag_show_line(5U, text);
-    sprintf(text, "State:%u", (unsigned int)(uint8)g_air_state);
-    diag_show_line(6U, text);
-    diag_show_line(7U, "Back/Enter Exit");
-}
-
-/* Air诊断页：AirComm通信状态（在线/ACK/同步统计） */
-static void diag_air_comm_function(void)
-{
-    char text[32];
-    air_comm_stats_t stats;
-    menu_air_sync_status_t sync_status;
-
-    air_comm_car_get_stats(&stats);
-    menu_get_air_sync_status(&sync_status);
-
-    diag_begin();
-    sprintf(text, "Air online:%u", (unsigned int)stats.online_status);
-    diag_show_line(0U, text);
-    sprintf(text, "%s R:%u", diag_air_sync_mode_text(sync_status.mode),
-            (unsigned int)sync_status.reason);
-    diag_show_line(1U, text);
-    sprintf(text, "Idx:%u Pend:%u", (unsigned int)sync_status.active_index,
-            (unsigned int)stats.pending_ack);
-    diag_show_line(2U, text);
-    sprintf(text, "Last T:%u R:%u", (unsigned int)stats.last_ack_type,
-            (unsigned int)stats.last_ack_result);
-    diag_show_line(3U, text);
-    sprintf(text, "St:%u Send:%lu", (unsigned int)stats.last_ack_status,
-            (unsigned long)sync_status.send_count);
-    diag_show_line(4U, text);
-    sprintf(text, "OK:%lu Fail:%lu", (unsigned long)sync_status.ok_count,
-            (unsigned long)sync_status.fail_count);
-    diag_show_line(5U, text);
-    sprintf(text, "TO:%lu FIdx:%u", (unsigned long)sync_status.timeout_count,
-            (unsigned int)sync_status.last_failed_index);
     diag_show_line(6U, text);
     diag_show_line(7U, "Back/Enter Exit");
 }
