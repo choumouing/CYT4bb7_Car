@@ -1,4 +1,5 @@
 #include "menu_air_support.h"
+#include "menu_config.h"
 
 #define MENU_AIR_SLOT_BASE_PAGE             (80U)
 #define MENU_AIR_SLOT_COUNT                 (4U)
@@ -16,17 +17,22 @@
 #error "Air boot override enable must be 0 or 1"
 #endif
 
-#if (MENU_AIR_BOOT_OVERRIDE_SLOT >= MENU_AIR_SLOT_COUNT)
-#error "Air boot override slot exceeds menu Air slot count"
+#if ((MENU_AIR_BOOT_FLASH_LOAD_ENABLE != 0U) && (MENU_AIR_BOOT_FLASH_LOAD_ENABLE != 1U))
+#error "Air boot Flash load enable must be 0 or 1"
+#endif
+
+#if (MENU_AIR_BOOT_FLASH_LOAD_SLOT >= MENU_AIR_SLOT_COUNT)
+#error "Air boot Flash load slot exceeds menu Air slot count"
 #endif
 
 typedef struct
 {
     const char *name;
+    float default_val;
     float step;
     float min_val;
     float max_val;
-    uint8 group;
+    const char *menu_name;
 } menu_air_param_definition_t;
 
 typedef struct
@@ -54,58 +60,141 @@ static menu_air_cmd_status_t s_air_cmd_status;
 
 #define MENU_AIR_STRINGIFY_INNER(value)     #value
 #define MENU_AIR_STRINGIFY(value)           MENU_AIR_STRINGIFY_INNER(value)
-#define MENU_AIR_PARAM(member, step_v, min_v, max_v, group_v) \
-    {MENU_AIR_STRINGIFY(member), (step_v), (min_v), (max_v), (group_v)}
-#define MENU_AIR_PID6(prefix, group_v, kp_step, ki_step, kd_step, kff_step, i_step, lpf_step) \
-    MENU_AIR_PARAM(prefix##_kp,      kp_step,  0.0f, 3000.0f, group_v), \
-    MENU_AIR_PARAM(prefix##_ki,      ki_step,  0.0f, 3000.0f, group_v), \
-    MENU_AIR_PARAM(prefix##_kd,      kd_step,  0.0f, 3000.0f, group_v), \
-    MENU_AIR_PARAM(prefix##_kff,     kff_step, 0.0f, 3000.0f, group_v), \
-    MENU_AIR_PARAM(prefix##_i_limit, i_step,   0.0f, 5000.0f, group_v), \
-    MENU_AIR_PARAM(prefix##_d_lpf,   lpf_step, 0.0f,  500.0f, group_v)
+#define MENU_AIR_PARAM(member, default_v, step_v, min_v, max_v, menu_name_v) \
+    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v)}
 
 static const menu_air_param_definition_t s_air_param_definitions[] =
 {
-    MENU_AIR_PARAM(gyro_dt,             0.0001f,  0.0001f, 0.1f,    MENU_AIR_GROUP_BASIC),
-    MENU_AIR_PARAM(angle_dt,            0.0001f,  0.0001f, 0.1f,    MENU_AIR_GROUP_BASIC),
-    MENU_AIR_PARAM(pos_z_dt,            0.001f,   0.0001f, 0.2f,    MENU_AIR_GROUP_BASIC),
-    MENU_AIR_PARAM(vel_xy_dt,           0.001f,   0.0001f, 0.2f,    MENU_AIR_GROUP_BASIC),
-    MENU_AIR_PARAM(vel_z_dt,            0.001f,   0.0001f, 0.2f,    MENU_AIR_GROUP_BASIC),
-    MENU_AIR_PARAM(base_throttle,      10.0f,     0.0f, 6000.0f,    MENU_AIR_GROUP_BASIC),
-    MENU_AIR_PARAM(roll_mech_trim_deg,  0.01f,  -30.0f,   30.0f,    MENU_AIR_GROUP_BASIC),
-    MENU_AIR_PARAM(pitch_mech_trim_deg, 0.01f,  -30.0f,   30.0f,    MENU_AIR_GROUP_BASIC),
+    MENU_AIR_PARAM(gyro_dt, 0.001f,             0.0001f,  0.0001f, 0.1f,    "Basic"),
+    MENU_AIR_PARAM(angle_dt, 0.002f,            0.0001f,  0.0001f, 0.1f,    "Basic"),
+    MENU_AIR_PARAM(pos_z_dt, 0.02f,            0.001f,   0.0001f, 0.2f,    "Basic"),
+    MENU_AIR_PARAM(vel_xy_dt, 0.02f,           0.001f,   0.0001f, 0.2f,    "Basic"),
+    MENU_AIR_PARAM(vel_z_dt, 0.01f,            0.001f,   0.0001f, 0.2f,    "Basic"),
+    MENU_AIR_PARAM(base_throttle, 3200,      10.0f,     0.0f, 6000.0f,    "Basic"),
+    MENU_AIR_PARAM(roll_mech_trim_deg, 0.5f,  0.01f,  -30.0f,   30.0f,    "Basic"),
+    MENU_AIR_PARAM(pitch_mech_trim_deg, 1.5f, 0.01f,  -30.0f,   30.0f,    "Basic"),
 
-    MENU_AIR_PID6(roll_gyro,  MENU_AIR_GROUP_GYRO, 0.1f, 0.01f, 0.01f, 0.01f, 1.0f, 1.0f),
-    MENU_AIR_PID6(pitch_gyro, MENU_AIR_GROUP_GYRO, 0.1f, 0.01f, 0.01f, 0.01f, 1.0f, 1.0f),
-    MENU_AIR_PID6(yaw_gyro,   MENU_AIR_GROUP_GYRO, 0.1f, 0.01f, 0.01f, 0.01f, 1.0f, 1.0f),
+    MENU_AIR_PARAM(roll_gyro_kp, 5.4f,      0.1f,  0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(roll_gyro_ki, 0.18f,      0.01f, 0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(roll_gyro_kd, 0.010f,      0.01f, 0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(roll_gyro_kff, 0.0f,     0.01f, 0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(roll_gyro_i_limit, 180.0f, 1.0f,  0.0f, 5000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(roll_gyro_d_lpf, 60.0f,   1.0f,  0.0f,  500.0f, "Gyro PID"),
+    MENU_AIR_PARAM(pitch_gyro_kp, 5.3f,      0.1f,  0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(pitch_gyro_ki, 0.14f,      0.01f, 0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(pitch_gyro_kd, 0.010f,      0.01f, 0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(pitch_gyro_kff, 0.0f,     0.01f, 0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(pitch_gyro_i_limit, 140.0f, 1.0f,  0.0f, 5000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(pitch_gyro_d_lpf, 60.0f,   1.0f,  0.0f,  500.0f, "Gyro PID"),
+    MENU_AIR_PARAM(yaw_gyro_kp, 15.0f,      0.1f,  0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(yaw_gyro_ki, 5.0f,      0.01f, 0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(yaw_gyro_kd, 0.0f,      0.01f, 0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(yaw_gyro_kff, 0.0f,     0.01f, 0.0f, 3000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(yaw_gyro_i_limit, 700.0f, 1.0f,  0.0f, 5000.0f, "Gyro PID"),
+    MENU_AIR_PARAM(yaw_gyro_d_lpf, 30.0f,   1.0f,  0.0f,  500.0f, "Gyro PID"),
 
-    MENU_AIR_PID6(roll_angle,  MENU_AIR_GROUP_ANGLE, 0.1f, 0.01f, 0.01f, 0.01f, 1.0f, 1.0f),
-    MENU_AIR_PID6(pitch_angle, MENU_AIR_GROUP_ANGLE, 0.1f, 0.01f, 0.01f, 0.01f, 1.0f, 1.0f),
-    MENU_AIR_PID6(yaw_angle,   MENU_AIR_GROUP_ANGLE, 0.1f, 0.01f, 0.01f, 0.01f, 1.0f, 1.0f),
+    MENU_AIR_PARAM(roll_angle_kp, 6.0f,      0.1f,  0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(roll_angle_ki, 0.0f,      0.01f, 0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(roll_angle_kd, 0.0f,      0.01f, 0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(roll_angle_kff, 0.02f,     0.01f, 0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(roll_angle_i_limit, 80.0f, 1.0f,  0.0f, 5000.0f, "Angle PID"),
+    MENU_AIR_PARAM(roll_angle_d_lpf, 15.0f,   1.0f,  0.0f,  500.0f, "Angle PID"),
+    MENU_AIR_PARAM(pitch_angle_kp, 6.2f,      0.1f,  0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(pitch_angle_ki, 0.0f,      0.01f, 0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(pitch_angle_kd, 0.0f,      0.01f, 0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(pitch_angle_kff, 0.04f,     0.01f, 0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(pitch_angle_i_limit, 80.0f, 1.0f,  0.0f, 5000.0f, "Angle PID"),
+    MENU_AIR_PARAM(pitch_angle_d_lpf, 15.0f,   1.0f,  0.0f,  500.0f, "Angle PID"),
+    MENU_AIR_PARAM(yaw_angle_kp, 6.0f,      0.1f,  0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(yaw_angle_ki, 0.0f,      0.01f, 0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(yaw_angle_kd, 0.0f,      0.01f, 0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(yaw_angle_kff, 0.0f,     0.01f, 0.0f, 3000.0f, "Angle PID"),
+    MENU_AIR_PARAM(yaw_angle_i_limit, 0.0f, 1.0f,  0.0f, 5000.0f, "Angle PID"),
+    MENU_AIR_PARAM(yaw_angle_d_lpf, 0.0f,   1.0f,  0.0f,  500.0f, "Angle PID"),
 
-    MENU_AIR_PID6(vel_x, MENU_AIR_GROUP_VELOCITY, 0.01f, 0.001f, 0.01f, 0.01f, 0.1f, 0.1f),
-    MENU_AIR_PID6(vel_y, MENU_AIR_GROUP_VELOCITY, 0.01f, 0.001f, 0.01f, 0.01f, 0.1f, 0.1f),
-    MENU_AIR_PARAM(vel_z_ki,      1.0f, 0.0f, 3000.0f, MENU_AIR_GROUP_VELOCITY),
-    MENU_AIR_PARAM(vel_z_i_limit, 1.0f, 0.0f, 5000.0f, MENU_AIR_GROUP_VELOCITY),
+    MENU_AIR_PARAM(vel_x_kp, 0.15f,      0.01f,  0.0f, 3000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_x_ki, 0.02f,      0.001f, 0.0f, 3000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_x_kd, 0.0f,      0.01f,  0.0f, 3000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_x_kff, 0.0f,     0.01f,  0.0f, 3000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_x_i_limit, 3.0f, 0.1f,   0.0f, 5000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_x_d_lpf, 0.0f,   0.1f,   0.0f,  500.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_y_kp, 0.15f,      0.01f,  0.0f, 3000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_y_ki, 0.02f,      0.001f, 0.0f, 3000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_y_kd, 0.0f,      0.01f,  0.0f, 3000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_y_kff, 0.0f,     0.01f,  0.0f, 3000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_y_i_limit, 3.0f, 0.1f,   0.0f, 5000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_y_d_lpf, 0.0f,   0.1f,   0.0f,  500.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_z_ki, 80.0f,      1.0f, 0.0f, 3000.0f, "Vel PID"),
+    MENU_AIR_PARAM(vel_z_i_limit, 450.0f, 1.0f, 0.0f, 5000.0f, "Vel PID"),
 
-    MENU_AIR_PID6(mode7_vel_x, MENU_AIR_GROUP_MODE7, 0.01f, 0.001f, 0.01f, 0.001f, 0.1f, 0.1f),
-    MENU_AIR_PID6(mode7_vel_y, MENU_AIR_GROUP_MODE7, 0.01f, 0.001f, 0.01f, 0.001f, 0.1f, 0.1f),
+    MENU_AIR_PARAM(mode7_vel_x_kp, 0.15f,      0.01f,  0.0f, 3000.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_x_ki, 0.0f,      0.001f, 0.0f, 3000.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_x_kd, 0.0f,      0.01f,  0.0f, 3000.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_x_kff, 0.010f,     0.001f, 0.0f, 3000.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_x_i_limit, 3.0f, 0.1f,   0.0f, 5000.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_x_d_lpf, 0.0f,   0.1f,   0.0f,  500.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_y_kp, 0.15f,      0.01f,  0.0f, 3000.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_y_ki, 0.0f,      0.001f, 0.0f, 3000.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_y_kd, 0.0f,      0.01f,  0.0f, 3000.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_y_kff, 0.010f,     0.001f, 0.0f, 3000.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_y_i_limit, 3.0f, 0.1f,   0.0f, 5000.0f, "Mode7"),
+    MENU_AIR_PARAM(mode7_vel_y_d_lpf, 0.0f,   0.1f,   0.0f,  500.0f, "Mode7"),
 
-    MENU_AIR_PARAM(pos_est_k_flow, 0.001f, 0.0f, 1.0f, MENU_AIR_GROUP_ESTIMATION),
+    MENU_AIR_PARAM(pos_est_k_flow, 0.04f, 0.001f, 0.0f, 1.0f, "Estimation"),
 
-    MENU_AIR_PID6(mode5_img_x, MENU_AIR_GROUP_MODE5, 0.01f, 0.01f, 0.01f, 0.01f, 1.0f, 0.1f),
-    MENU_AIR_PID6(mode5_img_y, MENU_AIR_GROUP_MODE5, 0.01f, 0.01f, 0.01f, 0.01f, 1.0f, 0.1f),
-    MENU_AIR_PID6(mode5_vel_x, MENU_AIR_GROUP_MODE5, 0.01f, 0.001f, 0.01f, 0.001f, 0.1f, 0.1f),
-    MENU_AIR_PID6(mode5_vel_y, MENU_AIR_GROUP_MODE5, 0.01f, 0.001f, 0.01f, 0.001f, 0.1f, 0.1f),
-    MENU_AIR_PARAM(mode5_kp_car_x, 0.1f, 0.0f, 3000.0f, MENU_AIR_GROUP_MODE5),
-    MENU_AIR_PARAM(mode5_kp_car_y, 0.1f, 0.0f, 3000.0f, MENU_AIR_GROUP_MODE5),
+    MENU_AIR_PARAM(mode5_img_x_kp, 2.2f,      0.01f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_x_ki, 0.0f,      0.01f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_x_kd, 0.0f,      0.01f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_x_kff, 0.0f,     0.01f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_x_i_limit, 0.0f, 1.0f,  0.0f, 5000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_x_d_lpf, 0.0f,   0.1f,  0.0f,  500.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_y_kp, 2.2f,      0.01f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_y_ki, 0.0f,      0.01f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_y_kd, 0.0f,      0.01f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_y_kff, 0.0f,     0.01f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_y_i_limit, 0.0f, 1.0f,  0.0f, 5000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_img_y_d_lpf, 0.0f,   0.1f,  0.0f,  500.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_x_kp, 0.15f,      0.01f,  0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_x_ki, 0.0f,      0.001f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_x_kd, 0.0f,      0.01f,  0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_x_kff, 0.02f,     0.001f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_x_i_limit, 3.0f, 0.1f,   0.0f, 5000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_x_d_lpf, 0.0f,   0.1f,   0.0f,  500.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_y_kp, 0.15f,      0.01f,  0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_y_ki, 0.0f,      0.001f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_y_kd, 0.0f,      0.01f,  0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_y_kff, 0.02f,     0.001f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_y_i_limit, 3.0f, 0.1f,   0.0f, 5000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_vel_y_d_lpf, 0.0f,   0.1f,   0.0f,  500.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_kp_car_x, 45.0f, 0.1f, 0.0f, 3000.0f, "Mode5"),
+    MENU_AIR_PARAM(mode5_kp_car_y, 45.0f, 0.1f, 0.0f, 3000.0f, "Mode5"),
 
-    MENU_AIR_PID6(mode8_img_x, MENU_AIR_GROUP_MODE8_IMAGE, 0.01f, 0.01f, 0.01f, 0.01f, 1.0f, 0.1f),
-    MENU_AIR_PID6(mode8_img_y, MENU_AIR_GROUP_MODE8_IMAGE, 0.01f, 0.01f, 0.01f, 0.01f, 1.0f, 0.1f),
-    MENU_AIR_PID6(mode8_vel_x, MENU_AIR_GROUP_MODE8_VELOCITY, 0.01f, 0.001f, 0.01f, 0.001f, 0.1f, 0.1f),
-    MENU_AIR_PID6(mode8_vel_y, MENU_AIR_GROUP_MODE8_VELOCITY, 0.01f, 0.001f, 0.01f, 0.001f, 0.1f, 0.1f),
-    MENU_AIR_PARAM(mode8_kp_car_x, 0.1f, 0.0f, 3000.0f, MENU_AIR_GROUP_MODE8_VELOCITY),
-    MENU_AIR_PARAM(mode8_kp_car_y, 0.1f, 0.0f, 3000.0f, MENU_AIR_GROUP_MODE8_VELOCITY)
+    MENU_AIR_PARAM(mode8_img_x_kp, 2.4f,      0.01f, 0.0f, 3000.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_x_ki, 0.0f,      0.01f, 0.0f, 3000.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_x_kd, 0.0f,      0.01f, 0.0f, 3000.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_x_kff, 0.0f,     0.01f, 0.0f, 3000.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_x_i_limit, 0.0f, 1.0f,  0.0f, 5000.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_x_d_lpf, 0.0f,   0.1f,  0.0f,  500.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_y_kp, 1.8f,      0.01f, 0.0f, 3000.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_y_ki, 0.0f,      0.01f, 0.0f, 3000.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_y_kd, 0.0f,      0.01f, 0.0f, 3000.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_y_kff, 0.0f,     0.01f, 0.0f, 3000.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_y_i_limit, 0.0f, 1.0f,  0.0f, 5000.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_img_y_d_lpf, 0.0f,   0.1f,  0.0f,  500.0f, "Mode8 Img"),
+    MENU_AIR_PARAM(mode8_vel_x_kp, 0.15f,      0.01f,  0.0f, 3000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_x_ki, 0.0f,      0.001f, 0.0f, 3000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_x_kd, 0.0f,      0.01f,  0.0f, 3000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_x_kff, 0.0f,     0.001f, 0.0f, 3000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_x_i_limit, 3.0f, 0.1f,   0.0f, 5000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_x_d_lpf, 0.0f,   0.1f,   0.0f,  500.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_y_kp, 0.15f,      0.01f,  0.0f, 3000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_y_ki, 0.0f,      0.001f, 0.0f, 3000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_y_kd, 0.0f,      0.01f,  0.0f, 3000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_y_kff, 0.0f,     0.001f, 0.0f, 3000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_y_i_limit, 3.0f, 0.1f,   0.0f, 5000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_vel_y_d_lpf, 0.0f,   0.1f,   0.0f,  500.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_kp_car_x, 20.0f, 0.1f, 0.0f, 3000.0f, "Mode8 Vel"),
+    MENU_AIR_PARAM(mode8_kp_car_y, 20.0f, 0.1f, 0.0f, 3000.0f, "Mode8 Vel")
 };
 
 typedef char menu_air_param_count_must_match[
@@ -309,8 +398,8 @@ void menu_air_support_init(void)
         s_air_params[index].step = definition->step;
         s_air_params[index].min_val = definition->min_val;
         s_air_params[index].max_val = definition->max_val;
-        s_air_params[index].group = definition->group;
-        s_air_param_values[index] = car_math_clampf(0.0f,
+        s_air_params[index].menu_name = definition->menu_name;
+        s_air_param_values[index] = car_math_clampf(definition->default_val,
                                                    definition->min_val,
                                                    definition->max_val);
     }
@@ -644,16 +733,15 @@ void menu_air_update_100HZ(void)
        ((s_air_last_online == 0U) ||
         ((now - s_air_pull_retry_tick) >= MENU_AIR_PULL_RETRY_MS)))
     {
-        if((MENU_AIR_BOOT_OVERRIDE_ENABLE != 0U) &&
-           (s_air_boot_override_done == 0U))
+        if(MENU_AIR_BOOT_OVERRIDE_ENABLE != 0U)
         {
-            if(menu_air_load_slot_values(MENU_AIR_BOOT_OVERRIDE_SLOT) != 0U)
+            if(s_air_boot_override_done == 0U)
             {
-                /* 无有效启动存档时仅跳过本次上电覆盖，Air继续使用代码参数。 */
-                s_air_boot_override_done = 1U;
-            }
-            else
-            {
+                if(MENU_AIR_BOOT_FLASH_LOAD_ENABLE != 0U)
+                {
+                    /* Flash无有效存档时保留Car代码中的Air参数作为覆盖值。 */
+                    (void)menu_air_load_slot_values(MENU_AIR_BOOT_FLASH_LOAD_SLOT);
+                }
                 s_air_catalog_ready = 1U;
                 if(menu_air_sync_all_start(MENU_AIR_SYNC_REASON_BOOT_OVERRIDE) != 0U)
                 {
@@ -662,11 +750,7 @@ void menu_air_update_100HZ(void)
                 }
             }
         }
-
-        if((s_air_sync_status.mode != MENU_AIR_SYNC_MODE_FULL) &&
-           ((MENU_AIR_BOOT_OVERRIDE_ENABLE == 0U) ||
-            (s_air_boot_override_done != 0U)) &&
-           (menu_air_pull_all_start() != 0U))
+        else if(menu_air_pull_all_start() != 0U)
         {
             s_air_pull_retry_tick = now;
         }

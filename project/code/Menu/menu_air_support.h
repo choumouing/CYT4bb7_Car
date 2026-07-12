@@ -17,11 +17,6 @@
 #define MENU_AIR_MAX_PARAMS                  (128U)
 #define MENU_AIR_EXPECTED_PARAM_COUNT        (123U)
 
-/* 1=Car上电首次连接Air时使用Car Flash存档覆盖Air参数，0=保留Air代码参数。 */
-#define MENU_AIR_BOOT_OVERRIDE_ENABLE        (0U)
-/* 启动覆盖使用的Car端Air参数存档槽。 */
-#define MENU_AIR_BOOT_OVERRIDE_SLOT          (0U)
-
 #define MENU_AIR_SYNC_MODE_IDLE             (0U)
 #define MENU_AIR_SYNC_MODE_COMMIT           (1U)
 #define MENU_AIR_SYNC_MODE_FULL             (2U)
@@ -42,20 +37,6 @@
 #define MENU_AIR_CMD_INVALID_INDEX          (0xFFU)
 #define MENU_AIR_CMD_ACK_TEXT_MAX           (96U)
 
-typedef enum
-{
-    MENU_AIR_GROUP_BASIC = 0,
-    MENU_AIR_GROUP_GYRO,
-    MENU_AIR_GROUP_ANGLE,
-    MENU_AIR_GROUP_VELOCITY,
-    MENU_AIR_GROUP_MODE7,
-    MENU_AIR_GROUP_ESTIMATION,
-    MENU_AIR_GROUP_MODE5,
-    MENU_AIR_GROUP_MODE8_IMAGE,
-    MENU_AIR_GROUP_MODE8_VELOCITY,
-    MENU_AIR_GROUP_COUNT
-} menu_air_param_group_t;
-
 /* Air参数配置结构体 */
 typedef struct
 {
@@ -64,7 +45,7 @@ typedef struct
     float step;             // 编辑步进值
     float min_val;          // 最小值
     float max_val;          // 最大值
-    uint8 group;            // 菜单分组
+    const char *menu_name;  // 所属菜单名称
 } menu_air_param_config_t;
 
 /* Air参数同步状态（供诊断页读取） */

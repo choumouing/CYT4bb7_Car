@@ -15,6 +15,14 @@
 #error "Car menu parameter count exceeds MENU_MAX_PARAMS"
 #endif
 
+#if ((MENU_CAR_BOOT_FLASH_LOAD_ENABLE != 0U) && (MENU_CAR_BOOT_FLASH_LOAD_ENABLE != 1U))
+#error "Car boot Flash load enable must be 0 or 1"
+#endif
+
+#if (MENU_CAR_BOOT_FLASH_LOAD_SLOT >= MENU_SLOT_COUNT)
+#error "Car boot Flash load slot exceeds menu slot count"
+#endif
+
 //====================================================参数变量区====================================================
 // 轮速PID参数（四个电机共用）
 float wheel_kp = 2.3f;                  // 比例系数
@@ -210,25 +218,28 @@ static menu_item_t s_curve_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-#define AIR_PARAM_MENU_STORAGE_COUNT \
-    (MENU_AIR_EXPECTED_PARAM_COUNT + MENU_AIR_GROUP_COUNT)
-
-static menu_item_t s_air_param_menu_storage[AIR_PARAM_MENU_STORAGE_COUNT];
-static menu_item_t *s_air_group_menus[MENU_AIR_GROUP_COUNT];
-static menu_item_t air_command_menu[2U];
+static menu_item_t air_param_menu[] = {
+    {"Basic", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Gyro PID", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Angle PID", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Vel PID", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode7", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Estimation", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode5", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode8 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
 
 enum
 {
-    AIR_PARAM_MENU_BASIC = 0,
-    AIR_PARAM_MENU_GYRO,
-    AIR_PARAM_MENU_ANGLE,
-    AIR_PARAM_MENU_VELOCITY,
-    AIR_PARAM_MENU_MODE7,
-    AIR_PARAM_MENU_ESTIMATION,
-    AIR_PARAM_MENU_MODE5,
-    AIR_PARAM_MENU_MODE8_IMAGE,
-    AIR_PARAM_MENU_MODE8_VELOCITY
+    AIR_PARAM_MENU_COUNT = (sizeof(air_param_menu) / sizeof(air_param_menu[0])) - 1U,
+    AIR_PARAM_MENU_STORAGE_COUNT = MENU_AIR_EXPECTED_PARAM_COUNT + AIR_PARAM_MENU_COUNT
 };
+
+static menu_item_t s_air_param_menu_storage[AIR_PARAM_MENU_STORAGE_COUNT];
+static menu_item_t *s_air_group_menus[AIR_PARAM_MENU_COUNT];
+static menu_item_t air_command_menu[2U];
 
 static menu_item_t load_air_slot_menu[] = {
     {"Load Air0", MENU_TYPE_FUNCTION, .function = load_air_slot_0_function},
@@ -251,19 +262,6 @@ static menu_item_t car_param_menu[] = {
     {"Mode7 Vel", MENU_TYPE_SUBMENU, .submenu = mode7_velocity_pid_menu},
     {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = mode8_velocity_pid_menu},
     {"S Curve", MENU_TYPE_SUBMENU, .submenu = s_curve_menu},
-    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
-};
-
-static menu_item_t air_param_menu[] = {
-    {"Basic", MENU_TYPE_SUBMENU, .submenu = NULL},
-    {"Gyro PID", MENU_TYPE_SUBMENU, .submenu = NULL},
-    {"Angle PID", MENU_TYPE_SUBMENU, .submenu = NULL},
-    {"Vel PID", MENU_TYPE_SUBMENU, .submenu = NULL},
-    {"Mode7", MENU_TYPE_SUBMENU, .submenu = NULL},
-    {"Estimation", MENU_TYPE_SUBMENU, .submenu = NULL},
-    {"Mode5", MENU_TYPE_SUBMENU, .submenu = NULL},
-    {"Mode8 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
-    {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -313,6 +311,7 @@ static uint8 menu_build_air_param_menus(void)
 {
     uint16 cursor = 0U;
     uint8 group;
+    uint8 other_group;
     uint8 index;
     uint8 group_count;
     const menu_air_param_config_t *config;
@@ -321,7 +320,20 @@ static uint8 menu_build_air_param_menus(void)
     memset(s_air_param_menu_storage, 0, sizeof(s_air_param_menu_storage));
     memset(s_air_group_menus, 0, sizeof(s_air_group_menus));
 
-    for(group = 0U; group < MENU_AIR_GROUP_COUNT; group++)
+    for(group = 0U; group < AIR_PARAM_MENU_COUNT; group++)
+    {
+        for(other_group = (uint8)(group + 1U);
+            other_group < AIR_PARAM_MENU_COUNT;
+            other_group++)
+        {
+            if(strcmp(air_param_menu[group].name, air_param_menu[other_group].name) == 0)
+            {
+                return 1U;
+            }
+        }
+    }
+
+    for(group = 0U; group < AIR_PARAM_MENU_COUNT; group++)
     {
         s_air_group_menus[group] = &s_air_param_menu_storage[cursor];
         group_count = 0U;
@@ -329,7 +341,8 @@ static uint8 menu_build_air_param_menus(void)
         for(index = 0U; index < menu_get_air_param_count(); index++)
         {
             config = menu_get_air_param_config(index);
-            if((config == NULL) || (config->group != group))
+            if((config == NULL) || (config->menu_name == NULL) ||
+               (strcmp(config->menu_name, air_param_menu[group].name) != 0))
             {
                 continue;
             }
@@ -373,15 +386,10 @@ static uint8 menu_build_air_param_menus(void)
     air_command_menu[1].type = MENU_TYPE_SUBMENU;
     air_command_menu[1].submenu = NULL;
 
-    air_param_menu[AIR_PARAM_MENU_BASIC].submenu = s_air_group_menus[MENU_AIR_GROUP_BASIC];
-    air_param_menu[AIR_PARAM_MENU_GYRO].submenu = s_air_group_menus[MENU_AIR_GROUP_GYRO];
-    air_param_menu[AIR_PARAM_MENU_ANGLE].submenu = s_air_group_menus[MENU_AIR_GROUP_ANGLE];
-    air_param_menu[AIR_PARAM_MENU_VELOCITY].submenu = s_air_group_menus[MENU_AIR_GROUP_VELOCITY];
-    air_param_menu[AIR_PARAM_MENU_MODE7].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE7];
-    air_param_menu[AIR_PARAM_MENU_ESTIMATION].submenu = s_air_group_menus[MENU_AIR_GROUP_ESTIMATION];
-    air_param_menu[AIR_PARAM_MENU_MODE5].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE5];
-    air_param_menu[AIR_PARAM_MENU_MODE8_IMAGE].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE8_IMAGE];
-    air_param_menu[AIR_PARAM_MENU_MODE8_VELOCITY].submenu = s_air_group_menus[MENU_AIR_GROUP_MODE8_VELOCITY];
+    for(group = 0U; group < AIR_PARAM_MENU_COUNT; group++)
+    {
+        air_param_menu[group].submenu = s_air_group_menus[group];
+    }
 
     return 0U;
 }
@@ -460,6 +468,12 @@ void menu_config_init(void)
     {
         menu_show_error("Car Menu Error");
         return;
+    }
+
+    if((MENU_CAR_BOOT_FLASH_LOAD_ENABLE != 0U) &&
+       (menu_flash_check_slot(MENU_CAR_BOOT_FLASH_LOAD_SLOT) != 0U))
+    {
+        menu_flash_load_params(MENU_CAR_BOOT_FLASH_LOAD_SLOT);
     }
 
     menu_air_support_init();
