@@ -4,7 +4,6 @@
 
 #include "light_sequence_config.h"
 
-#define LIGHT_SEQUENCE_VALID_BEACON_MASK    (0x7FU) /* 7盏信标灯对应的有效位掩码 */
 #define LIGHT_SEQUENCE_MAX_LIGHTS_PER_ROUND (3U)    /* 每轮允许同时亮起的最大灯数 */
 
 typedef struct
@@ -30,21 +29,42 @@ static uint32 s_last_accepted_time_ms[LIGHT_SEQUENCE_BEACON_COUNT];
 static uint8 s_accepted_time_valid_mask;
 
 /**
- * @brief 统计灯位掩码中的置位数量。
- * @param mask 待统计的灯位掩码。
- * @return 掩码中的置位数量。
+ * @brief 将十进制灯号组合转换为内部位掩码。
+ * @param round_lights 十进制灯号组合，例如17表示1号和7号灯。
+ * @return 转换成功返回灯位掩码，配置非法返回0。
  */
-static uint8 LightSequence_CountBits(uint8 mask)
+static uint8 LightSequence_DecodeRound(uint16 round_lights)
 {
-    uint8 count = 0U;
+    uint8 round_mask = 0U;
+    uint8 light_count = 0U;
 
-    while(mask != 0U)
+    while(round_lights != 0U)
     {
-        count = (uint8)(count + (mask & 1U));
-        mask >>= 1U;
+        uint8 beacon_id = (uint8)(round_lights % 10U);
+        uint8 beacon_bit;
+
+        if((beacon_id == 0U) || (beacon_id > LIGHT_SEQUENCE_BEACON_COUNT))
+        {
+            return 0U;
+        }
+
+        beacon_bit = (uint8)(1U << (beacon_id - 1U));
+        if((round_mask & beacon_bit) != 0U)
+        {
+            return 0U;
+        }
+
+        round_mask = (uint8)(round_mask | beacon_bit);
+        light_count++;
+        if(light_count > LIGHT_SEQUENCE_MAX_LIGHTS_PER_ROUND)
+        {
+            return 0U;
+        }
+
+        round_lights /= 10U;
     }
 
-    return count;
+    return round_mask;
 }
 
 /**
@@ -54,6 +74,7 @@ static uint8 LightSequence_CountBits(uint8 mask)
  */
 static uint8 LightSequence_PresetValid(const light_sequence_preset_t *preset)
 {
+    uint8 previous_round_mask = 0U;
     uint8 round_index;
 
     if((preset == 0) ||
@@ -65,21 +86,20 @@ static uint8 LightSequence_PresetValid(const light_sequence_preset_t *preset)
 
     for(round_index = 0U; round_index < preset->round_count; round_index++)
     {
-        uint8 round_mask = preset->round_mask[round_index];
-        uint8 light_count = LightSequence_CountBits(round_mask);
+        uint8 round_mask = LightSequence_DecodeRound(preset->round_lights[round_index]);
 
-        if((round_mask == 0U) ||
-           ((round_mask & (uint8)(~LIGHT_SEQUENCE_VALID_BEACON_MASK)) != 0U) ||
-           (light_count > LIGHT_SEQUENCE_MAX_LIGHTS_PER_ROUND))
+        if(round_mask == 0U)
         {
             return 0U;
         }
 
         if((round_index > 0U) &&
-           ((round_mask & preset->round_mask[round_index - 1U]) != 0U))
+           ((round_mask & previous_round_mask) != 0U))
         {
             return 0U;
         }
+
+        previous_round_mask = round_mask;
     }
 
     return 1U;
@@ -102,9 +122,19 @@ static uint8 LightSequence_FindNearestBeacon(float car_position_x,
 
     for(beacon_index = 0U; beacon_index < LIGHT_SEQUENCE_BEACON_COUNT; beacon_index++)
     {
-        float dx = car_position_x - g_light_sequence_beacon_positions[beacon_index].x;
-        float dy = car_position_y - g_light_sequence_beacon_positions[beacon_index].y;
-        float distance_sq = (dx * dx) + (dy * dy);
+        beacon_config_point_t beacon;
+        float dx;
+        float dy;
+        float distance_sq;
+
+        if(beacon_config_get_beacon(beacon_index, &beacon) == 0U)
+        {
+            continue;
+        }
+
+        dx = car_position_x - beacon.x;
+        dy = car_position_y - beacon.y;
+        distance_sq = (dx * dx) + (dy * dy);
 
         if((nearest_beacon_id == LIGHT_SEQUENCE_BEACON_ID_NONE) ||
            (distance_sq < nearest_distance_sq))
@@ -188,7 +218,8 @@ void LightSequence_Reset(void)
             s_candidates[sequence_index].valid = 1U;
             s_candidates[sequence_index].round_index = 0U;
             s_candidates[sequence_index].remaining_mask =
-                g_light_sequence_presets[sequence_index].round_mask[0];
+                LightSequence_DecodeRound(
+                    g_light_sequence_presets[sequence_index].round_lights[0]);
             valid_count++;
         }
     }
@@ -256,6 +287,7 @@ void LightSequence_Update(uint8 beacon_lost_flag,
     {
         light_sequence_candidate_t *candidate = &s_candidates[sequence_index];
         const light_sequence_preset_t *preset = &g_light_sequence_presets[sequence_index];
+        uint8 current_round_mask;
         uint8 previous_round_mask;
         uint8 consumed_mask;
 
@@ -266,7 +298,8 @@ void LightSequence_Update(uint8 beacon_lost_flag,
 
         if(candidate->round_index >= preset->round_count)
         {
-            previous_round_mask = preset->round_mask[preset->round_count - 1U];
+            previous_round_mask = LightSequence_DecodeRound(
+                preset->round_lights[preset->round_count - 1U]);
             if((previous_round_mask & beacon_bit) == 0U)
             {
                 candidate->valid = 0U;
@@ -274,11 +307,13 @@ void LightSequence_Update(uint8 beacon_lost_flag,
             continue;
         }
 
+        current_round_mask = LightSequence_DecodeRound(
+            preset->round_lights[candidate->round_index]);
         consumed_mask =
-            (uint8)(preset->round_mask[candidate->round_index] &
-                    (uint8)(~candidate->remaining_mask));
+            (uint8)(current_round_mask & (uint8)(~candidate->remaining_mask));
         previous_round_mask = (candidate->round_index > 0U)
-                                  ? preset->round_mask[candidate->round_index - 1U]
+                                  ? LightSequence_DecodeRound(
+                                        preset->round_lights[candidate->round_index - 1U])
                                   : 0U;
 
         if((candidate->remaining_mask & beacon_bit) != 0U)
@@ -291,7 +326,8 @@ void LightSequence_Update(uint8 beacon_lost_flag,
                 candidate->round_index++;
                 if(candidate->round_index < preset->round_count)
                 {
-                    candidate->remaining_mask = preset->round_mask[candidate->round_index];
+                    candidate->remaining_mask = LightSequence_DecodeRound(
+                        preset->round_lights[candidate->round_index]);
                 }
             }
         }

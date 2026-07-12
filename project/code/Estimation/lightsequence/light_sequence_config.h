@@ -10,28 +10,13 @@
 #define LIGHT_SEQUENCE_DUPLICATE_WINDOW_MS (1000U) /* 同一灯号的时间去重窗口，单位ms */
 
 /**
- * @brief 二维场地坐标。
- */
-typedef struct
-{
-    float x;  /* 全局X坐标，单位m */
-    float y;  /* 全局Y坐标，单位m */
-} light_sequence_point_t;
-
-/**
  * @brief 一套预设亮灯序列。
  */
 typedef struct
 {
-    uint8 round_count;                           /* 有效轮数 */
-    uint8 round_mask[LIGHT_SEQUENCE_MAX_ROUNDS]; /* 各轮亮灯位掩码，bit0对应1号灯 */
+    uint8 round_count;                              /* 有效轮数 */
+    uint16 round_lights[LIGHT_SEQUENCE_MAX_ROUNDS]; /* 各轮灯号组合，例如17表示1号和7号灯 */
 } light_sequence_preset_t;
-
-/* 7个信标灯中心的场地坐标，数组下标0对应1号灯。 */
-extern const light_sequence_point_t g_light_sequence_beacon_positions[LIGHT_SEQUENCE_BEACON_COUNT];
-
-/* 车辆发车位置的场地坐标，单位m。 */
-extern const light_sequence_point_t g_light_sequence_initial_position;
 
 /* 10套预设亮灯序列配置。 */
 extern const light_sequence_preset_t g_light_sequence_presets[LIGHT_SEQUENCE_PRESET_COUNT];

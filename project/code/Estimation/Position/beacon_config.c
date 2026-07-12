@@ -14,22 +14,23 @@ typedef struct
  * 坐标含义：车体中心位于信标中心时的全局坐标，单位 m。
  * X 正方向为右侧。
  * Y 正方向为前方。
+ * 数组下标0至6依次对应灯序识别中的1号至7号灯。
  * 发车区坐标作为 odometer 初始全局坐标。
  */
 static const beacon_config_point_t s_default_beacons[] =
 {
-    {2.25f, 2.5f},
-    {0.9f, 4.0f},
-    {3.15f, 4.0f},
-    {4.2f, 2.0f},
-    {0.0f, 5.0f},
-    {1.35f, 1.0f},
-    {3.6f, 1.0f}
+    {1.35f, 1.00f},
+    {3.60f, 1.00f},
+    {4.20f, 2.00f},
+    {2.25f, 2.50f},
+    {3.15f, 4.00f},
+    {0.90f, 4.00f},
+    {0.00f, 5.00f}
 };
 
 static const float s_default_initial_position[2] =
 {
-    2.5f,
+    2.50f,
     0.25f
 };
 
