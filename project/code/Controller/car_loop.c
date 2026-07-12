@@ -31,6 +31,7 @@ volatile float g_air_euler_yaw;
 volatile float g_air_pos_est_vel_x;
 volatile float g_air_pos_est_vel_y;
 volatile float g_air_state;
+volatile air_diag_telemetry_t g_air_diag_telemetry;
 volatile float g_air_reserved0;
 volatile float g_air_reserved1;
 volatile float g_air_reserved2;
@@ -53,7 +54,7 @@ volatile float g_air_car_plan_beacon_index = 0.0f;
 volatile float g_air_car_plan_dist_px = 0.0f;
 volatile float g_air_beacon_lost_flag = 0.0f;
 
-#define AIR_RUN_DATA_COUNT (25U)
+#define AIR_RUN_DATA_COUNT (45U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -130,6 +131,26 @@ static void on_air_data(const float *data, uint8 count)
     g_air_car_plan_beacon_index = data[AIR_RUN_DATA_CAR_PLAN_BEACON_INDEX];
     g_air_car_plan_dist_px = data[AIR_RUN_DATA_CAR_PLAN_DIST_PX];
     g_air_beacon_lost_flag = data[AIR_RUN_DATA_BEACON_LOST_FLAG];
+    g_air_diag_telemetry.tof_raw_height_mm[0] = data[25];
+    g_air_diag_telemetry.tof_raw_height_mm[1] = data[26];
+    g_air_diag_telemetry.tof_raw_height_mm[2] = data[27];
+    g_air_diag_telemetry.tof_raw_height_mm[3] = data[28];
+    g_air_diag_telemetry.flow_raw_x = data[29];
+    g_air_diag_telemetry.flow_raw_y = data[30];
+    g_air_diag_telemetry.flow_filtered_x = data[31];
+    g_air_diag_telemetry.flow_filtered_y = data[32];
+    g_air_diag_telemetry.imu_raw_gyro[0] = data[33];
+    g_air_diag_telemetry.imu_raw_gyro[1] = data[34];
+    g_air_diag_telemetry.imu_raw_gyro[2] = data[35];
+    g_air_diag_telemetry.imu_raw_acc[0] = data[36];
+    g_air_diag_telemetry.imu_raw_acc[1] = data[37];
+    g_air_diag_telemetry.imu_raw_acc[2] = data[38];
+    g_air_diag_telemetry.imu_filtered_gyro[0] = data[39];
+    g_air_diag_telemetry.imu_filtered_gyro[1] = data[40];
+    g_air_diag_telemetry.imu_filtered_gyro[2] = data[41];
+    g_air_diag_telemetry.imu_filtered_acc[0] = data[42];
+    g_air_diag_telemetry.imu_filtered_acc[1] = data[43];
+    g_air_diag_telemetry.imu_filtered_acc[2] = data[44];
 }
 
 static void car_loop_runtime_reset(void)
@@ -151,17 +172,35 @@ static void car_loop_runtime_reset(void)
     g_air_car_plan_beacon_index = 0.0f;
     g_air_car_plan_dist_px = 0.0f;
     g_air_beacon_lost_flag = 0.0f;
+    g_air_diag_telemetry = (air_diag_telemetry_t){0};
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
     s_beacon_beep_enter_count = 0U;
     s_air_menu_runtime_locked = 0U;
     s_air_run_data_seen = 0U;
     s_menu_runtime_was_locked = 0U;
-    beacon_config_init();
 }
 
 uint8 car_menu_is_runtime_locked(void)
 {
+    if(beacon_position_recorder_is_active() != 0U)
+    {
+        if((air_comm_car_is_run_data_fresh() == 0U) ||
+           (s_air_menu_runtime_locked != 0U) ||
+           (g_air_crsf_std_ch7 > 0.5f))
+        {
+            return 1U;
+        }
+
+        return 0U;
+    }
+
+    if((g_air_crsf_std_ch4 > 0.5f) ||
+       (g_air_crsf_std_ch7 > 0.5f))
+    {
+        return 1U;
+    }
+
     if((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
     {
         return 1U;
@@ -188,6 +227,7 @@ void car_loop_init(void)
     car_loop_runtime_reset();
 
     menu_init();
+    beacon_config_init();
     menu_config_init();
     mecanum_motor_init();
     encoder_control_init();

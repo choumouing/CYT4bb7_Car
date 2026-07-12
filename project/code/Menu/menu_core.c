@@ -510,6 +510,13 @@ void menu_update_100HZ(void)
 
     menu_process_keys();
 
+    if((car_menu_is_runtime_locked() != 0U) &&
+       (menu_external_view_runtime_active() == 0U))
+    {
+        menu_discard_key_events();
+        return;
+    }
+
     if(menu_state == MENU_STATE_EXTERNAL_VIEW)
     {
         if(external_view_config.refresh_10hz != 0U)

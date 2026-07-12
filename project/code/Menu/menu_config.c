@@ -97,6 +97,9 @@ static void diag_imu_function(void);
 static void diag_encoder_function(void);
 static void diag_position_function(void);
 static void diag_air_state_function(void);
+static void diag_air_tof_function(void);
+static void diag_air_flow_function(void);
+static void diag_air_imu_function(void);
 static void diag_air_attitude_function(void);
 static void diag_air_rc_function(void);
 
@@ -273,6 +276,9 @@ static menu_item_t car_diag_menu[] = {
 
 static menu_item_t air_diag_menu[] = {
     {"A_State", MENU_TYPE_DIAG_VIEW, .function = diag_air_state_function},
+    {"A_ToF", MENU_TYPE_DIAG_VIEW, .function = diag_air_tof_function},
+    {"A_Flow", MENU_TYPE_DIAG_VIEW, .function = diag_air_flow_function},
+    {"A_IMU", MENU_TYPE_DIAG_VIEW, .function = diag_air_imu_function},
     {"A_Attitude", MENU_TYPE_DIAG_VIEW, .function = diag_air_attitude_function},
     {"A_RC", MENU_TYPE_DIAG_VIEW, .function = diag_air_rc_function},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
@@ -628,6 +634,76 @@ static void diag_air_state_function(void)
     diag_show_line(2U, text);
     sprintf(text, "Sync:%7.0fms", (double)g_air_sync_time_ms);
     diag_show_line(3U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+/* Air诊断页：四路TOF高度与融合高度。 */
+static void diag_air_tof_function(void)
+{
+    char text[32];
+
+    diag_begin();
+    diag_show_line(0U, "Air ToF mm");
+    sprintf(text, "T1:%6.0f T2:%6.0f",
+            (double)g_air_diag_telemetry.tof_raw_height_mm[0],
+            (double)g_air_diag_telemetry.tof_raw_height_mm[1]);
+    diag_show_line(1U, text);
+    sprintf(text, "T3:%6.0f T4:%6.0f",
+            (double)g_air_diag_telemetry.tof_raw_height_mm[2],
+            (double)g_air_diag_telemetry.tof_raw_height_mm[3]);
+    diag_show_line(2U, text);
+    sprintf(text, "Fused:%8.1f", (double)g_air_tof_fused_height_mm);
+    diag_show_line(3U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+static void diag_air_flow_function(void)
+{
+    char text[32];
+
+    diag_begin();
+    diag_show_line(0U, "Air Flow X/Y");
+    sprintf(text, "Raw:%7.1f %7.1f",
+            (double)g_air_diag_telemetry.flow_raw_x,
+            (double)g_air_diag_telemetry.flow_raw_y);
+    diag_show_line(1U, text);
+    sprintf(text, "Filt:%6.2f %6.2f",
+            (double)g_air_diag_telemetry.flow_filtered_x,
+            (double)g_air_diag_telemetry.flow_filtered_y);
+    diag_show_line(2U, text);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+static void diag_air_imu_function(void)
+{
+    char text[32];
+
+    diag_begin();
+    diag_show_line(0U, "Air IMU X/Y/Z");
+    sprintf(text, "RG:%6.1f %6.1f %6.1f",
+            (double)g_air_diag_telemetry.imu_raw_gyro[0],
+            (double)g_air_diag_telemetry.imu_raw_gyro[1],
+            (double)g_air_diag_telemetry.imu_raw_gyro[2]);
+    diag_show_line(1U, text);
+    sprintf(text, "RA:%5.2f %5.2f %5.2f",
+            (double)g_air_diag_telemetry.imu_raw_acc[0],
+            (double)g_air_diag_telemetry.imu_raw_acc[1],
+            (double)g_air_diag_telemetry.imu_raw_acc[2]);
+    diag_show_line(2U, text);
+    sprintf(text, "FG:%6.1f %6.1f %6.1f",
+            (double)g_air_diag_telemetry.imu_filtered_gyro[0],
+            (double)g_air_diag_telemetry.imu_filtered_gyro[1],
+            (double)g_air_diag_telemetry.imu_filtered_gyro[2]);
+    diag_show_line(3U, text);
+    sprintf(text, "FA:%5.2f %5.2f %5.2f",
+            (double)g_air_diag_telemetry.imu_filtered_acc[0],
+            (double)g_air_diag_telemetry.imu_filtered_acc[1],
+            (double)g_air_diag_telemetry.imu_filtered_acc[2]);
+    diag_show_line(4U, text);
+    sprintf(text, "RP:%7.2f %7.2f", (double)g_air_euler_roll, (double)g_air_euler_pitch);
+    diag_show_line(5U, text);
+    sprintf(text, "Y:%9.2f", (double)g_air_euler_yaw);
+    diag_show_line(6U, text);
     diag_show_line(7U, "Back/Enter Exit");
 }
 

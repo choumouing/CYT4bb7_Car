@@ -44,6 +44,21 @@ extern volatile float g_air_pos_est_vel_x;
 extern volatile float g_air_pos_est_vel_y;
 extern volatile float g_air_state;
 
+typedef struct
+{
+    float tof_raw_height_mm[4];
+    float flow_raw_x;
+    float flow_raw_y;
+    float flow_filtered_x;
+    float flow_filtered_y;
+    float imu_raw_gyro[3];
+    float imu_raw_acc[3];
+    float imu_filtered_gyro[3];
+    float imu_filtered_acc[3];
+} air_diag_telemetry_t;
+
+extern volatile air_diag_telemetry_t g_air_diag_telemetry;
+
 extern volatile float g_air_crsf_std_ch0;
 extern volatile float g_air_crsf_std_ch1;
 extern volatile float g_air_crsf_std_ch2;

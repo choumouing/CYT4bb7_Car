@@ -694,21 +694,10 @@ static void beacon_position_recorder_render_map(void)
             "Count:%u",
             (unsigned int)((s_map_data_valid != 0U) ? s_map_data.point_count : 0U));
     ips114_show_string(132, 40, text);
-    ips114_show_string(132, 56, "Grid 8x8");
-    if(s_map_source == BEACON_CONFIG_SOURCE_RECDATA)
-    {
-        ips114_show_string(132, 72, "X -4..4");
-        ips114_show_string(132, 88, "Y 0..8");
-    }
-    else
-    {
-        ips114_show_string(132, 72, "X -1..7");
-        ips114_show_string(132, 88, "Y -1..7");
-    }
     if(s_map_data_valid == 0U)
     {
         ips114_set_color(UI_COLOR_ERROR, UI_COLOR_BG);
-        ips114_show_string(132, 104, "No Data");
+        ips114_show_string(132, 56, "No Data");
     }
     ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);
     ips114_show_string(132, 112, "Back Exit");
@@ -720,7 +709,7 @@ static const menu_external_view_config_t s_record_view_config =
     beacon_position_recorder_exit,
     1U,
     1U,
-    1U
+    0U
 };
 
 static const menu_external_view_config_t s_map_view_config =
@@ -897,6 +886,10 @@ void beacon_position_recorder_enter(void)
     memset(&g_beacon_position_recorder, 0, sizeof(g_beacon_position_recorder));
     beacon_position_recorder_fill_invalid(g_beacon_position_recorder.points);
     g_beacon_position_recorder.active = 1U;
+    car_control_enabled = 0U;
+    car_emergency_stop_active = 1U;
+    car_forward_target = 0.0f;
+    car_strafe_target = 0.0f;
 
     if(air_comm_car_is_run_data_fresh() != 0U)
     {

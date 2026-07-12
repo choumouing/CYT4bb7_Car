@@ -50,7 +50,7 @@
 #define AIR_COMM_PARAM_NAME_MAX             (32U)   /* 参数名最大长度（字节） */
 #define AIR_COMM_COMMAND_NAME_MAX           (32U)   /* 远程命令名最大长度，不含 '\0' */
 #define AIR_COMM_ACK_TEXT_MAX               (96U)   /* 远程命令 ACK 文本最大长度，不含 '\0' */
-#define AIR_COMM_RUN_DATA_MAX_FLOATS        (32U)   /* 实时数据最大 float 个数 */
+#define AIR_COMM_RUN_DATA_MAX_FLOATS        (48U)   /* 实时数据最大 float 个数 */
 #define AIR_COMM_BAUDRATE                   (1152000U) /* UART 波特率 1.152Mbps */
 
 /* ===== ACK 状态码（对端返回的操作结果） ===== */
