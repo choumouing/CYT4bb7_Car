@@ -193,7 +193,6 @@ static menu_item_t mode2_velocity_pid_menu[] = {
 };
 
 static menu_item_t mode8_velocity_pid_menu[] = {
-    {"Smooth", MENU_TYPE_PARAMETER, .param_index = 40},
     {"CmdLimit", MENU_TYPE_PARAMETER, .param_index = 41},
     {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 42},
     {"ILimit", MENU_TYPE_PARAMETER, .param_index = 43},

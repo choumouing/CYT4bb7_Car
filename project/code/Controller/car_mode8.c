@@ -6,10 +6,9 @@
 #include "car_mode.h"
 #include "car_loop.h"
 
-#define MODE8_MAX_VELOCITY_MPS       (1.5f)
-#define MODE8_STICK_DEADBAND         (50.0f)
+#define MODE8_MAX_VELOCITY_MPS       (2.0f)
 #define MODE8_STICK_MAX              (1000.0f)
-#define MODE8_STICK_ACTIVE_RANGE     (MODE8_STICK_MAX - MODE8_STICK_DEADBAND)
+#define MODE8_STICK_ZONE_WIDTH       (200.0f)
 #define MODE8_MIN_OUTPUT_LIMIT       (0.0f)
 
 car_mode8_state_t g_car_mode8_state = {0};
@@ -52,11 +51,44 @@ static void car_mode8_pid_apply_params(void)
     s_mode8_strafe_pid.output_limit = mode8_velocity_pid_output_limit;
 }
 
-static float car_mode8_stick_to_velocity(float stick)
+static void car_mode8_stick_to_velocity(float strafe_stick,
+                                        float forward_stick,
+                                        float *forward_mps,
+                                        float *strafe_mps)
 {
-    stick = car_math_limit_absf(stick, MODE8_STICK_MAX);
-    stick = car_math_soft_deadband(stick, MODE8_STICK_DEADBAND);
-    return stick * (MODE8_MAX_VELOCITY_MPS / MODE8_STICK_ACTIVE_RANGE);
+    float radius;
+    float speed_mps;
+
+    strafe_stick = car_math_limit_absf(strafe_stick, MODE8_STICK_MAX);
+    forward_stick = car_math_limit_absf(forward_stick, MODE8_STICK_MAX);
+    radius = sqrtf((strafe_stick * strafe_stick) +
+                   (forward_stick * forward_stick));
+
+    if(radius < MODE8_STICK_ZONE_WIDTH)
+    {
+        *forward_mps = 0.0f;
+        *strafe_mps = 0.0f;
+        return;
+    }
+    else if(radius < (2.0f * MODE8_STICK_ZONE_WIDTH))
+    {
+        speed_mps = 0.5f;
+    }
+    else if(radius < (3.0f * MODE8_STICK_ZONE_WIDTH))
+    {
+        speed_mps = 1.0f;
+    }
+    else if(radius < (4.0f * MODE8_STICK_ZONE_WIDTH))
+    {
+        speed_mps = 1.5f;
+    }
+    else
+    {
+        speed_mps = MODE8_MAX_VELOCITY_MPS;
+    }
+
+    *forward_mps = forward_stick * speed_mps / radius;
+    *strafe_mps = strafe_stick * speed_mps / radius;
 }
 
 static float car_mode8_limit_output(float value)
@@ -112,19 +144,13 @@ void car_mode8_update_100HZ(uint32 now_ms)
 
     car_mode8_pid_apply_params();
 
-    g_car_mode8_state.raw_forward_mps = car_mode8_stick_to_velocity(g_air_crsf_std_ch1);
-    g_car_mode8_state.raw_strafe_mps = car_mode8_stick_to_velocity(g_air_crsf_std_ch0);
+    car_mode8_stick_to_velocity(g_air_crsf_std_ch0,
+                                g_air_crsf_std_ch1,
+                                &g_car_mode8_state.raw_forward_mps,
+                                &g_car_mode8_state.raw_strafe_mps);
 
-    g_car_mode8_state.velocity_forward_target_mps =
-        car_filter_lpf1_apply(g_car_mode8_state.velocity_forward_target_mps,
-                              g_car_mode8_state.raw_forward_mps,
-                              ODOMETER_UPDATE_DT_S,
-                              mode8_velocity_smooth_tau_s);
-    g_car_mode8_state.velocity_strafe_target_mps =
-        car_filter_lpf1_apply(g_car_mode8_state.velocity_strafe_target_mps,
-                              g_car_mode8_state.raw_strafe_mps,
-                              ODOMETER_UPDATE_DT_S,
-                              mode8_velocity_smooth_tau_s);
+    g_car_mode8_state.velocity_forward_target_mps = g_car_mode8_state.raw_forward_mps;
+    g_car_mode8_state.velocity_strafe_target_mps = g_car_mode8_state.raw_strafe_mps;
 
     g_car_mode8_state.velocity_forward_feedback_mps = g_odometer.body_vel[y];
     g_car_mode8_state.velocity_strafe_feedback_mps = g_odometer.body_vel[x];
