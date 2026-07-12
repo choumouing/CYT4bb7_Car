@@ -31,12 +31,15 @@ static float air_edit_value = 0.0f;
 // 显示控制变量
 static uint8_t need_refresh = 1;                       // 需要刷新标志
 static uint8_t display_offset = 0;                     // 显示偏移量（滚动支持）
-static uint8_t diag_refresh_divider = 0;               // 诊断页10Hz刷新分频
+static uint8_t diag_refresh_divider = 0;               // 动态页面20Hz刷新分频
 
 // 局部刷新优化变量
 static refresh_type_t refresh_type = REFRESH_FULL;     // 刷新类型
 static uint8_t last_selected_index = 0;                // 上次选中的项索引
-static uint8_t last_menu_state = MENU_STATE_NORMAL;    // 上次菜单状态
+#define MENU_DISPLAY_COLUMNS       (30U)
+static char display_text_cache[MENU_MAX_VISIBLE_LINES][MENU_DISPLAY_COLUMNS + 1U];
+static uint16_t display_color_cache[MENU_MAX_VISIBLE_LINES];
+static uint8_t display_line_valid[MENU_MAX_VISIBLE_LINES];
 
 // 长按加速控制
 #define KEY_REPEAT_FIRST_DELAY_TICKS   15   // 第一次重复延迟（10ms单位）
@@ -66,6 +69,81 @@ static uint8_t menu_is_param_item(const menu_item_t *item)
     return ((item->type == MENU_TYPE_PARAMETER) ||
             (item->type == MENU_TYPE_AIR_PARAMETER) ||
             (item->type == MENU_TYPE_EXTERNAL_PARAMETER)) ? 1U : 0U;
+}
+
+void menu_invalidate_display_cache(void)
+{
+    memset(display_line_valid, 0, sizeof(display_line_valid));
+}
+
+void menu_show_text_line(uint8_t line, const char *text, uint16_t color)
+{
+    char normalized[MENU_DISPLAY_COLUMNS + 1U];
+    char changed[MENU_DISPLAY_COLUMNS + 1U];
+    uint8_t column;
+    uint8_t start;
+    uint8_t length;
+
+    if(line >= MENU_MAX_VISIBLE_LINES)
+    {
+        return;
+    }
+
+    memset(normalized, ' ', MENU_DISPLAY_COLUMNS);
+    normalized[MENU_DISPLAY_COLUMNS] = '\0';
+    if(text != NULL)
+    {
+        strncpy(normalized, text, MENU_DISPLAY_COLUMNS);
+        normalized[MENU_DISPLAY_COLUMNS] = '\0';
+        length = (uint8_t)strlen(normalized);
+        while(length < MENU_DISPLAY_COLUMNS)
+        {
+            normalized[length++] = ' ';
+        }
+        normalized[MENU_DISPLAY_COLUMNS] = '\0';
+    }
+
+    ips114_set_font(UI_FONT_NORMAL);
+    ips114_set_color(color, UI_COLOR_BG);
+
+    if((display_line_valid[line] == 0U) ||
+       (display_color_cache[line] != color))
+    {
+        ips114_show_string(0U, (uint16)(line * 16U), normalized);
+    }
+    else
+    {
+        column = 0U;
+        while(column < MENU_DISPLAY_COLUMNS)
+        {
+            while((column < MENU_DISPLAY_COLUMNS) &&
+                  (display_text_cache[line][column] == normalized[column]))
+            {
+                column++;
+            }
+            if(column >= MENU_DISPLAY_COLUMNS)
+            {
+                break;
+            }
+
+            start = column;
+            while((column < MENU_DISPLAY_COLUMNS) &&
+                  (display_text_cache[line][column] != normalized[column]))
+            {
+                column++;
+            }
+            length = (uint8_t)(column - start);
+            memcpy(changed, &normalized[start], length);
+            changed[length] = '\0';
+            ips114_show_string((uint16)(start * 8U),
+                               (uint16)(line * 16U),
+                               changed);
+        }
+    }
+
+    memcpy(display_text_cache[line], normalized, sizeof(normalized));
+    display_color_cache[line] = color;
+    display_line_valid[line] = 1U;
 }
 
 static void menu_clear_key_tracking(void)
@@ -479,7 +557,6 @@ void menu_init(void)
     // 初始化局部刷新变量
     refresh_type = REFRESH_FULL;
     last_selected_index = 0;
-    last_menu_state = MENU_STATE_NORMAL;
     need_refresh = 1;
 
     // 初始化Flash操作标志
@@ -519,10 +596,10 @@ void menu_update_100HZ(void)
 
     if(menu_state == MENU_STATE_EXTERNAL_VIEW)
     {
-        if(external_view_config.refresh_10hz != 0U)
+        if(external_view_config.refresh_periodic != 0U)
         {
             diag_refresh_divider++;
-            if(diag_refresh_divider >= 10U)
+            if(diag_refresh_divider >= 5U)
             {
                 diag_refresh_divider = 0U;
                 if(external_view_config.render != NULL)
@@ -537,7 +614,7 @@ void menu_update_100HZ(void)
     if(menu_state == MENU_STATE_DIAG_VIEW)
     {
         diag_refresh_divider++;
-        if(diag_refresh_divider >= 10U)
+        if(diag_refresh_divider >= 5U)
         {
             diag_refresh_divider = 0U;
             if((current_index < current_item_count) &&
@@ -636,31 +713,36 @@ uint8_t menu_get_param_count(void)
 void menu_show_debug_info(void)
 {
     char debug_text[32];
-    ips114_clear();
 
     sprintf(debug_text, "Params: %d", param_count);
-    ips114_show_string(0, 0, debug_text);
+    menu_show_text_line(0U, debug_text, UI_COLOR_NORMAL);
 
     sprintf(debug_text, "Slot: %d", current_slot);
-    ips114_show_string(0, 16, debug_text);
+    menu_show_text_line(1U, debug_text, UI_COLOR_NORMAL);
 
-    sprintf(debug_text, "Flash: Ready");
-    ips114_show_string(0, 32, debug_text);
+    menu_show_text_line(2U, "Flash: Ready", UI_COLOR_NORMAL);
 
     // 显示前3个参数的实际值
     if(param_count >= 3)
     {
         sprintf(debug_text, "P0: %.2f", *(param_configs[0].variable));
-        ips114_show_string(0, 48, debug_text);
+        menu_show_text_line(3U, debug_text, UI_COLOR_NORMAL);
 
         sprintf(debug_text, "P1: %.2f", *(param_configs[1].variable));
-        ips114_show_string(0, 64, debug_text);
+        menu_show_text_line(4U, debug_text, UI_COLOR_NORMAL);
 
         sprintf(debug_text, "P2: %.2f", *(param_configs[2].variable));
-        ips114_show_string(0, 80, debug_text);
+        menu_show_text_line(5U, debug_text, UI_COLOR_NORMAL);
+    }
+    else
+    {
+        menu_clear_line(3U);
+        menu_clear_line(4U);
+        menu_clear_line(5U);
     }
 
-    ips114_show_string(0, 96, "Press key to exit");
+    menu_show_text_line(6U, "Press key to exit", UI_COLOR_NORMAL);
+    menu_clear_line(7U);
 }
 
 /**
@@ -838,7 +920,6 @@ void menu_return_to_parent(void)
     }
 
     menu_state = MENU_STATE_NORMAL;
-    ips114_clear();  // 返回菜单前强制清屏
     menu_request_refresh(REFRESH_FULL);  // 返回上级菜单需要全屏刷新
 }
 
@@ -865,6 +946,7 @@ uint8_t menu_enter_external_view(const menu_external_view_config_t *config)
     external_view_config = *config;
     menu_state = MENU_STATE_EXTERNAL_VIEW;
     diag_refresh_divider = 0U;
+    menu_invalidate_display_cache();
     external_view_config.render();
     return 0U;
 }
@@ -1421,28 +1503,36 @@ void menu_flash_format_slot(uint8_t slot)
  */
 void menu_render_current(void)
 {
-    if(current_menu == NULL || current_item_count == 0) return;  // 安全检查
+    uint8_t i;
+    uint8_t display_count = 0U;
 
-    // 清除屏幕并设置默认显示颜色
-    ips114_clear();
+    if(current_menu == NULL) return;
+
     ips114_set_font(UI_FONT_NORMAL);
 
-    // 计算当前页信息（暂未使用，预留给未来的页码显示功能）
-    // uint8_t total_pages = (current_item_count + MENU_MAX_VISIBLE_LINES - 1) / MENU_MAX_VISIBLE_LINES;
-    // uint8_t current_page = display_offset / MENU_MAX_VISIBLE_LINES + 1;
-
-    // 显示菜单项 (当前页的所有项)
-    uint8_t display_count = (current_item_count > MENU_MAX_VISIBLE_LINES) ? MENU_MAX_VISIBLE_LINES : current_item_count;
-
-    for(uint8_t i = 0; i < display_count; i++)
+    if(display_offset < current_item_count)
     {
-        uint8_t item_index = display_offset + i;
-        if(item_index >= current_item_count) break;
+        display_count = (uint8_t)(current_item_count - display_offset);
+        if(display_count > MENU_MAX_VISIBLE_LINES)
+        {
+            display_count = MENU_MAX_VISIBLE_LINES;
+        }
+    }
 
-        uint8_t selected = (item_index == current_index);
-        uint8_t editing = (selected && menu_state == MENU_STATE_EDIT);
+    for(i = 0U; i < MENU_MAX_VISIBLE_LINES; i++)
+    {
+        if(i < display_count)
+        {
+            uint8_t item_index = (uint8_t)(display_offset + i);
+            uint8_t selected = (item_index == current_index);
+            uint8_t editing = (selected && menu_state == MENU_STATE_EDIT);
 
-        menu_render_item(i, &current_menu[item_index], selected, editing);
+            menu_render_item(i, &current_menu[item_index], selected, editing);
+        }
+        else
+        {
+            menu_clear_line(i);
+        }
     }
 
     if(current_menu[0].type == MENU_TYPE_AIR_COMMAND)
@@ -1464,12 +1554,8 @@ void menu_render_current(void)
             state_text = "WAIT EXIT";
         }
 
-        ips114_set_color(UI_COLOR_VALUE, UI_COLOR_BG);
-        ips114_show_string(0, 96, state_text);
-        if(command_status.last_ack_text[0] != '\0')
-        {
-            ips114_show_string(0, 112, command_status.last_ack_text);
-        }
+        menu_show_text_line(6U, state_text, UI_COLOR_VALUE);
+        menu_show_text_line(7U, command_status.last_ack_text, UI_COLOR_VALUE);
     }
 }
 
@@ -1479,92 +1565,97 @@ void menu_render_current(void)
 void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t editing)
 {
     float value = 0.0f;
+    char display_text[MENU_DISPLAY_COLUMNS + 1U];
+    char value_text[20];
+    size_t name_length;
+    size_t value_length;
+    uint16_t color;
 
-    if(item == NULL) return;  // 安全检查
+    if((item == NULL) || (line >= MENU_MAX_VISIBLE_LINES)) return;
 
-    // 边界检查: 不渲染超出可视区域的行 (0-7行)
-    if(line >= MENU_MAX_VISIBLE_LINES) return;
-
-    char display_text[32];
-    uint8_t y = line * 16;
-
-    // Y坐标二次检查 (135px高度，8行×16px=128px)
-    if(y > 120) return;  // 留点余量
-
-    // 设置颜色
     if((item->type == MENU_TYPE_AIR_COMMAND) &&
        (menu_air_command_is_running(item->param_index) != 0U))
     {
-        ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);
+        color = UI_COLOR_EDITING;
     }
     else if(editing)
     {
-        ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);  // 黄色编辑状态
+        color = UI_COLOR_EDITING;
     }
     else if(selected)
     {
-        ips114_set_color(UI_COLOR_SELECTED, UI_COLOR_BG); // 绿色选中项
+        color = UI_COLOR_SELECTED;
     }
     else
     {
-        ips114_set_color(UI_COLOR_NORMAL, UI_COLOR_BG);   // 白色正常项
+        color = UI_COLOR_NORMAL;
     }
 
-    // 构建显示文本 (左右对齐布局)
+    memset(display_text, ' ', MENU_DISPLAY_COLUMNS);
+    display_text[MENU_DISPLAY_COLUMNS] = '\0';
+    display_text[0] = (selected && !editing) ? '>' : ' ';
+
     if(menu_is_param_item(item) != 0U)
     {
-        // 检查参数索引是否有效
         if(menu_get_item_param_value(item, &value) == 0U) return;
 
-        // 参数名称 (左对齐)
-        char param_name[20];
-        if(selected && !editing)
+        name_length = strlen(item->name);
+        if(name_length > 18U)
         {
-            snprintf(param_name, sizeof(param_name), ">%s", item->name);  // 选中标记
+            name_length = 18U;
         }
-        else
+        memcpy(&display_text[1], item->name, name_length);
+
+        snprintf(value_text, sizeof(value_text), "%.3f", (double)value);
+        value_length = strlen(value_text);
+        if(value_length > 11U)
         {
-            snprintf(param_name, sizeof(param_name), " %s", item->name);  // 普通显示
+            value_length = 11U;
         }
-        param_name[18] = '\0';
-
-        // 参数值 (右对齐，3位小数)
-        char param_value[12];
-        sprintf(param_value, "%7.3f", (double)value);  // 右对齐，宽度7，3位小数
-
-        // 分别显示参数名和参数值
-        ips114_show_string(0, y, param_name);              // 左侧显示名称
-
-        // 计算右对齐位置
-        uint8_t value_x = 240 - strlen(param_value) * 8;   // 右对齐位置
-        ips114_show_string(value_x, y, param_value);       // 右侧显示数值
+        memcpy(&display_text[MENU_DISPLAY_COLUMNS - value_length],
+               value_text,
+               value_length);
     }
     else
     {
-        // 非参数项 (普通菜单项)
-        sprintf(display_text, " %s", item->name);
-
-        // 添加现代化选择标记 (仅普通选中状态)
-        if(selected && !editing)
+        name_length = strlen(item->name);
+        if(name_length > (MENU_DISPLAY_COLUMNS - 1U))
         {
-            display_text[0] = 0x10;  // 使用三角箭头符号 (如果字库支持)
-            // 如果不支持特殊符号，则使用 '>'
-            if(display_text[0] == 0x10) display_text[0] = '>';
+            name_length = MENU_DISPLAY_COLUMNS - 1U;
         }
-
-        // 显示文本
-        ips114_show_string(0, y, display_text);
+        memcpy(&display_text[1], item->name, name_length);
     }
+
+    menu_show_text_line(line, display_text, color);
 }
 
 /**
  * @brief 显示消息 (已废弃，建议使用专用的显示函数)
  */
+static void menu_show_status_page(const char *msg, uint16_t color)
+{
+    char text[MENU_DISPLAY_COLUMNS + 1U];
+    size_t length = (msg != NULL) ? strlen(msg) : 0U;
+    size_t start;
+
+    if(length > MENU_DISPLAY_COLUMNS)
+    {
+        length = MENU_DISPLAY_COLUMNS;
+    }
+    start = (MENU_DISPLAY_COLUMNS - length) / 2U;
+    memset(text, ' ', MENU_DISPLAY_COLUMNS);
+    text[MENU_DISPLAY_COLUMNS] = '\0';
+    if((msg != NULL) && (length > 0U))
+    {
+        memcpy(&text[start], msg, length);
+    }
+
+    menu_show_text_line(3U, text, color);
+}
+
 void menu_show_message(const char* msg)
 {
-    ips114_clear();
-    ips114_set_color(UI_COLOR_NORMAL, UI_COLOR_BG);
-    ips114_show_string(0, 0, msg);
+    menu_show_status_page(msg, UI_COLOR_NORMAL);
     // 简单延时显示
     for(volatile uint32_t i = 0; i < 8000000; i++);
     menu_request_refresh(REFRESH_FULL);  // 消息显示后需要全屏刷新
@@ -1575,16 +1666,7 @@ void menu_show_message(const char* msg)
  */
 void menu_show_success(const char* msg)
 {
-    ips114_clear();
-    ips114_set_color(UI_COLOR_SUCCESS, UI_COLOR_BG);
-    ips114_set_font(UI_FONT_LARGE);
-
-    // 精确居中显示重要消息
-    uint16_t msg_len = strlen(msg);
-    uint16_t x = (135 - msg_len * 8) / 2;  // 水平居中
-    uint16_t y = (240 - 16) / 2;           // 垂直居中（240是屏幕高度，16是字体高度）
-
-    ips114_show_string(x, y, msg);
+    menu_show_status_page(msg, UI_COLOR_SUCCESS);
 
     // 成功消息显示1秒
     for(volatile uint32_t i = 0; i < 4000000; i++);
@@ -1596,16 +1678,7 @@ void menu_show_success(const char* msg)
  */
 void menu_show_error(const char* msg)
 {
-    ips114_clear();
-    ips114_set_color(UI_COLOR_ERROR, UI_COLOR_BG);
-    ips114_set_font(UI_FONT_LARGE);
-
-    // 精确居中显示重要消息
-    uint16_t msg_len = strlen(msg);
-    uint16_t x = (135 - msg_len * 8) / 2;  // 水平居中
-    uint16_t y = (240 - 16) / 2;           // 垂直居中（240是屏幕高度，16是字体高度）
-
-    ips114_show_string(x, y, msg);
+    menu_show_status_page(msg, UI_COLOR_ERROR);
 
     // 错误消息显示2秒
     for(volatile uint32_t i = 0; i < 8000000; i++);
@@ -1617,16 +1690,7 @@ void menu_show_error(const char* msg)
  */
 void menu_show_progress(const char* msg)
 {
-    ips114_clear();
-    ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);
-    ips114_set_font(UI_FONT_LARGE);
-
-    // 精确居中显示
-    uint16_t msg_len = strlen(msg);
-    uint16_t x = (135 - msg_len * 8) / 2;  // 水平居中
-    uint16_t y = (240 - 16) / 2;           // 垂直居中
-
-    ips114_show_string(x, y, msg);
+    menu_show_status_page(msg, UI_COLOR_EDITING);
     // 进度消息不自动清除，需要手动调用其他显示函数
 }
 
@@ -1644,6 +1708,7 @@ void menu_set_display_color(uint16_t text_color)
 void menu_clear_screen(void)
 {
     ips114_clear();
+    menu_invalidate_display_cache();
 }
 
 //====================================================局部刷新优化====================================================
@@ -1664,26 +1729,7 @@ void menu_request_refresh(refresh_type_t type)
  */
 void menu_clear_line(uint8_t line)
 {
-    uint8_t y = line * 16;
-
-    // Y坐标检查
-    if(y > 120) return;
-
-    // 方法1: 使用背景色填充整行
-    ips114_set_color(UI_COLOR_BG, UI_COLOR_BG);
-
-    // 方法2: 用足够长的空格字符串覆盖整行 (确保覆盖所有可能的字符)
-    char clear_line[20];  // 增加长度，确保覆盖完整
-    for(uint8_t i = 0; i < 18; i++) {  // 增加空格数量
-        clear_line[i] = ' ';
-    }
-    clear_line[18] = '\0';
-
-    // 从行首开始覆盖
-    ips114_show_string(0, y, clear_line);
-
-    // 额外保险：从稍后位置再次覆盖
-    ips114_show_string(8, y, clear_line);
+    menu_show_text_line(line, "", UI_COLOR_NORMAL);
 }
 
 /**
@@ -1694,14 +1740,13 @@ void menu_render_single_item(uint8_t item_index)
     if(current_menu == NULL || item_index >= current_item_count) return;
 
     // 计算显示行号
-    if(item_index < display_offset || item_index >= display_offset + 15) return; // 不在显示范围内
+    if(item_index < display_offset ||
+       item_index >= display_offset + MENU_MAX_VISIBLE_LINES) return;
 
     uint8_t line = item_index - display_offset;
     uint8_t selected = (item_index == current_index);
     uint8_t editing = (selected && menu_state == MENU_STATE_EDIT);
 
-    // 先清除该行，再渲染
-    menu_clear_line(line);
     menu_render_item(line, &current_menu[item_index], selected, editing);
 }
 
@@ -1715,7 +1760,7 @@ void menu_render_current_optimized(void)
     switch(refresh_type)
     {
         case REFRESH_FULL:
-            // 全屏刷新：直接调用完整渲染函数（包含页码指示器）
+            // 重新计算当前页面，行缓存只发送实际变化的字符。
             menu_render_current();
             break;
 
@@ -1733,18 +1778,8 @@ void menu_render_current_optimized(void)
             break;
 
         case REFRESH_VALUE:
-            // 数值刷新：只重绘当前选中项的数值
-            // 检查状态是否变化（编辑→普通 或 普通→编辑）
+            // 数值或编辑状态刷新：只处理当前选中行。
             ips114_set_font(UI_FONT_NORMAL);
-
-            if(last_menu_state != menu_state) {
-                // 状态变化时，必须先清除整行再重绘
-                uint8_t line = current_index - display_offset;
-                if(line < MENU_MAX_VISIBLE_LINES) {
-                    menu_clear_line(line);
-                }
-            }
-
             menu_render_single_item(current_index);
             break;
 
@@ -1756,7 +1791,6 @@ void menu_render_current_optimized(void)
 
     // 更新状态
     last_selected_index = current_index;
-    last_menu_state = menu_state;
     refresh_type = REFRESH_NONE;
 }
 
@@ -1765,8 +1799,7 @@ void menu_render_current_optimized(void)
  */
 void menu_set_need_refresh(void)
 {
-    ips114_clear();  // 外部请求刷新时强制清屏，确保显示完整
-    menu_request_refresh(REFRESH_FULL);  // 外部请求刷新，使用全屏刷新
+    menu_request_refresh(REFRESH_FULL);
 }
 
 /**

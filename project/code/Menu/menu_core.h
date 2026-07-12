@@ -68,9 +68,9 @@ typedef enum {
 // 刷新类型枚举（局部刷新优化）
 typedef enum {
     REFRESH_NONE = 0,           // 无需刷新
-    REFRESH_FULL,               // 全屏刷新（菜单切换）
+    REFRESH_VALUE,              // 数值刷新（参数编辑）
     REFRESH_SELECTION,          // 选择项刷新（上下移动）
-    REFRESH_VALUE               // 数值刷新（参数编辑）
+    REFRESH_FULL                // 页面刷新（仅更新变化内容）
 } refresh_type_t;
 
 typedef struct
@@ -85,7 +85,7 @@ typedef struct
 {
     void (*render)(void);
     void (*on_exit)(void);
-    uint8_t refresh_10hz;
+    uint8_t refresh_periodic;
     uint8_t long_back_only;
     uint8_t allow_runtime_locked;
 } menu_external_view_config_t;
@@ -200,6 +200,8 @@ void menu_request_refresh(refresh_type_t type);       // 请求指定类型的�
 void menu_render_current_optimized(void);             // 优化的渲染函数（局部刷新）
 void menu_clear_line(uint8_t line);                   // 清除指定行
 void menu_render_single_item(uint8_t item_index);     // 渲染单个菜单项
+void menu_show_text_line(uint8_t line, const char *text, uint16_t color); // 仅更新一行中变化的字符
+void menu_invalidate_display_cache(void);             // 外部直接绘图后使文本缓存失效
 
 //====================================================内部接口（用户无需关心）====================================================
 // 按键处理内部函数

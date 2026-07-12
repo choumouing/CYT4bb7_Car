@@ -571,48 +571,45 @@ static void beacon_position_recorder_render_record(void)
     float last_point[BEACON_POSITION_RECORDER_AXIS_NUM];
     uint16 valid_count = beacon_position_recorder_get_count();
 
-    /* 车辆运行时避免整屏 SPI 刷新占用控制周期，停车后自动恢复显示更新。 */
+    /* 行驶时禁止屏幕刷新，避免 SPI 显示操作占用控制周期。 */
     if((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
     {
         return;
     }
 
-    ips114_clear();
-    ips114_set_color(UI_COLOR_NORMAL, UI_COLOR_BG);
     ips114_set_font(UI_FONT_NORMAL);
 
-    ips114_show_string(0, 0, "Beacon Recorder");
+    menu_show_text_line(0U, "Beacon Recorder", UI_COLOR_NORMAL);
     sprintf(text, "Active:%u Full:%u",
             (unsigned int)g_beacon_position_recorder.active,
             (unsigned int)g_beacon_position_recorder.full);
-    ips114_show_string(0, 16, text);
+    menu_show_text_line(1U, text, UI_COLOR_NORMAL);
     sprintf(text, "Count:%u/%u",
             (unsigned int)valid_count,
             (unsigned int)BEACON_POSITION_RECORDER_MAX_POINTS);
-    ips114_show_string(0, 32, text);
+    menu_show_text_line(2U, text, UI_COLOR_NORMAL);
     sprintf(text, "Pos X:%8.3f", (double)g_beacon_position_recorder.position[x]);
-    ips114_show_string(0, 48, text);
+    menu_show_text_line(3U, text, UI_COLOR_NORMAL);
     sprintf(text, "Pos Y:%8.3f", (double)g_beacon_position_recorder.position[y]);
-    ips114_show_string(0, 64, text);
+    menu_show_text_line(4U, text, UI_COLOR_NORMAL);
 
     if((valid_count > 0U) &&
        (beacon_position_recorder_get_point(valid_count - 1U, last_point) != 0U))
     {
         sprintf(text, "Last X:%7.3f",
                 (double)last_point[x]);
-        ips114_show_string(0, 80, text);
+        menu_show_text_line(5U, text, UI_COLOR_NORMAL);
         sprintf(text, "Last Y:%7.3f",
                 (double)last_point[y]);
-        ips114_show_string(0, 96, text);
+        menu_show_text_line(6U, text, UI_COLOR_NORMAL);
     }
     else
     {
-        ips114_show_string(0, 80, "Last X: --");
-        ips114_show_string(0, 96, "Last Y: --");
+        menu_show_text_line(5U, "Last X: --", UI_COLOR_NORMAL);
+        menu_show_text_line(6U, "Last Y: --", UI_COLOR_NORMAL);
     }
 
-    ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);
-    ips114_show_string(0, 112, "Hold Back Exit");
+    menu_show_text_line(7U, "Hold Back Exit", UI_COLOR_EDITING);
 }
 
 static void beacon_position_recorder_render_map(void)

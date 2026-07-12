@@ -582,13 +582,22 @@ static void diag_show_line(uint8 line, const char *text)
         return;
     }
 
-    ips114_show_string(0, (uint16)(line * 16U), text);
+    menu_show_text_line(line, text, UI_COLOR_NORMAL);
 }
 
-/* 诊断页初始化：清屏 + 设置默认颜色字体 */
+static void diag_clear_lines(uint8 first, uint8 last)
+{
+    uint8 line;
+
+    for(line = first; (line <= last) && (line < MENU_MAX_VISIBLE_LINES); line++)
+    {
+        menu_clear_line(line);
+    }
+}
+
+/* 诊断页初始化：保留屏幕内容，由行缓存仅更新变化部分。 */
 static void diag_begin(void)
 {
-    ips114_clear();
     ips114_set_color(UI_COLOR_NORMAL, UI_COLOR_BG);
     ips114_set_font(UI_FONT_NORMAL);
 }
@@ -652,6 +661,7 @@ static void diag_position_function(void)
             (double)g_odometer.vel[x],
             (double)g_odometer.vel[y]);
     diag_show_line(2U, text);
+    diag_clear_lines(3U, 6U);
     diag_show_line(7U, "Back/Enter Exit");
 }
 
@@ -670,6 +680,7 @@ static void diag_air_state_function(void)
     diag_show_line(2U, text);
     sprintf(text, "Sync:%7.0fms", (double)g_air_sync_time_ms);
     diag_show_line(3U, text);
+    diag_clear_lines(4U, 6U);
     diag_show_line(7U, "Back/Enter Exit");
 }
 
@@ -690,6 +701,7 @@ static void diag_air_tof_function(void)
     diag_show_line(2U, text);
     sprintf(text, "Fused:%8.1f", (double)g_air_tof_fused_height_mm);
     diag_show_line(3U, text);
+    diag_clear_lines(4U, 6U);
     diag_show_line(7U, "Back/Enter Exit");
 }
 
@@ -707,6 +719,7 @@ static void diag_air_flow_function(void)
             (double)g_air_diag_telemetry.flow_filtered_x,
             (double)g_air_diag_telemetry.flow_filtered_y);
     diag_show_line(2U, text);
+    diag_clear_lines(3U, 6U);
     diag_show_line(7U, "Back/Enter Exit");
 }
 
