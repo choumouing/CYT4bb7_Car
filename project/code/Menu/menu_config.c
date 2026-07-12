@@ -313,12 +313,34 @@ static uint8 menu_build_air_param_menus(void)
     uint8 group;
     uint8 other_group;
     uint8 index;
+    uint8 other_index;
     uint8 group_count;
     const menu_air_param_config_t *config;
+    const menu_air_param_config_t *other_config;
     menu_item_t *item;
 
     memset(s_air_param_menu_storage, 0, sizeof(s_air_param_menu_storage));
     memset(s_air_group_menus, 0, sizeof(s_air_group_menus));
+
+    for(index = 0U; index < menu_get_air_param_count(); index++)
+    {
+        config = menu_get_air_param_config(index);
+        if(config == NULL)
+        {
+            return 1U;
+        }
+
+        for(other_index = (uint8)(index + 1U);
+            other_index < menu_get_air_param_count();
+            other_index++)
+        {
+            other_config = menu_get_air_param_config(other_index);
+            if((other_config == NULL) || (strcmp(config->name, other_config->name) == 0))
+            {
+                return 1U;
+            }
+        }
+    }
 
     for(group = 0U; group < AIR_PARAM_MENU_COUNT; group++)
     {

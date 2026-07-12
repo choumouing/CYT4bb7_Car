@@ -362,8 +362,9 @@ static uint8 menu_air_slot_valid(uint8 slot, menu_air_slot_header_t *out_header)
 static uint8 menu_air_load_slot_values(uint8 slot)
 {
     uint32 offset;
+    uint32 name_hash;
     uint8 index;
-    uint8 load_count;
+    uint8 saved_index;
     float value;
     menu_air_slot_header_t header;
     menu_air_slot_param_t *slot_params;
@@ -383,19 +384,24 @@ static uint8 menu_air_load_slot_values(uint8 slot)
 
     offset = (uint32)((sizeof(menu_air_slot_header_t) + 3U) / 4U);
     slot_params = (menu_air_slot_param_t *)&flash_union_buffer[offset];
-    load_count = (header.param_count < s_air_param_count) ?
-                 (uint8)header.param_count : s_air_param_count;
 
-    for(index = 0U; index < load_count; index++)
+    for(index = 0U; index < s_air_param_count; index++)
     {
-        if(slot_params[index].name_hash != menu_air_name_hash(s_air_params[index].name))
+        name_hash = menu_air_name_hash(s_air_params[index].name);
+        for(saved_index = 0U; saved_index < (uint8)header.param_count; saved_index++)
         {
+            if(slot_params[saved_index].name_hash != name_hash)
+            {
+                continue;
+            }
+
+            value = slot_params[saved_index].value;
+            value = car_math_clampf(value,
+                                    s_air_params[index].min_val,
+                                    s_air_params[index].max_val);
+            *(s_air_params[index].variable) = value;
             break;
         }
-
-        value = slot_params[index].value;
-        value = car_math_clampf(value, s_air_params[index].min_val, s_air_params[index].max_val);
-        *(s_air_params[index].variable) = value;
     }
 
     menu_air_clear_dirty();
