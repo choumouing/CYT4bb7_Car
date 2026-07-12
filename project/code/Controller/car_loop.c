@@ -191,8 +191,8 @@ void car_loop_init(void)
     menu_config_init();
     mecanum_motor_init();
     encoder_control_init();
-    odometer_init();
     beacon_position_recorder_init();
+    odometer_init();
     beacon_detection_reset();
     fixator_init();
     LightSequence_Reset();

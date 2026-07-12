@@ -4,21 +4,20 @@
 #define BEACON_POSITION_RECORDER_FLASH_MAGIC   (0x42505243UL)
 #define BEACON_POSITION_RECORDER_FLASH_VERSION (2U)
 
-#define BEACON_MAP_CELL_PIXELS                 (16)
-#define BEACON_MAP_LEFT_CELLS                  (3)
-#define BEACON_MAP_RIGHT_CELLS                 (4)
-#define BEACON_MAP_UP_CELLS                    (7)
+#define BEACON_MAP_CELL_PIXELS                 (14)
+#define BEACON_MAP_GRID_CELLS                  (8)
 #define BEACON_MAP_START_X                     (8)
 #define BEACON_MAP_BOTTOM_Y                    (120)
-#define BEACON_MAP_ORIGIN_X                    \
-    (BEACON_MAP_START_X + (BEACON_MAP_LEFT_CELLS * BEACON_MAP_CELL_PIXELS))
 #define BEACON_MAP_TOP_Y                       \
-    (BEACON_MAP_BOTTOM_Y - (BEACON_MAP_UP_CELLS * BEACON_MAP_CELL_PIXELS))
+    (BEACON_MAP_BOTTOM_Y - (BEACON_MAP_GRID_CELLS * BEACON_MAP_CELL_PIXELS))
 #define BEACON_MAP_END_X                       \
-    (BEACON_MAP_ORIGIN_X + (BEACON_MAP_RIGHT_CELLS * BEACON_MAP_CELL_PIXELS))
+    (BEACON_MAP_START_X + (BEACON_MAP_GRID_CELLS * BEACON_MAP_CELL_PIXELS))
 
 #if (BEACON_POSITION_RECORDER_FLASH_PAGE >= FLASH_PAGE_NUM)
 #error "Beacon position recorder Flash page exceeds Work Flash range"
+#endif
+#if (BEACON_POSITION_RECORDER_FLASH_PAGE == BEACON_CONFIG_FLASH_PAGE)
+#error "Beacon recorder and config cannot share the same Flash page"
 #endif
 
 typedef struct
@@ -47,19 +46,64 @@ static uint8 s_menu_built;
 
 static beacon_position_recorder_flash_data_t s_map_data;
 static uint8 s_map_data_valid;
+static beacon_config_source_e s_map_source;
+static int32 s_map_origin_x;
+static int32 s_map_origin_y;
+static float s_map_min_x;
+static float s_map_max_x;
+static float s_map_min_y;
+static float s_map_max_y;
 static float s_edit_position[BEACON_POSITION_RECORDER_AXIS_NUM];
 static float s_edit_points[BEACON_POSITION_RECORDER_MAX_POINTS][BEACON_POSITION_RECORDER_AXIS_NUM];
 static menu_external_param_config_t s_edit_param_config[BEACON_POSITION_RECORDER_MAX_POINTS][BEACON_POSITION_RECORDER_AXIS_NUM];
-static menu_item_t s_beacon_menu[4U];
+static beacon_config_data_t s_predata_edit;
+static menu_external_param_config_t
+    s_predata_param_config[BEACON_CONFIG_BEACON_COUNT + 1U][BEACON_POSITION_RECORDER_AXIS_NUM];
+static menu_item_t s_beacon_menu[6U];
 static menu_item_t s_edit_menu[BEACON_POSITION_RECORDER_MAX_POINTS + 2U];
 static menu_item_t s_point_menu[BEACON_POSITION_RECORDER_MAX_POINTS][4U];
+static menu_item_t s_predata_edit_menu[BEACON_CONFIG_BEACON_COUNT + 3U];
+static menu_item_t s_predata_point_menu[BEACON_CONFIG_BEACON_COUNT + 1U][3U];
+static menu_item_t s_source_menu[3U];
 
 static void beacon_position_recorder_menu_record(void);
 static void beacon_position_recorder_menu_map(void);
 static void beacon_position_recorder_menu_edit(void);
 static void beacon_position_recorder_menu_save(void);
+static void beacon_position_recorder_menu_edit_predata(void);
+static void beacon_position_recorder_menu_save_predata(void);
+static void beacon_position_recorder_menu_switch(void);
+static void beacon_position_recorder_menu_use_recdata(void);
+static void beacon_position_recorder_menu_use_predata(void);
 static void beacon_position_recorder_render_record(void);
 static void beacon_position_recorder_render_map(void);
+
+static void beacon_position_recorder_reset_coordinate_consumers(void)
+{
+    odometer_reset();
+    beacon_detection_reset();
+    fixator_reset();
+    LightSequence_Reset();
+}
+
+static void beacon_position_recorder_setup_xy_config(
+    menu_external_param_config_t config[BEACON_POSITION_RECORDER_AXIS_NUM],
+    float *value_x,
+    float *value_y,
+    float min_x,
+    float max_x,
+    float min_y,
+    float max_y)
+{
+    config[x].variable = value_x;
+    config[x].step = 0.1f;
+    config[x].min_val = min_x;
+    config[x].max_val = max_x;
+    config[y].variable = value_y;
+    config[y].step = 0.1f;
+    config[y].min_val = min_y;
+    config[y].max_val = max_y;
+}
 
 static uint8 beacon_position_recorder_point_valid(
     const float point[BEACON_POSITION_RECORDER_AXIS_NUM])
@@ -265,6 +309,10 @@ static uint8 beacon_position_recorder_save_current(void)
     }
 
     beacon_position_recorder_apply_flash_data(&data);
+    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_RECDATA)
+    {
+        beacon_position_recorder_reset_coordinate_consumers();
+    }
     return 1U;
 }
 
@@ -348,6 +396,8 @@ static void (*const s_invalid_functions[BEACON_POSITION_RECORDER_MAX_POINTS])(vo
 static void beacon_position_recorder_build_menu(void)
 {
     uint8 index;
+    uint8 initial_index = BEACON_CONFIG_BEACON_COUNT;
+    uint8 predata_save_index = BEACON_CONFIG_BEACON_COUNT + 1U;
 
     if(s_menu_built != 0U)
     {
@@ -358,6 +408,10 @@ static void beacon_position_recorder_build_menu(void)
     memset(s_edit_menu, 0, sizeof(s_edit_menu));
     memset(s_point_menu, 0, sizeof(s_point_menu));
     memset(s_edit_param_config, 0, sizeof(s_edit_param_config));
+    memset(s_predata_edit_menu, 0, sizeof(s_predata_edit_menu));
+    memset(s_predata_point_menu, 0, sizeof(s_predata_point_menu));
+    memset(s_predata_param_config, 0, sizeof(s_predata_param_config));
+    memset(s_source_menu, 0, sizeof(s_source_menu));
 
     strcpy(s_beacon_menu[0].name, "C_BeaconRec");
     s_beacon_menu[0].type = MENU_TYPE_FUNCTION;
@@ -365,9 +419,15 @@ static void beacon_position_recorder_build_menu(void)
     strcpy(s_beacon_menu[1].name, "Map");
     s_beacon_menu[1].type = MENU_TYPE_FUNCTION;
     s_beacon_menu[1].function = beacon_position_recorder_menu_map;
-    strcpy(s_beacon_menu[2].name, "Edit Data");
+    strcpy(s_beacon_menu[2].name, "Edit Recdata");
     s_beacon_menu[2].type = MENU_TYPE_FUNCTION;
     s_beacon_menu[2].function = beacon_position_recorder_menu_edit;
+    strcpy(s_beacon_menu[3].name, "Edit Predata");
+    s_beacon_menu[3].type = MENU_TYPE_FUNCTION;
+    s_beacon_menu[3].function = beacon_position_recorder_menu_edit_predata;
+    strcpy(s_beacon_menu[4].name, "Switchbeacon");
+    s_beacon_menu[4].type = MENU_TYPE_FUNCTION;
+    s_beacon_menu[4].function = beacon_position_recorder_menu_switch;
 
     for(index = 0U; index < BEACON_POSITION_RECORDER_MAX_POINTS; index++)
     {
@@ -378,14 +438,14 @@ static void beacon_position_recorder_build_menu(void)
         s_edit_menu[index].type = MENU_TYPE_SUBMENU;
         s_edit_menu[index].submenu = s_point_menu[index];
 
-        s_edit_param_config[index][x].variable = &s_edit_points[index][x];
-        s_edit_param_config[index][x].step = 0.1f;
-        s_edit_param_config[index][x].min_val = -3.0f;
-        s_edit_param_config[index][x].max_val = 4.0f;
-        s_edit_param_config[index][y].variable = &s_edit_points[index][y];
-        s_edit_param_config[index][y].step = 0.1f;
-        s_edit_param_config[index][y].min_val = 0.0f;
-        s_edit_param_config[index][y].max_val = 7.0f;
+        beacon_position_recorder_setup_xy_config(
+            s_edit_param_config[index],
+            &s_edit_points[index][x],
+            &s_edit_points[index][y],
+            -4.0f,
+            4.0f,
+            0.0f,
+            8.0f);
 
         strcpy(s_point_menu[index][0].name, "X");
         s_point_menu[index][0].type = MENU_TYPE_EXTERNAL_PARAMETER;
@@ -401,6 +461,63 @@ static void beacon_position_recorder_build_menu(void)
     strcpy(s_edit_menu[BEACON_POSITION_RECORDER_MAX_POINTS].name, "Save");
     s_edit_menu[BEACON_POSITION_RECORDER_MAX_POINTS].type = MENU_TYPE_FUNCTION;
     s_edit_menu[BEACON_POSITION_RECORDER_MAX_POINTS].function = beacon_position_recorder_menu_save;
+
+    for(index = 0U; index < BEACON_CONFIG_BEACON_COUNT; index++)
+    {
+        snprintf(s_predata_edit_menu[index].name,
+                 sizeof(s_predata_edit_menu[index].name),
+                 "Beacon%u",
+                 (unsigned int)(index + 1U));
+        s_predata_edit_menu[index].type = MENU_TYPE_SUBMENU;
+        s_predata_edit_menu[index].submenu = s_predata_point_menu[index];
+
+        beacon_position_recorder_setup_xy_config(
+            s_predata_param_config[index],
+            &s_predata_edit.beacons[index].x,
+            &s_predata_edit.beacons[index].y,
+            -1.0f,
+            7.0f,
+            -1.0f,
+            7.0f);
+        strcpy(s_predata_point_menu[index][0].name, "X");
+        s_predata_point_menu[index][0].type = MENU_TYPE_EXTERNAL_PARAMETER;
+        s_predata_point_menu[index][0].external_param = &s_predata_param_config[index][x];
+        strcpy(s_predata_point_menu[index][1].name, "Y");
+        s_predata_point_menu[index][1].type = MENU_TYPE_EXTERNAL_PARAMETER;
+        s_predata_point_menu[index][1].external_param = &s_predata_param_config[index][y];
+    }
+
+    strcpy(s_predata_edit_menu[initial_index].name, "Start Pos");
+    s_predata_edit_menu[initial_index].type = MENU_TYPE_SUBMENU;
+    s_predata_edit_menu[initial_index].submenu = s_predata_point_menu[initial_index];
+    beacon_position_recorder_setup_xy_config(
+        s_predata_param_config[initial_index],
+        &s_predata_edit.initial_position[x],
+        &s_predata_edit.initial_position[y],
+        -1.0f,
+        7.0f,
+        -1.0f,
+        7.0f);
+    strcpy(s_predata_point_menu[initial_index][0].name, "X");
+    s_predata_point_menu[initial_index][0].type = MENU_TYPE_EXTERNAL_PARAMETER;
+    s_predata_point_menu[initial_index][0].external_param =
+        &s_predata_param_config[initial_index][x];
+    strcpy(s_predata_point_menu[initial_index][1].name, "Y");
+    s_predata_point_menu[initial_index][1].type = MENU_TYPE_EXTERNAL_PARAMETER;
+    s_predata_point_menu[initial_index][1].external_param =
+        &s_predata_param_config[initial_index][y];
+
+    strcpy(s_predata_edit_menu[predata_save_index].name, "Save");
+    s_predata_edit_menu[predata_save_index].type = MENU_TYPE_FUNCTION;
+    s_predata_edit_menu[predata_save_index].function =
+        beacon_position_recorder_menu_save_predata;
+
+    strcpy(s_source_menu[0].name, "Use Recdata");
+    s_source_menu[0].type = MENU_TYPE_FUNCTION;
+    s_source_menu[0].function = beacon_position_recorder_menu_use_recdata;
+    strcpy(s_source_menu[1].name, "Use Predata");
+    s_source_menu[1].type = MENU_TYPE_FUNCTION;
+    s_source_menu[1].function = beacon_position_recorder_menu_use_predata;
     s_menu_built = 1U;
 }
 
@@ -409,6 +526,37 @@ static int32 beacon_position_recorder_round_to_pixel(float value)
     float scaled = value * (float)BEACON_MAP_CELL_PIXELS;
 
     return (scaled >= 0.0f) ? (int32)(scaled + 0.5f) : (int32)(scaled - 0.5f);
+}
+
+static void beacon_position_recorder_configure_map(beacon_config_source_e source)
+{
+    s_map_source = source;
+    if(source == BEACON_CONFIG_SOURCE_RECDATA)
+    {
+        s_map_origin_x = BEACON_MAP_START_X + (4 * BEACON_MAP_CELL_PIXELS);
+        s_map_origin_y = BEACON_MAP_BOTTOM_Y;
+        s_map_min_x = -4.0f;
+        s_map_max_x = 4.0f;
+        s_map_min_y = 0.0f;
+        s_map_max_y = 8.0f;
+    }
+    else
+    {
+        s_map_origin_x = BEACON_MAP_START_X + BEACON_MAP_CELL_PIXELS;
+        s_map_origin_y = BEACON_MAP_BOTTOM_Y - BEACON_MAP_CELL_PIXELS;
+        s_map_min_x = -1.0f;
+        s_map_max_x = 7.0f;
+        s_map_min_y = -1.0f;
+        s_map_max_y = 7.0f;
+    }
+}
+
+static uint8 beacon_position_recorder_map_point_visible(float point_x, float point_y)
+{
+    return ((point_x >= s_map_min_x) &&
+            (point_x <= s_map_max_x) &&
+            (point_y >= s_map_min_y) &&
+            (point_y <= s_map_max_y)) ? 1U : 0U;
 }
 
 static void beacon_position_recorder_draw_marker(uint16 px, uint16 py, uint16 color)
@@ -420,7 +568,8 @@ static void beacon_position_recorder_draw_marker(uint16 px, uint16 py, uint16 co
 static void beacon_position_recorder_render_record(void)
 {
     char text[32];
-    uint16 last_index;
+    float last_point[BEACON_POSITION_RECORDER_AXIS_NUM];
+    uint16 valid_count = beacon_position_recorder_get_count();
 
     /* 车辆运行时避免整屏 SPI 刷新占用控制周期，停车后自动恢复显示更新。 */
     if((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
@@ -438,7 +587,7 @@ static void beacon_position_recorder_render_record(void)
             (unsigned int)g_beacon_position_recorder.full);
     ips114_show_string(0, 16, text);
     sprintf(text, "Count:%u/%u",
-            (unsigned int)g_beacon_position_recorder.point_count,
+            (unsigned int)valid_count,
             (unsigned int)BEACON_POSITION_RECORDER_MAX_POINTS);
     ips114_show_string(0, 32, text);
     sprintf(text, "Pos X:%8.3f", (double)g_beacon_position_recorder.position[x]);
@@ -446,14 +595,14 @@ static void beacon_position_recorder_render_record(void)
     sprintf(text, "Pos Y:%8.3f", (double)g_beacon_position_recorder.position[y]);
     ips114_show_string(0, 64, text);
 
-    if(g_beacon_position_recorder.point_count > 0U)
+    if((valid_count > 0U) &&
+       (beacon_position_recorder_get_point(valid_count - 1U, last_point) != 0U))
     {
-        last_index = g_beacon_position_recorder.point_count - 1U;
         sprintf(text, "Last X:%7.3f",
-                (double)g_beacon_position_recorder.points[last_index][x]);
+                (double)last_point[x]);
         ips114_show_string(0, 80, text);
         sprintf(text, "Last Y:%7.3f",
-                (double)g_beacon_position_recorder.points[last_index][y]);
+                (double)last_point[y]);
         ips114_show_string(0, 96, text);
     }
     else
@@ -477,47 +626,42 @@ static void beacon_position_recorder_render_map(void)
     ips114_clear();
     ips114_set_font(IPS114_6X8_FONT);
 
-    for(line = 0U; line <= (BEACON_MAP_LEFT_CELLS + BEACON_MAP_RIGHT_CELLS); line++)
+    for(line = 0U; line <= BEACON_MAP_GRID_CELLS; line++)
     {
         uint16 grid_x = (uint16)(BEACON_MAP_START_X + (line * BEACON_MAP_CELL_PIXELS));
         ips114_draw_line(grid_x, BEACON_MAP_TOP_Y, grid_x, BEACON_MAP_BOTTOM_Y, RGB565_WHITE);
     }
-    for(line = 0U; line <= BEACON_MAP_UP_CELLS; line++)
+    for(line = 0U; line <= BEACON_MAP_GRID_CELLS; line++)
     {
         uint16 grid_y = (uint16)(BEACON_MAP_BOTTOM_Y - (line * BEACON_MAP_CELL_PIXELS));
         ips114_draw_line(BEACON_MAP_START_X, grid_y, BEACON_MAP_END_X, grid_y, RGB565_WHITE);
     }
 
-    ips114_draw_line(BEACON_MAP_ORIGIN_X,
+    ips114_draw_line((uint16)s_map_origin_x,
                      BEACON_MAP_TOP_Y,
-                     BEACON_MAP_ORIGIN_X,
+                     (uint16)s_map_origin_x,
                      BEACON_MAP_BOTTOM_Y,
                      RGB565_GREEN);
     ips114_draw_line(BEACON_MAP_START_X,
-                     BEACON_MAP_BOTTOM_Y,
+                     (uint16)s_map_origin_y,
                      BEACON_MAP_END_X,
-                     BEACON_MAP_BOTTOM_Y,
+                     (uint16)s_map_origin_y,
                      RGB565_GREEN);
 
     if(s_map_data_valid != 0U)
     {
-        for(index = 0U; index < BEACON_POSITION_RECORDER_MAX_POINTS; index++)
+        for(index = 0U; index < s_map_data.point_count; index++)
         {
-            if(beacon_position_recorder_point_valid(s_map_data.points[index]) == 0U)
-            {
-                continue;
-            }
-            if((s_map_data.points[index][x] < -3.0f) ||
-               (s_map_data.points[index][x] > 4.0f) ||
-               (s_map_data.points[index][y] < 0.0f) ||
-               (s_map_data.points[index][y] > 7.0f))
+            if(beacon_position_recorder_map_point_visible(
+                   s_map_data.points[index][x],
+                   s_map_data.points[index][y]) == 0U)
             {
                 continue;
             }
 
-            px = BEACON_MAP_ORIGIN_X +
+            px = s_map_origin_x +
                  beacon_position_recorder_round_to_pixel(s_map_data.points[index][x]);
-            py = BEACON_MAP_BOTTOM_Y -
+            py = s_map_origin_y -
                  beacon_position_recorder_round_to_pixel(s_map_data.points[index][y]);
             beacon_position_recorder_draw_marker((uint16)px, (uint16)py, RGB565_RED);
             sprintf(text, "%u", (unsigned int)(index + 1U));
@@ -526,17 +670,45 @@ static void beacon_position_recorder_render_map(void)
         }
     }
 
+    if(beacon_position_recorder_map_point_visible(
+           s_map_data.position[x],
+           s_map_data.position[y]) != 0U)
+    {
+        px = s_map_origin_x +
+             beacon_position_recorder_round_to_pixel(s_map_data.position[x]);
+        py = s_map_origin_y -
+             beacon_position_recorder_round_to_pixel(s_map_data.position[y]);
+        beacon_position_recorder_draw_marker((uint16)px, (uint16)py, RGB565_CYAN);
+        ips114_set_color(RGB565_CYAN, UI_COLOR_BG);
+        ips114_show_string((uint16)(px + 3), (uint16)(py > 7 ? py - 7 : py + 3), "S");
+    }
+
     ips114_set_color(UI_COLOR_NORMAL, UI_COLOR_BG);
     ips114_show_string(132, 8, "Beacon Map");
-    sprintf(text, "Count:%u", (unsigned int)((s_map_data_valid != 0U) ? s_map_data.point_count : 0U));
-    ips114_show_string(132, 24, text);
-    ips114_show_string(132, 40, "Grid 7x7");
-    ips114_show_string(132, 56, "X -3..4");
-    ips114_show_string(132, 72, "Y 0..7");
+    ips114_show_string(132,
+                       24,
+                       (s_map_source == BEACON_CONFIG_SOURCE_RECDATA)
+                           ? "Recdata"
+                           : "Predata");
+    sprintf(text,
+            "Count:%u",
+            (unsigned int)((s_map_data_valid != 0U) ? s_map_data.point_count : 0U));
+    ips114_show_string(132, 40, text);
+    ips114_show_string(132, 56, "Grid 8x8");
+    if(s_map_source == BEACON_CONFIG_SOURCE_RECDATA)
+    {
+        ips114_show_string(132, 72, "X -4..4");
+        ips114_show_string(132, 88, "Y 0..8");
+    }
+    else
+    {
+        ips114_show_string(132, 72, "X -1..7");
+        ips114_show_string(132, 88, "Y -1..7");
+    }
     if(s_map_data_valid == 0U)
     {
         ips114_set_color(UI_COLOR_ERROR, UI_COLOR_BG);
-        ips114_show_string(132, 88, "No Data");
+        ips114_show_string(132, 104, "No Data");
     }
     ips114_set_color(UI_COLOR_EDITING, UI_COLOR_BG);
     ips114_show_string(132, 112, "Back Exit");
@@ -571,8 +743,31 @@ static void beacon_position_recorder_menu_record(void)
 
 static void beacon_position_recorder_menu_map(void)
 {
+    beacon_config_point_t beacon;
+    uint16 count;
+    uint16 index;
+
     memset(&s_map_data, 0, sizeof(s_map_data));
-    s_map_data_valid = beacon_position_recorder_read_flash(&s_map_data);
+    beacon_position_recorder_fill_invalid(s_map_data.points);
+    beacon_position_recorder_configure_map(beacon_config_get_source());
+    beacon_config_get_initial_position(s_map_data.position);
+    count = beacon_config_get_count();
+    if(count > BEACON_POSITION_RECORDER_MAX_POINTS)
+    {
+        count = BEACON_POSITION_RECORDER_MAX_POINTS;
+    }
+
+    for(index = 0U; index < count; index++)
+    {
+        if(beacon_config_get_beacon(index, &beacon) == 0U)
+        {
+            break;
+        }
+        s_map_data.points[index][x] = beacon.x;
+        s_map_data.points[index][y] = beacon.y;
+    }
+    s_map_data.point_count = index;
+    s_map_data_valid = ((index == count) && (count > 0U)) ? 1U : 0U;
     (void)menu_enter_external_view(&s_map_view_config);
 }
 
@@ -603,7 +798,81 @@ static void beacon_position_recorder_menu_save(void)
 
     memcpy(s_edit_points, data.points, sizeof(s_edit_points));
     beacon_position_recorder_apply_flash_data(&data);
+    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_RECDATA)
+    {
+        beacon_position_recorder_reset_coordinate_consumers();
+    }
     menu_show_success("Beacon Save OK");
+}
+
+static void beacon_position_recorder_menu_edit_predata(void)
+{
+    beacon_config_get_predata(&s_predata_edit);
+    menu_enter_submenu(s_predata_edit_menu);
+}
+
+static void beacon_position_recorder_menu_save_predata(void)
+{
+    if(beacon_config_save_predata(&s_predata_edit) == 0U)
+    {
+        menu_show_error("Predata Save Fail");
+        return;
+    }
+
+    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_PREDATA)
+    {
+        beacon_position_recorder_reset_coordinate_consumers();
+    }
+    menu_show_success("Predata Save OK");
+}
+
+static void beacon_position_recorder_menu_switch(void)
+{
+    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_RECDATA)
+    {
+        strcpy(s_source_menu[0].name, "Recdata Active");
+        strcpy(s_source_menu[1].name, "Use Predata");
+    }
+    else
+    {
+        strcpy(s_source_menu[0].name, "Use Recdata");
+        strcpy(s_source_menu[1].name, "Predata Active");
+    }
+    menu_enter_submenu(s_source_menu);
+}
+
+static void beacon_position_recorder_menu_use_recdata(void)
+{
+    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_RECDATA)
+    {
+        menu_show_success("Recdata Active");
+        return;
+    }
+    if(beacon_config_set_source(BEACON_CONFIG_SOURCE_RECDATA) == 0U)
+    {
+        menu_show_error("Source Save Fail");
+        return;
+    }
+
+    beacon_position_recorder_reset_coordinate_consumers();
+    menu_show_success("Use Recdata OK");
+}
+
+static void beacon_position_recorder_menu_use_predata(void)
+{
+    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_PREDATA)
+    {
+        menu_show_success("Predata Active");
+        return;
+    }
+    if(beacon_config_set_source(BEACON_CONFIG_SOURCE_PREDATA) == 0U)
+    {
+        menu_show_error("Source Save Fail");
+        return;
+    }
+
+    beacon_position_recorder_reset_coordinate_consumers();
+    menu_show_success("Use Predata OK");
 }
 
 void beacon_position_recorder_init(void)
@@ -696,6 +965,40 @@ void beacon_position_recorder_update_100HZ(void)
 uint8 beacon_position_recorder_is_active(void)
 {
     return g_beacon_position_recorder.active;
+}
+
+uint16 beacon_position_recorder_get_count(void)
+{
+    return beacon_position_recorder_count_valid(g_beacon_position_recorder.points);
+}
+
+uint8 beacon_position_recorder_get_point(uint16 index, float point[2])
+{
+    uint16 slot;
+    uint16 valid_index = 0U;
+
+    if((point == NULL) || (index >= beacon_position_recorder_get_count()))
+    {
+        return 0U;
+    }
+
+    for(slot = 0U; slot < BEACON_POSITION_RECORDER_MAX_POINTS; slot++)
+    {
+        if(beacon_position_recorder_point_valid(
+               g_beacon_position_recorder.points[slot]) == 0U)
+        {
+            continue;
+        }
+        if(valid_index == index)
+        {
+            point[x] = g_beacon_position_recorder.points[slot][x];
+            point[y] = g_beacon_position_recorder.points[slot][y];
+            return 1U;
+        }
+        valid_index++;
+    }
+
+    return 0U;
 }
 
 struct menu_item *beacon_position_recorder_get_menu(void)

@@ -36,7 +36,13 @@ void beacon_position_recorder_update_100HZ(void);
 /* 返回记录模式是否正在运行。 */
 uint8 beacon_position_recorder_is_active(void);
 
-/* 返回 C_BeaconRec 子菜单根节点。 */
+/* 返回记录数据中的有效信标数量。 */
+uint16 beacon_position_recorder_get_count(void);
+
+/* 按有效记录顺序读取信标坐标，自动跳过无效槽位。 */
+uint8 beacon_position_recorder_get_point(uint16 index, float point[2]);
+
+/* 返回 C_Beacon 子菜单根节点。 */
 struct menu_item *beacon_position_recorder_get_menu(void);
 
 #endif
