@@ -58,6 +58,11 @@
 #define AIR_COMM_STATUS_NOT_FOUND           (1U)    /* 参数/函数未找到 */
 #define AIR_COMM_STATUS_OUT_OF_RANGE        (2U)    /* 值超出范围 */
 #define AIR_COMM_STATUS_ERROR               (3U)    /* 通用错误 */
+#define AIR_COMM_STATUS_BUSY                (4U)    /* 远端事务忙 */
+#define AIR_COMM_STATUS_REMOTE_TIMEOUT      (5U)    /* 远端下游通信超时 */
+#define AIR_COMM_STATUS_REMOTE_MISMATCH     (6U)    /* 远端读回值不一致 */
+#define AIR_COMM_STATUS_REMOTE_PARTIAL      (7U)    /* 多目标仅部分成功 */
+#define AIR_COMM_STATUS_REMOTE_ROLLBACK_FAIL (8U)   /* 远端回滚失败 */
 
 /* ===== 本地 ACK 结果（本端判断的传输结果） ===== */
 #define AIR_COMM_ACK_RESULT_NONE            (0U)    /* 无待确认 ACK */

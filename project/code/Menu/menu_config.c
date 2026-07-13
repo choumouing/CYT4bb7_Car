@@ -228,6 +228,8 @@ static menu_item_t air_param_menu[] = {
     {"Mode5", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode8 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Core1 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"2BL3 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -364,6 +366,7 @@ static uint8 menu_build_air_param_menus(void)
         {
             config = menu_get_air_param_config(index);
             if((config == NULL) || (config->menu_name == NULL) ||
+               (config->visible == 0U) ||
                (strcmp(config->menu_name, air_param_menu[group].name) != 0))
             {
                 continue;
@@ -393,8 +396,7 @@ static uint8 menu_build_air_param_menus(void)
         item->submenu = NULL;
     }
 
-    if((cursor != AIR_PARAM_MENU_STORAGE_COUNT) ||
-       (menu_air_command_get_count() != 1U))
+    if(menu_air_command_get_count() != 1U)
     {
         return 1U;
     }

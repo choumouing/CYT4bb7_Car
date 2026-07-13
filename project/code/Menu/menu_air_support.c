@@ -33,6 +33,7 @@ typedef struct
     float min_val;
     float max_val;
     const char *menu_name;
+    uint8 visible;
 } menu_air_param_definition_t;
 
 typedef struct
@@ -58,9 +59,11 @@ typedef char menu_air_slot_data_must_fit_page[
      FLASH_PAGE_LENGTH) ? 1 : -1];
 
 static float s_air_param_values[MENU_AIR_MAX_PARAMS];
+static float s_air_confirmed_values[MENU_AIR_MAX_PARAMS];
 static menu_air_param_config_t s_air_params[MENU_AIR_MAX_PARAMS];
 static uint8 s_air_param_count;
 static uint8 s_air_param_dirty[MENU_AIR_MAX_PARAMS];
+static uint8 s_air_confirmed_valid[MENU_AIR_MAX_PARAMS];
 static menu_air_sync_status_t s_air_sync_status;
 static uint8 s_air_sync_next_index;
 static uint8 s_air_last_online;
@@ -73,8 +76,10 @@ static menu_air_cmd_status_t s_air_cmd_status;
 
 #define MENU_AIR_STRINGIFY_INNER(value)     #value
 #define MENU_AIR_STRINGIFY(value)           MENU_AIR_STRINGIFY_INNER(value)
+#define MENU_AIR_PARAM_VISIBLE(member, default_v, step_v, min_v, max_v, menu_name_v, visible_v) \
+    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), (visible_v)}
 #define MENU_AIR_PARAM(member, default_v, step_v, min_v, max_v, menu_name_v) \
-    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v)}
+    MENU_AIR_PARAM_VISIBLE(member, default_v, step_v, min_v, max_v, menu_name_v, 1U)
 
 static const menu_air_param_definition_t s_air_param_definitions[] =
 {
@@ -207,7 +212,10 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(mode8_vel_y_i_limit, 3.0f, 0.1f,   0.0f, 5000.0f, "Mode8 Vel"),
     MENU_AIR_PARAM(mode8_vel_y_d_lpf, 0.0f,   0.1f,   0.0f,  500.0f, "Mode8 Vel"),
     MENU_AIR_PARAM(mode8_kp_car_x, 20.0f, 0.1f, 0.0f, 3000.0f, "Mode8 Vel"),
-    MENU_AIR_PARAM(mode8_kp_car_y, 20.0f, 0.1f, 0.0f, 3000.0f, "Mode8 Vel")
+    MENU_AIR_PARAM(mode8_kp_car_y, 20.0f, 0.1f, 0.0f, 3000.0f, "Mode8 Vel"),
+
+    MENU_AIR_PARAM(c1_beacon_thr, 120.0f, 1.0f, 0.0f, 255.0f, "Core1 Img"),
+    MENU_AIR_PARAM(bl3_beacon_thr, 120.0f, 1.0f, 0.0f, 255.0f, "2BL3 Img")
 };
 
 typedef char menu_air_param_count_must_match[
@@ -234,6 +242,82 @@ static uint8 menu_air_ack_is_success(uint8 result, uint8 status)
 {
     return ((((result == AIR_COMM_ACK_RESULT_OK) && (status == AIR_COMM_STATUS_OK)) ||
              ((result == AIR_COMM_ACK_RESULT_ERROR) && (status == AIR_COMM_STATUS_OUT_OF_RANGE))) ? 1U : 0U);
+}
+
+static void menu_air_store_confirmed(uint8 index, float value)
+{
+    if((index >= s_air_param_count) || (s_air_params[index].variable == NULL))
+    {
+        return;
+    }
+
+    value = car_math_clampf(value,
+                            s_air_params[index].min_val,
+                            s_air_params[index].max_val);
+    *(s_air_params[index].variable) = value;
+    s_air_confirmed_values[index] = value;
+    s_air_confirmed_valid[index] = 1U;
+}
+
+static void menu_air_restore_confirmed(uint8 index)
+{
+    if((index >= s_air_param_count) ||
+       (s_air_params[index].variable == NULL) ||
+       (s_air_confirmed_valid[index] == 0U))
+    {
+        return;
+    }
+
+    *(s_air_params[index].variable) = s_air_confirmed_values[index];
+    s_air_param_dirty[index] = 0U;
+    menu_request_refresh(REFRESH_VALUE);
+}
+
+static void menu_air_restore_all_confirmed(void)
+{
+    uint8 index;
+
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        if((s_air_params[index].variable != NULL) &&
+           (s_air_confirmed_valid[index] != 0U))
+        {
+            *(s_air_params[index].variable) = s_air_confirmed_values[index];
+            s_air_param_dirty[index] = 0U;
+        }
+    }
+
+    s_air_sync_status.dirty_count = menu_air_dirty_count();
+    menu_request_refresh(REFRESH_FULL);
+}
+
+static const char *menu_air_error_text(uint8 result, uint8 status, const char *fallback)
+{
+    if(result == AIR_COMM_ACK_RESULT_TIMEOUT)
+    {
+        return "Air Timeout";
+    }
+
+    switch(status)
+    {
+        case AIR_COMM_STATUS_BUSY:
+            return "Remote Busy";
+
+        case AIR_COMM_STATUS_REMOTE_TIMEOUT:
+            return "Remote Timeout";
+
+        case AIR_COMM_STATUS_REMOTE_MISMATCH:
+            return "Remote Mismatch";
+
+        case AIR_COMM_STATUS_REMOTE_PARTIAL:
+            return "2BL3 Partial";
+
+        case AIR_COMM_STATUS_REMOTE_ROLLBACK_FAIL:
+            return "Rollback Fail";
+
+        default:
+            return fallback;
+    }
 }
 
 static void menu_air_sync_reset(uint8 mode)
@@ -263,7 +347,8 @@ static void menu_air_record_failure(uint8 index, uint8 result, uint8 status)
     s_air_sync_status.last_result = result;
     s_air_sync_status.last_status = status;
     s_air_sync_status.fail_count++;
-    if(result == AIR_COMM_ACK_RESULT_TIMEOUT)
+    if((result == AIR_COMM_ACK_RESULT_TIMEOUT) ||
+       (status == AIR_COMM_STATUS_REMOTE_TIMEOUT))
     {
         s_air_sync_status.timeout_count++;
     }
@@ -408,6 +493,20 @@ static uint8 menu_air_load_slot_values(uint8 slot)
     return 0U;
 }
 
+static void menu_air_load_code_defaults(void)
+{
+    uint8 index;
+
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        *(s_air_params[index].variable) =
+            car_math_clampf(s_air_param_definitions[index].default_val,
+                            s_air_params[index].min_val,
+                            s_air_params[index].max_val);
+    }
+    menu_air_clear_dirty();
+}
+
 void menu_air_support_init(void)
 {
     uint8 index;
@@ -415,7 +514,9 @@ void menu_air_support_init(void)
 
     s_air_param_count = 0U;
     memset(s_air_param_values, 0, sizeof(s_air_param_values));
+    memset(s_air_confirmed_values, 0, sizeof(s_air_confirmed_values));
     memset(s_air_param_dirty, 0, sizeof(s_air_param_dirty));
+    memset(s_air_confirmed_valid, 0, sizeof(s_air_confirmed_valid));
     memset(s_air_params, 0, sizeof(s_air_params));
     memset(&s_air_sync_status, 0, sizeof(s_air_sync_status));
     memset(&s_air_cmd_status, 0, sizeof(s_air_cmd_status));
@@ -445,6 +546,7 @@ void menu_air_support_init(void)
         s_air_params[index].min_val = definition->min_val;
         s_air_params[index].max_val = definition->max_val;
         s_air_params[index].menu_name = definition->menu_name;
+        s_air_params[index].visible = definition->visible;
         s_air_param_values[index] = car_math_clampf(definition->default_val,
                                                    definition->min_val,
                                                    definition->max_val);
@@ -583,9 +685,17 @@ void menu_air_stop_param_sync(void)
     if((s_air_sync_status.sending != 0U) &&
        (s_air_sync_status.active_index < s_air_param_count))
     {
+        if(mode == MENU_AIR_SYNC_MODE_COMMIT)
+        {
+            menu_air_restore_confirmed(s_air_sync_status.active_index);
+        }
         menu_air_record_failure(s_air_sync_status.active_index,
                                 AIR_COMM_ACK_RESULT_TIMEOUT,
                                 AIR_COMM_STATUS_ERROR);
+    }
+    if(mode == MENU_AIR_SYNC_MODE_FULL)
+    {
+        menu_air_restore_all_confirmed();
     }
 
     if((mode == MENU_AIR_SYNC_MODE_COMMIT) ||
@@ -602,6 +712,15 @@ void menu_air_stop_param_sync(void)
     }
     else
     {
+        if(mode == MENU_AIR_SYNC_MODE_FULL)
+        {
+            menu_air_restore_all_confirmed();
+        }
+        else if((s_air_sync_status.sending != 0U) &&
+                (s_air_sync_status.active_index < s_air_param_count))
+        {
+            menu_air_restore_confirmed(s_air_sync_status.active_index);
+        }
         air_comm_car_cancel_pending_set_param();
     }
 }
@@ -623,6 +742,15 @@ void menu_air_abort_param_sync_runtime(void)
     }
     else
     {
+        if(mode == MENU_AIR_SYNC_MODE_FULL)
+        {
+            menu_air_restore_all_confirmed();
+        }
+        else if((s_air_sync_status.sending != 0U) &&
+                (s_air_sync_status.active_index < s_air_param_count))
+        {
+            menu_air_restore_confirmed(s_air_sync_status.active_index);
+        }
         air_comm_car_cancel_pending_set_param();
     }
 
@@ -672,6 +800,7 @@ uint8 menu_air_commit_param_value(uint8 index, float value)
     air_comm_car_clear_last_ack();
     if(air_comm_car_set_param(s_air_params[index].name, value) != 0U)
     {
+        menu_air_restore_confirmed(index);
         menu_air_record_failure(index, AIR_COMM_ACK_RESULT_ERROR, AIR_COMM_STATUS_ERROR);
         menu_show_error("Air Send Fail");
         return 1U;
@@ -718,6 +847,7 @@ void menu_air_update_100HZ(void)
     uint8 current_mode;
     uint8 sync_reason;
     uint32 now = air_comm_car_get_tick();
+    float confirmed_value;
     char ack_name[AIR_COMM_PARAM_NAME_MAX + 1U];
 
     if(car_menu_is_runtime_locked() != 0U)
@@ -779,24 +909,7 @@ void menu_air_update_100HZ(void)
        ((s_air_last_online == 0U) ||
         ((now - s_air_pull_retry_tick) >= MENU_AIR_PULL_RETRY_MS)))
     {
-        if(MENU_AIR_BOOT_OVERRIDE_ENABLE != 0U)
-        {
-            if(s_air_boot_override_done == 0U)
-            {
-                if(MENU_AIR_BOOT_FLASH_LOAD_ENABLE != 0U)
-                {
-                    /* Flash无有效存档时保留Car代码中的Air参数作为覆盖值。 */
-                    (void)menu_air_load_slot_values(MENU_AIR_BOOT_FLASH_LOAD_SLOT);
-                }
-                s_air_catalog_ready = 1U;
-                if(menu_air_sync_all_start(MENU_AIR_SYNC_REASON_BOOT_OVERRIDE) != 0U)
-                {
-                    menu_air_mark_catalog_stale();
-                    s_air_pull_retry_tick = now;
-                }
-            }
-        }
-        else if(menu_air_pull_all_start() != 0U)
+        if(menu_air_pull_all_start() != 0U)
         {
             s_air_pull_retry_tick = now;
         }
@@ -829,9 +942,18 @@ void menu_air_update_100HZ(void)
            ((current_mode == MENU_AIR_SYNC_MODE_PULL) &&
             ((ack_result != AIR_COMM_ACK_RESULT_OK) || (ack_status != AIR_COMM_STATUS_OK))) ||
            ((current_mode != MENU_AIR_SYNC_MODE_PULL) &&
-            (menu_air_ack_is_success(ack_result, ack_status) == 0U)))
+           (menu_air_ack_is_success(ack_result, ack_status) == 0U)))
         {
+            sync_reason = s_air_sync_status.reason;
             menu_air_record_failure(active_index, ack_result, ack_status);
+            if(current_mode == MENU_AIR_SYNC_MODE_FULL)
+            {
+                menu_air_restore_all_confirmed();
+            }
+            else if(current_mode == MENU_AIR_SYNC_MODE_COMMIT)
+            {
+                menu_air_restore_confirmed(active_index);
+            }
             menu_air_sync_reset(MENU_AIR_SYNC_MODE_FAIL);
             menu_air_mark_catalog_stale();
             if(current_mode == MENU_AIR_SYNC_MODE_PULL)
@@ -840,28 +962,29 @@ void menu_air_update_100HZ(void)
             }
             if(current_mode == MENU_AIR_SYNC_MODE_COMMIT)
             {
-                menu_show_error((ack_result == AIR_COMM_ACK_RESULT_TIMEOUT) ?
-                                "Air Timeout" : "Air Fail");
+                menu_show_error(menu_air_error_text(ack_result, ack_status, "Air Fail"));
             }
             else if(current_mode == MENU_AIR_SYNC_MODE_FULL)
             {
-                if(s_air_sync_status.reason == MENU_AIR_SYNC_REASON_LOAD)
+                if(sync_reason == MENU_AIR_SYNC_REASON_LOAD)
                 {
-                    menu_show_error("Air Load Fail");
+                    menu_show_error(menu_air_error_text(ack_result, ack_status, "Air Load Fail"));
                 }
-                else if(s_air_sync_status.reason == MENU_AIR_SYNC_REASON_BOOT_OVERRIDE)
+                else if(sync_reason == MENU_AIR_SYNC_REASON_BOOT_OVERRIDE)
                 {
-                    menu_show_error("Air Boot Fail");
+                    menu_show_error(menu_air_error_text(ack_result, ack_status, "Air Boot Fail"));
                 }
                 else
                 {
-                    menu_show_error("Air Sync Fail");
+                    menu_show_error(menu_air_error_text(ack_result, ack_status, "Air Sync Fail"));
                 }
             }
             return;
         }
 
-        (void)air_comm_car_get_last_ack_value(s_air_params[active_index].variable);
+        confirmed_value = *(s_air_params[active_index].variable);
+        (void)air_comm_car_get_last_ack_value(&confirmed_value);
+        menu_air_store_confirmed(active_index, confirmed_value);
         s_air_sync_status.ok_count++;
         s_air_param_dirty[active_index] = 0U;
 
@@ -889,6 +1012,28 @@ void menu_air_update_100HZ(void)
             s_air_catalog_ready = 1U;
             s_air_boot_sync_done = 1U;
             s_air_pull_retry_tick = now;
+            if((MENU_AIR_BOOT_OVERRIDE_ENABLE != 0U) &&
+               (s_air_boot_override_done == 0U))
+            {
+                if(MENU_AIR_BOOT_FLASH_LOAD_ENABLE != 0U)
+                {
+                    if(menu_air_load_slot_values(MENU_AIR_BOOT_FLASH_LOAD_SLOT) != 0U)
+                    {
+                        menu_air_load_code_defaults();
+                    }
+                }
+                else
+                {
+                    menu_air_load_code_defaults();
+                }
+
+                if(menu_air_sync_all_start(MENU_AIR_SYNC_REASON_BOOT_OVERRIDE) != 0U)
+                {
+                    menu_air_restore_all_confirmed();
+                    menu_air_mark_catalog_stale();
+                    s_air_pull_retry_tick = now;
+                }
+            }
             menu_request_refresh(REFRESH_FULL);
             return;
         }
@@ -964,16 +1109,18 @@ void menu_air_update_100HZ(void)
     }
     else
     {
+        sync_reason = s_air_sync_status.reason;
         menu_air_record_failure(active_index,
                                 AIR_COMM_ACK_RESULT_ERROR,
                                 AIR_COMM_STATUS_ERROR);
+        menu_air_restore_all_confirmed();
         menu_air_sync_reset(MENU_AIR_SYNC_MODE_FAIL);
         menu_air_mark_catalog_stale();
-        if(s_air_sync_status.reason == MENU_AIR_SYNC_REASON_LOAD)
+        if(sync_reason == MENU_AIR_SYNC_REASON_LOAD)
         {
             menu_show_error("Air Load Fail");
         }
-        else if(s_air_sync_status.reason == MENU_AIR_SYNC_REASON_BOOT_OVERRIDE)
+        else if(sync_reason == MENU_AIR_SYNC_REASON_BOOT_OVERRIDE)
         {
             menu_show_error("Air Boot Fail");
         }
@@ -1025,6 +1172,7 @@ uint8 menu_load_air_slot(uint8 slot)
     }
     if(menu_air_sync_all_start(MENU_AIR_SYNC_REASON_LOAD) != 0U)
     {
+        menu_air_restore_all_confirmed();
         menu_air_mark_catalog_stale();
         menu_show_error("Air Sync Fail");
         return 1U;

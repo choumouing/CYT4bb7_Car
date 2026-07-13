@@ -15,7 +15,7 @@
 #include "zf_common_headfile.h"
 
 #define MENU_AIR_MAX_PARAMS                  (128U)
-#define MENU_AIR_EXPECTED_PARAM_COUNT        (123U)
+#define MENU_AIR_EXPECTED_PARAM_COUNT        (125U)
 
 #define MENU_AIR_SYNC_MODE_IDLE             (0U)
 #define MENU_AIR_SYNC_MODE_COMMIT           (1U)
@@ -46,6 +46,7 @@ typedef struct
     float min_val;          // 最小值
     float max_val;          // 最大值
     const char *menu_name;  // 所属菜单名称
+    uint8 visible;          // 0=仅从菜单隐藏，仍参与通信与Flash存档
 } menu_air_param_config_t;
 
 /* Air参数同步状态（供诊断页读取） */
