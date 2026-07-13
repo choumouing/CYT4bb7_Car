@@ -41,6 +41,20 @@ static char display_text_cache[MENU_MAX_VISIBLE_LINES][MENU_DISPLAY_COLUMNS + 1U
 static uint16_t display_color_cache[MENU_MAX_VISIBLE_LINES];
 static uint8_t display_line_valid[MENU_MAX_VISIBLE_LINES];
 
+#define MENU_STATUS_SUCCESS_MS       (1000U)
+#define MENU_STATUS_ERROR_MS         (2000U)
+#define MENU_STATUS_MESSAGE_MS       (2000U)
+typedef struct
+{
+    uint8_t active;
+    uint8_t auto_clear;
+    uint16_t color;
+    uint32_t expire_tick;
+    char text[MENU_DISPLAY_COLUMNS + 1U];
+} menu_status_message_t;
+static menu_status_message_t menu_status_message;
+static void menu_show_status_page(const char *msg, uint16_t color);
+
 // 长按加速控制
 #define KEY_REPEAT_FIRST_DELAY_TICKS   15   // 第一次重复延迟（10ms单位）
 #define KEY_REPEAT_CONT_DELAY_TICKS    8   // 连续重复间隔（10ms单位）
@@ -286,6 +300,43 @@ static uint8_t menu_get_item_param_value(const menu_item_t *item, float *value)
     return 0U;
 }
 
+/* Air枚举参数使用文字显示，普通参数继续使用原有浮点格式。 */
+static const char *menu_get_air_enum_label(const menu_item_t *item, float value)
+{
+    int32_t enum_index;
+    float delta;
+    const menu_air_param_config_t *config;
+
+    if((item == NULL) || (item->type != MENU_TYPE_AIR_PARAMETER))
+    {
+        return NULL;
+    }
+
+    config = menu_get_air_param_config(item->param_index);
+    if((config == NULL) || (config->enum_labels == NULL) || (config->enum_count == 0U))
+    {
+        return NULL;
+    }
+
+    enum_index = (int32_t)(value + ((value >= 0.0f) ? 0.5f : -0.5f));
+    if((enum_index < 0) || (enum_index >= (int32_t)config->enum_count))
+    {
+        return NULL;
+    }
+
+    delta = value - (float)enum_index;
+    if(delta < 0.0f)
+    {
+        delta = -delta;
+    }
+    if((delta > 0.001f) || (config->enum_labels[enum_index] == NULL))
+    {
+        return NULL;
+    }
+
+    return config->enum_labels[enum_index];
+}
+
 /* 获取菜单项对应的编辑步进值 */
 static uint8_t menu_get_item_param_step(const menu_item_t *item, float *step)
 {
@@ -515,6 +566,7 @@ void menu_runtime_suspend(void)
     diag_refresh_divider = 0U;
     pending_flash_operation = FLASH_OP_NONE;
     pending_slot_number = 0U;
+    memset(&menu_status_message, 0, sizeof(menu_status_message));
     menu_discard_key_events();
 }
 
@@ -553,6 +605,7 @@ void menu_init(void)
     menu_air_edit_reset();
     menu_wait_key_release = 0U;
     memset(&external_view_config, 0, sizeof(external_view_config));
+    memset(&menu_status_message, 0, sizeof(menu_status_message));
 
     // 初始化局部刷新变量
     refresh_type = REFRESH_FULL;
@@ -578,53 +631,76 @@ void menu_init(void)
  */
 void menu_update_100HZ(void)
 {
-    if((car_menu_is_runtime_locked() != 0U) &&
-       (menu_external_view_runtime_active() == 0U))
+    if((menu_status_message.active != 0U) &&
+       (menu_status_message.auto_clear != 0U) &&
+       ((int32)(air_comm_car_get_tick() - menu_status_message.expire_tick) >= 0))
     {
-        menu_discard_key_events();
-        return;
+        memset(&menu_status_message, 0, sizeof(menu_status_message));
+        menu_invalidate_display_cache();
+        menu_request_refresh(REFRESH_FULL);
     }
 
-    menu_process_keys();
-
-    if((car_menu_is_runtime_locked() != 0U) &&
-       (menu_external_view_runtime_active() == 0U))
+    if(menu_status_message.active == 0U)
     {
-        menu_discard_key_events();
-        return;
-    }
+        if((car_menu_is_runtime_locked() != 0U) &&
+           (menu_external_view_runtime_active() == 0U))
+        {
+            menu_discard_key_events();
+            return;
+        }
 
-    if(menu_state == MENU_STATE_EXTERNAL_VIEW)
-    {
-        if(external_view_config.refresh_periodic != 0U)
+        menu_process_keys();
+
+        if((car_menu_is_runtime_locked() != 0U) &&
+           (menu_external_view_runtime_active() == 0U))
+        {
+            menu_discard_key_events();
+            return;
+        }
+
+        if(menu_state == MENU_STATE_EXTERNAL_VIEW)
+        {
+            if((need_refresh != 0U) && (external_view_config.render != NULL))
+            {
+                external_view_config.render();
+                need_refresh = 0U;
+                refresh_type = REFRESH_NONE;
+                diag_refresh_divider = 0U;
+            }
+            else if(external_view_config.refresh_periodic != 0U)
+            {
+                diag_refresh_divider++;
+                if(diag_refresh_divider >= 5U)
+                {
+                    diag_refresh_divider = 0U;
+                    if(external_view_config.render != NULL)
+                    {
+                        external_view_config.render();
+                    }
+                }
+            }
+            return;
+        }
+
+        if(menu_state == MENU_STATE_DIAG_VIEW)
         {
             diag_refresh_divider++;
             if(diag_refresh_divider >= 5U)
             {
                 diag_refresh_divider = 0U;
-                if(external_view_config.render != NULL)
+                if((current_index < current_item_count) &&
+                   (current_menu[current_index].type == MENU_TYPE_DIAG_VIEW) &&
+                   (current_menu[current_index].function != NULL))
                 {
-                    external_view_config.render();
+                    current_menu[current_index].function();
                 }
             }
+            return;
         }
-        return;
     }
-
-    if(menu_state == MENU_STATE_DIAG_VIEW)
+    else
     {
-        diag_refresh_divider++;
-        if(diag_refresh_divider >= 5U)
-        {
-            diag_refresh_divider = 0U;
-            if((current_index < current_item_count) &&
-               (current_menu[current_index].type == MENU_TYPE_DIAG_VIEW) &&
-               (current_menu[current_index].function != NULL))
-            {
-                current_menu[current_index].function();
-            }
-        }
-        return;
+        menu_discard_key_events();
     }
 
     // 处理待执行的Flash操作（在主循环中执行，避免在中断中操作Flash）
@@ -660,6 +736,17 @@ void menu_update_100HZ(void)
         }
         pending_flash_operation = FLASH_OP_NONE;
         need_refresh = 1;
+    }
+
+    if(menu_status_message.active != 0U)
+    {
+        if(need_refresh != 0U)
+        {
+            menu_show_status_page(menu_status_message.text, menu_status_message.color);
+            need_refresh = 0U;
+            refresh_type = REFRESH_NONE;
+        }
+        return;
     }
 
     // 仅在需要时刷新显示（使用局部刷新优化）
@@ -1213,6 +1300,12 @@ void menu_key_handler(menu_key_t key)
                                     break;
                                 }
                                 if((current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER) &&
+                                   (menu_air_is_busy() != 0U))
+                                {
+                                    menu_show_error("Air Busy");
+                                    break;
+                                }
+                                if((current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER) &&
                                    (menu_air_edit_begin(current_menu[current_index].param_index) != 0U))
                                 {
                                     menu_show_error("Set Fail");
@@ -1391,7 +1484,6 @@ void menu_flash_load_params(uint8_t slot)
         return;
     }
 
-    menu_show_progress("Loading...");
     offset = (uint32_t)((sizeof(menu_flash_slot_header_t) + 3U) / 4U);
 
     for(index = 0U; index < header.param_count; index++)
@@ -1437,7 +1529,6 @@ void menu_flash_save_params(uint8_t slot)
         return;
     }
 
-    menu_show_progress("Saving...");
     flash_buffer_clear();
 
     header = (menu_flash_slot_header_t *)flash_union_buffer;
@@ -1567,6 +1658,7 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
     float value = 0.0f;
     char display_text[MENU_DISPLAY_COLUMNS + 1U];
     char value_text[20];
+    const char *enum_label;
     size_t name_length;
     size_t value_length;
     uint16_t color;
@@ -1606,7 +1698,15 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
         }
         memcpy(&display_text[1], item->name, name_length);
 
-        snprintf(value_text, sizeof(value_text), "%.3f", (double)value);
+        enum_label = menu_get_air_enum_label(item, value);
+        if(enum_label != NULL)
+        {
+            snprintf(value_text, sizeof(value_text), "%s", enum_label);
+        }
+        else
+        {
+            snprintf(value_text, sizeof(value_text), "%.3f", (double)value);
+        }
         value_length = strlen(value_text);
         if(value_length > 11U)
         {
@@ -1635,6 +1735,7 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
 static void menu_show_status_page(const char *msg, uint16_t color)
 {
     char text[MENU_DISPLAY_COLUMNS + 1U];
+    uint8_t line;
     size_t length = (msg != NULL) ? strlen(msg) : 0U;
     size_t start;
 
@@ -1650,15 +1751,34 @@ static void menu_show_status_page(const char *msg, uint16_t color)
         memcpy(&text[start], msg, length);
     }
 
+    for(line = 0U; line < MENU_MAX_VISIBLE_LINES; line++)
+    {
+        menu_clear_line(line);
+    }
     menu_show_text_line(3U, text, color);
+}
+
+static void menu_set_status_message(const char *msg, uint16_t color, uint32_t duration_ms)
+{
+    memset(&menu_status_message, 0, sizeof(menu_status_message));
+    menu_status_message.active = 1U;
+    menu_status_message.auto_clear = (duration_ms > 0U) ? 1U : 0U;
+    menu_status_message.color = color;
+    menu_status_message.expire_tick = air_comm_car_get_tick() + duration_ms;
+    if(msg != NULL)
+    {
+        strncpy(menu_status_message.text, msg, MENU_DISPLAY_COLUMNS);
+        menu_status_message.text[MENU_DISPLAY_COLUMNS] = '\0';
+    }
+
+    menu_invalidate_display_cache();
+    menu_request_refresh(REFRESH_FULL);
 }
 
 void menu_show_message(const char* msg)
 {
-    menu_show_status_page(msg, UI_COLOR_NORMAL);
-    // 简单延时显示
-    for(volatile uint32_t i = 0; i < 8000000; i++);
-    menu_request_refresh(REFRESH_FULL);  // 消息显示后需要全屏刷新
+    menu_set_status_message(msg, UI_COLOR_NORMAL, MENU_STATUS_MESSAGE_MS);
+    // 普通消息显示2秒后由100Hz任务自动恢复菜单。
 }
 
 /**
@@ -1666,11 +1786,9 @@ void menu_show_message(const char* msg)
  */
 void menu_show_success(const char* msg)
 {
-    menu_show_status_page(msg, UI_COLOR_SUCCESS);
+    menu_set_status_message(msg, UI_COLOR_SUCCESS, MENU_STATUS_SUCCESS_MS);
 
     // 成功消息显示1秒
-    for(volatile uint32_t i = 0; i < 4000000; i++);
-    menu_request_refresh(REFRESH_FULL);  // 成功消息后需要全屏刷新
 }
 
 /**
@@ -1678,11 +1796,9 @@ void menu_show_success(const char* msg)
  */
 void menu_show_error(const char* msg)
 {
-    menu_show_status_page(msg, UI_COLOR_ERROR);
+    menu_set_status_message(msg, UI_COLOR_ERROR, MENU_STATUS_ERROR_MS);
 
     // 错误消息显示2秒
-    for(volatile uint32_t i = 0; i < 8000000; i++);
-    menu_request_refresh(REFRESH_FULL);  // 错误消息后需要全屏刷新
 }
 
 /**
@@ -1690,7 +1806,7 @@ void menu_show_error(const char* msg)
  */
 void menu_show_progress(const char* msg)
 {
-    menu_show_status_page(msg, UI_COLOR_EDITING);
+    menu_set_status_message(msg, UI_COLOR_EDITING, 0U);
     // 进度消息不自动清除，需要手动调用其他显示函数
 }
 

@@ -16,6 +16,7 @@
 #define MENU_AIR_BOOT_OVERRIDE_ENABLE        (0U)
 /* 覆盖开启时：1=使用Car Flash中的Air参数，0=使用Car代码中的Air参数。 */
 #define MENU_AIR_BOOT_FLASH_LOAD_ENABLE      (0U)
+/* 覆盖关闭时，该槽仍单独作为c1_screen_mode的启动恢复来源。 */
 #define MENU_AIR_BOOT_FLASH_LOAD_SLOT        (0U)
 
 

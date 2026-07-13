@@ -23,8 +23,9 @@
  *
  * ACK/重试策略：
  *   - SET_PARAM / EXEC_COMMAND 发送后启动 ACK 等待
- *   - ACK 超时 = 200ms，超时后重发原帧，最多重试 3 次
- *   - 3 次重试仍无 ACK → ACK_RESULT_TIMEOUT
+ *   - ACK等待期间每200ms重发原帧
+ *   - 普通操作总等待800ms，指定超时接口可为慢操作扩大窗口
+ *   - 达到总等待时间仍无ACK → ACK_RESULT_TIMEOUT
  *   - 收到 ACK 但 status != OK → ACK_RESULT_ERROR
  *
  * 心跳/在线判断：
@@ -173,6 +174,8 @@ uint32 air_comm_car_get_tick(void);
  * 注意：同一时间只能有一个待确认的 ACK 帧
  */
 uint8 air_comm_car_set_param(const char *name, float value);
+/* timeout_ms为本次SET从首次发送开始计算的ACK总等待时间。 */
+uint8 air_comm_car_set_param_with_timeout(const char *name, float value, uint32 timeout_ms);
 uint8 air_comm_car_get_param(const char *name);
 
 /**

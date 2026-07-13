@@ -15,7 +15,15 @@
 #include "zf_common_headfile.h"
 
 #define MENU_AIR_MAX_PARAMS                  (128U)
-#define MENU_AIR_EXPECTED_PARAM_COUNT        (125U)
+#define MENU_AIR_EXPECTED_PARAM_COUNT        (128U)
+
+#if (MENU_AIR_EXPECTED_PARAM_COUNT > MENU_AIR_MAX_PARAMS)
+#error "Air parameter count exceeds storage capacity"
+#endif
+
+#if (MENU_AIR_EXPECTED_PARAM_COUNT > 255U)
+#error "Air parameter index exceeds uint8 protocol capacity"
+#endif
 
 #define MENU_AIR_SYNC_MODE_IDLE             (0U)
 #define MENU_AIR_SYNC_MODE_COMMIT           (1U)
@@ -23,12 +31,14 @@
 #define MENU_AIR_SYNC_MODE_DONE             (3U)
 #define MENU_AIR_SYNC_MODE_FAIL             (4U)
 #define MENU_AIR_SYNC_MODE_PULL             (5U)
+#define MENU_AIR_SYNC_MODE_RECOVER          (6U)
 #define MENU_AIR_SYNC_REASON_NONE           (0U)
 #define MENU_AIR_SYNC_REASON_BOOT           (1U)
 #define MENU_AIR_SYNC_REASON_LOAD           (2U)
 #define MENU_AIR_SYNC_REASON_MANUAL         (3U)
 #define MENU_AIR_SYNC_REASON_COMMIT         (4U)
 #define MENU_AIR_SYNC_REASON_BOOT_OVERRIDE  (5U)
+#define MENU_AIR_SYNC_REASON_BOOT_SCREEN    (6U)
 
 #define MENU_AIR_CMD_STATE_IDLE             (0U)
 #define MENU_AIR_CMD_STATE_WAIT_START_ACK   (1U)
@@ -47,6 +57,8 @@ typedef struct
     float max_val;          // 最大值
     const char *menu_name;  // 所属菜单名称
     uint8 visible;          // 0=仅从菜单隐藏，仍参与通信与Flash存档
+    const char * const *enum_labels; // 可选枚举文本，NULL表示按普通数值显示
+    uint8 enum_count;                // 枚举文本数量
 } menu_air_param_config_t;
 
 /* Air参数同步状态（供诊断页读取） */

@@ -13,7 +13,7 @@
  *   - len > MAX_PAYLOAD：丢弃，state 回 0，计 rx_oversize_count
  *   - CRC 不匹配：丢弃，计 crc_error_count
  *   - 接收队列满：丢弃新字节，计 rx_queue_overflow_count
- *   - ACK 超时：重发原帧，最多 3 次，超时后 ACK_RESULT_TIMEOUT
+ *   - ACK等待期间每200ms重发原帧，达到本次总等待时间后ACK_RESULT_TIMEOUT
  */
 
 #include "air_comm_car.h"
@@ -44,8 +44,8 @@
 #define AIR_COMM_MSG_RUN_DATA              (0x06U) /* 双向实时数据 */
 
 /* ===== 超时策略 ===== */
-#define COMM_ACK_TIMEOUT_MS                (200U)  /* ACK 超时阈值（ms） */
-#define COMM_MAX_RETRY                     (3U)    /* 最大重试次数 */
+#define COMM_ACK_RETRY_INTERVAL_MS         (200U)  /* ACK 重发间隔（ms） */
+#define COMM_ACK_TIMEOUT_MS                (800U)  /* 普通ACK总等待时间（ms） */
 #define COMM_HEARTBEAT_MS                  (200U)  /* 心跳发送间隔（ms） */
 #define COMM_OFFLINE_MS                    (600U)  /* 对端离线判定阈值（ms） */
 
@@ -79,10 +79,11 @@ typedef struct
     uint8 active;                       /* 1=有 ACK 等待中 */
     uint8 type;                         /* 等待 ACK 的消息类型 */
     uint8 seq;                          /* 等待 ACK 的帧序号 */
-    uint8 retry;                        /* 已重试次数 */
     uint8 result;                       /* ACK 结果（NONE/OK/TIMEOUT/ERROR） */
     uint8 status;                       /* 对端返回的状态码 */
-    uint32 send_time;                   /* 首次发送时间（ms） */
+    uint32 start_time;                  /* 首次发送时间（ms） */
+    uint32 send_time;                   /* 最近一次发送时间（ms） */
+    uint32 timeout_ms;                  /* 本次ACK总等待时间（ms） */
     uint8 frame[AIR_COMM_MAX_FRAME];    /* 保存的帧副本（用于重发） */
     uint16 frame_len;                   /* 帧长度 */
 } air_comm_ack_state_t;
@@ -441,7 +442,11 @@ static uint8 air_comm_send_frame(uint8 type,
  * @return 1=成功，0=失败
  * 注意：need_ack=1 时，如果已有待确认 ACK，直接返回失败
  */
-static uint8 air_comm_send(uint8 type, const uint8 *payload, uint8 len, uint8 need_ack)
+static uint8 air_comm_send(uint8 type,
+                           const uint8 *payload,
+                           uint8 len,
+                           uint8 need_ack,
+                           uint32 timeout_ms)
 {
     uint8 seq;
 
@@ -462,8 +467,9 @@ static uint8 air_comm_send(uint8 type, const uint8 *payload, uint8 len, uint8 ne
         s_air_comm_ack.active = 1U;
         s_air_comm_ack.type = type;
         s_air_comm_ack.seq = seq;
+        s_air_comm_ack.start_time = s_air_comm_tick_ms;
         s_air_comm_ack.send_time = s_air_comm_tick_ms;
-        s_air_comm_ack.retry = 0U;
+        s_air_comm_ack.timeout_ms = (timeout_ms > 0U) ? timeout_ms : COMM_ACK_TIMEOUT_MS;
         s_air_comm_ack.result = AIR_COMM_ACK_RESULT_NONE;
         s_air_comm_ack.status = AIR_COMM_STATUS_ERROR;
     }
@@ -891,9 +897,8 @@ static uint8 air_comm_rx_queue_pop(uint8 *byte)
  * @brief 检查 ACK 超时和对端在线状态
  *
  * ACK 超时处理：
- *   - 超过 200ms 无 ACK
- *   - 重试次数 < 3 → 重发保存的帧，retry++
- *   - 重试次数 >= 3 → active=0, result=TIMEOUT
+ *   - 每隔200ms无ACK时重发保存的帧
+ *   - 达到本次总等待时间后active=0, result=TIMEOUT
  *
  * 在线检测：
  *   - 超过 600ms 未收到对端心跳 → online_status=2（离线）
@@ -904,30 +909,25 @@ static void air_comm_task_ack_and_online(void)
     /* ACK 超时检查 */
     if(s_air_comm_ack.active != 0U)
     {
-        if((s_air_comm_tick_ms - s_air_comm_ack.send_time) >= COMM_ACK_TIMEOUT_MS)
+        if((s_air_comm_tick_ms - s_air_comm_ack.start_time) >= s_air_comm_ack.timeout_ms)
         {
-            if(s_air_comm_ack.retry < COMM_MAX_RETRY)
+            s_air_comm_ack.active = 0U;
+            s_air_comm_ack.result = AIR_COMM_ACK_RESULT_TIMEOUT;
+            s_air_comm_ack.status = AIR_COMM_STATUS_ERROR;
+            s_air_comm_stats.last_ack_type = s_air_comm_ack.type;
+            s_air_comm_stats.last_ack_result = AIR_COMM_ACK_RESULT_TIMEOUT;
+            s_air_comm_stats.last_ack_status = AIR_COMM_STATUS_ERROR;
+            s_air_comm_stats.ack_timeout_count++;
+        }
+        else if((s_air_comm_tick_ms - s_air_comm_ack.send_time) >= COMM_ACK_RETRY_INTERVAL_MS)
+        {
+            /* 在总等待窗口内按固定间隔重发相同序号的原帧。 */
+            if(air_comm_send_uart(s_air_comm_ack.frame, s_air_comm_ack.frame_len) != 0U)
             {
-                /* 重发 */
-                if(air_comm_send_uart(s_air_comm_ack.frame, s_air_comm_ack.frame_len) != 0U)
-                {
-                    s_air_comm_ack.send_time = s_air_comm_tick_ms;
-                    s_air_comm_ack.retry++;
-                    s_air_comm_stats.ack_retry_count++;
-                    s_air_comm_stats.tx_frame_count++;
-                    s_air_comm_stats.tx_byte_count += s_air_comm_ack.frame_len;
-                }
-            }
-            else
-            {
-                /* 重试耗尽：超时 */
-                s_air_comm_ack.active = 0U;
-                s_air_comm_ack.result = AIR_COMM_ACK_RESULT_TIMEOUT;
-                s_air_comm_ack.status = AIR_COMM_STATUS_ERROR;
-                s_air_comm_stats.last_ack_type = s_air_comm_ack.type;
-                s_air_comm_stats.last_ack_result = AIR_COMM_ACK_RESULT_TIMEOUT;
-                s_air_comm_stats.last_ack_status = AIR_COMM_STATUS_ERROR;
-                s_air_comm_stats.ack_timeout_count++;
+                s_air_comm_ack.send_time = s_air_comm_tick_ms;
+                s_air_comm_stats.ack_retry_count++;
+                s_air_comm_stats.tx_frame_count++;
+                s_air_comm_stats.tx_byte_count += s_air_comm_ack.frame_len;
             }
         }
     }
@@ -1079,7 +1079,7 @@ uint32 air_comm_car_get_tick(void)
  * @param value 参数值
  * @return 0=发送成功，1=失败
  */
-uint8 air_comm_car_set_param(const char *name, float value)
+uint8 air_comm_car_set_param_with_timeout(const char *name, float value, uint32 timeout_ms)
 {
     uint8 payload[1U + AIR_COMM_PARAM_NAME_MAX + 4U];
     uint16 name_len;
@@ -1102,7 +1102,12 @@ uint8 air_comm_car_set_param(const char *name, float value)
     air_comm_write_float(&payload[pos], value);
     pos = (uint8)(pos + 4U);
 
-    return (air_comm_send(AIR_COMM_MSG_SET_PARAM, payload, pos, 1U) != 0U) ? 0U : 1U;
+    return (air_comm_send(AIR_COMM_MSG_SET_PARAM, payload, pos, 1U, timeout_ms) != 0U) ? 0U : 1U;
+}
+
+uint8 air_comm_car_set_param(const char *name, float value)
+{
+    return air_comm_car_set_param_with_timeout(name, value, COMM_ACK_TIMEOUT_MS);
 }
 
 uint8 air_comm_car_get_param(const char *name)
@@ -1126,7 +1131,11 @@ uint8 air_comm_car_get_param(const char *name)
     memcpy(&payload[pos], name, name_len);
     pos = (uint8)(pos + (uint8)name_len);
 
-    return (air_comm_send(AIR_COMM_MSG_GET_PARAM, payload, pos, 1U) != 0U) ? 0U : 1U;
+    return (air_comm_send(AIR_COMM_MSG_GET_PARAM,
+                          payload,
+                          pos,
+                          1U,
+                          COMM_ACK_TIMEOUT_MS) != 0U) ? 0U : 1U;
 }
 
 /**
@@ -1158,7 +1167,11 @@ uint8 air_comm_car_exec_command(const char *name)
     memcpy(&payload[pos], name, name_len);
     pos = (uint8)(pos + (uint8)name_len);
 
-    return (air_comm_send(AIR_COMM_MSG_EXEC_COMMAND, payload, pos, 1U) != 0U) ? 0U : 1U;
+    return (air_comm_send(AIR_COMM_MSG_EXEC_COMMAND,
+                          payload,
+                          pos,
+                          1U,
+                          COMM_ACK_TIMEOUT_MS) != 0U) ? 0U : 1U;
 }
 
 uint8 air_comm_send_run_data(const float *data, uint8 count)
@@ -1182,7 +1195,7 @@ uint8 air_comm_send_run_data(const float *data, uint8 count)
         pos = (uint8)(pos + 4U);
     }
 
-    return air_comm_send(AIR_COMM_MSG_RUN_DATA, payload, pos, 0U);
+    return air_comm_send(AIR_COMM_MSG_RUN_DATA, payload, pos, 0U, 0U);
 }
 
 uint8 air_comm_car_has_pending_ack(void)

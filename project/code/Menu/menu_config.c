@@ -314,8 +314,8 @@ static uint8 menu_build_air_param_menus(void)
     uint16 cursor = 0U;
     uint8 group;
     uint8 other_group;
-    uint8 index;
-    uint8 other_index;
+    uint16 index;
+    uint16 other_index;
     uint8 group_count;
     const menu_air_param_config_t *config;
     const menu_air_param_config_t *other_config;
@@ -326,17 +326,17 @@ static uint8 menu_build_air_param_menus(void)
 
     for(index = 0U; index < menu_get_air_param_count(); index++)
     {
-        config = menu_get_air_param_config(index);
+        config = menu_get_air_param_config((uint8)index);
         if(config == NULL)
         {
             return 1U;
         }
 
-        for(other_index = (uint8)(index + 1U);
+        for(other_index = index + 1U;
             other_index < menu_get_air_param_count();
             other_index++)
         {
-            other_config = menu_get_air_param_config(other_index);
+            other_config = menu_get_air_param_config((uint8)other_index);
             if((other_config == NULL) || (strcmp(config->name, other_config->name) == 0))
             {
                 return 1U;
@@ -364,7 +364,7 @@ static uint8 menu_build_air_param_menus(void)
 
         for(index = 0U; index < menu_get_air_param_count(); index++)
         {
-            config = menu_get_air_param_config(index);
+            config = menu_get_air_param_config((uint8)index);
             if((config == NULL) || (config->menu_name == NULL) ||
                (config->visible == 0U) ||
                (strcmp(config->menu_name, air_param_menu[group].name) != 0))
@@ -382,7 +382,7 @@ static uint8 menu_build_air_param_menus(void)
             strncpy(item->name, config->name, sizeof(item->name) - 1U);
             item->name[sizeof(item->name) - 1U] = '\0';
             item->type = MENU_TYPE_AIR_PARAMETER;
-            item->param_index = index;
+            item->param_index = (uint8)index;
             group_count++;
         }
 
