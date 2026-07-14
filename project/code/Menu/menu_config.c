@@ -98,8 +98,12 @@ static void save_slot_0_function(void);
 static void save_slot_1_function(void);
 static void load_air_slot_0_function(void);
 static void load_air_slot_1_function(void);
+static void load_air_slot_2_function(void);
+static void load_air_slot_3_function(void);
 static void save_air_slot_0_function(void);
 static void save_air_slot_1_function(void);
+static void save_air_slot_2_function(void);
+static void save_air_slot_3_function(void);
 static void sync_air_function(void);
 static void diag_imu_function(void);
 static void diag_encoder_function(void);
@@ -224,6 +228,8 @@ static menu_item_t air_param_menu[] = {
     {"Vel PID", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode7", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Estimation", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode2 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode2 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode5", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode8 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
@@ -245,12 +251,16 @@ static menu_item_t air_command_menu[2U];
 static menu_item_t load_air_slot_menu[] = {
     {"Load Air0", MENU_TYPE_FUNCTION, .function = load_air_slot_0_function},
     {"Load Air1", MENU_TYPE_FUNCTION, .function = load_air_slot_1_function},
+    {"Load Air2", MENU_TYPE_FUNCTION, .function = load_air_slot_2_function},
+    {"Load Air3", MENU_TYPE_FUNCTION, .function = load_air_slot_3_function},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
 static menu_item_t save_air_slot_menu[] = {
     {"Save Air0", MENU_TYPE_FUNCTION, .function = save_air_slot_0_function},
     {"Save Air1", MENU_TYPE_FUNCTION, .function = save_air_slot_1_function},
+    {"Save Air2", MENU_TYPE_FUNCTION, .function = save_air_slot_2_function},
+    {"Save Air3", MENU_TYPE_FUNCTION, .function = save_air_slot_3_function},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -551,6 +561,22 @@ static void load_air_slot_1_function(void)
     }
 }
 
+static void load_air_slot_2_function(void)
+{
+    if(menu_load_air_slot(2U) == 0U)
+    {
+        menu_show_progress("Air Loading");
+    }
+}
+
+static void load_air_slot_3_function(void)
+{
+    if(menu_load_air_slot(3U) == 0U)
+    {
+        menu_show_progress("Air Loading");
+    }
+}
+
 static void save_air_slot_0_function(void)
 {
     if(menu_save_air_slot(0U) == 0U)
@@ -562,6 +588,22 @@ static void save_air_slot_0_function(void)
 static void save_air_slot_1_function(void)
 {
     if(menu_save_air_slot(1U) == 0U)
+    {
+        menu_show_success("Air Save OK");
+    }
+}
+
+static void save_air_slot_2_function(void)
+{
+    if(menu_save_air_slot(2U) == 0U)
+    {
+        menu_show_success("Air Save OK");
+    }
+}
+
+static void save_air_slot_3_function(void)
+{
+    if(menu_save_air_slot(3U) == 0U)
     {
         menu_show_success("Air Save OK");
     }
