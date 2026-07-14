@@ -13,6 +13,8 @@
 #define _MENU_CORE_H_
 
 void menu_discard_key_events(void);
+void menu_runtime_suspend(void);
+void menu_runtime_resume(void);
 
 
 
@@ -41,10 +43,9 @@ extern volatile uint8_t timer_100HZ_flag;    // 100HZ定时器标志
 // Flash存档安全配置 (CYT4BB7: 96页，每页2KB)
 #define MENU_SLOT_COUNT         4           // 存档数量
 #define MENU_SLOT_BASE_PAGE     72          // Car菜单存档使用72-79页，避开IMU page 95
-#define MENU_LEGACY_SLOT_BASE_PAGE 88       // 旧菜单只做一次兼容读取，不再写回
 #define MENU_SLOT_SIZE          2           // 每个存档占用2页(4KB)
 #define MENU_MAGIC_NUMBER       0x5A5A5A5A  // 存档验证魔数
-#define MENU_VERSION            0x01        // 存档版本
+#define MENU_VERSION            0x03        // 参数目录变化后使旧位置式存档失效
 
 // Flash安全边界检查 (CYT4BB7有96页，确保不超出限制)
 #define FLASH_SAFE_START_PAGE   MENU_SLOT_BASE_PAGE
@@ -59,16 +60,35 @@ typedef enum {
     MENU_TYPE_FUNCTION,         // 函数项
     MENU_TYPE_PARAMETER,        // 参数项
     MENU_TYPE_AIR_PARAMETER,    // Air远程参数项
+    MENU_TYPE_EXTERNAL_PARAMETER, // 外部模块浮点参数项
+    MENU_TYPE_AIR_COMMAND,      // Air远程命令项
     MENU_TYPE_DIAG_VIEW         // 只读诊断页
 } menu_type_t;
 
 // 刷新类型枚举（局部刷新优化）
 typedef enum {
     REFRESH_NONE = 0,           // 无需刷新
-    REFRESH_FULL,               // 全屏刷新（菜单切换）
+    REFRESH_VALUE,              // 数值刷新（参数编辑）
     REFRESH_SELECTION,          // 选择项刷新（上下移动）
-    REFRESH_VALUE               // 数值刷新（参数编辑）
+    REFRESH_FULL                // 页面刷新（仅更新变化内容）
 } refresh_type_t;
+
+typedef struct
+{
+    float *variable;
+    float step;
+    float min_val;
+    float max_val;
+} menu_external_param_config_t;
+
+typedef struct
+{
+    void (*render)(void);
+    void (*on_exit)(void);
+    uint8_t refresh_periodic;
+    uint8_t long_back_only;
+    uint8_t allow_runtime_locked;
+} menu_external_view_config_t;
 
 // 菜单项结构
 typedef struct menu_item {
@@ -78,6 +98,7 @@ typedef struct menu_item {
         struct menu_item* submenu;      // 子菜单指针
         void (*function)(void);         // 函数指针
         uint8_t param_index;           // 参数索引
+        menu_external_param_config_t *external_param;
     };
 } menu_item_t;
 
@@ -111,7 +132,8 @@ typedef struct {
 typedef enum {
     MENU_STATE_NORMAL = 0,      // 普通浏览模式
     MENU_STATE_EDIT,            // 参数编辑模式
-    MENU_STATE_DIAG_VIEW        // 只读诊断页模式
+    MENU_STATE_DIAG_VIEW,       // 只读诊断页模式
+    MENU_STATE_EXTERNAL_VIEW    // 外部模块页面模式
 } menu_state_t;
 
 // 按键定义
@@ -159,6 +181,8 @@ void menu_set_root(menu_item_t* root_menu);           // 设置根菜单
 void menu_enter_submenu(menu_item_t* submenu);        // 进入子菜单
 void menu_return_to_parent(void);                     // 返回上级菜单
 void menu_reset_to_first(void);                       // 重置选择到第一项
+uint8_t menu_enter_external_view(const menu_external_view_config_t *config);
+uint8_t menu_external_view_runtime_active(void);
 
 // 显示控制
 void menu_set_need_refresh(void);                     // 设置需要刷新标志
@@ -176,6 +200,8 @@ void menu_request_refresh(refresh_type_t type);       // 请求指定类型的�
 void menu_render_current_optimized(void);             // 优化的渲染函数（局部刷新）
 void menu_clear_line(uint8_t line);                   // 清除指定行
 void menu_render_single_item(uint8_t item_index);     // 渲染单个菜单项
+void menu_show_text_line(uint8_t line, const char *text, uint16_t color); // 仅更新一行中变化的字符
+void menu_invalidate_display_cache(void);             // 外部直接绘图后使文本缓存失效
 
 //====================================================内部接口（用户无需关心）====================================================
 // 按键处理内部函数

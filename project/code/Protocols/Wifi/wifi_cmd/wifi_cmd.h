@@ -34,7 +34,7 @@
 #endif
 
 #ifndef UDP_REMOTE_PORT
-#define UDP_REMOTE_PORT     "1348"               /* 上位机 UDP 端口 */
+#define UDP_REMOTE_PORT     "1349"               /* 上位机 UDP 端口 */
 #endif
 
 #ifndef UDP_LOCAL_PORT

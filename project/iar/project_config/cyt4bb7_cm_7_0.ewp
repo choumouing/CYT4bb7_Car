@@ -1228,6 +1228,12 @@
                     <name>$PROJ_DIR$\..\..\code\Estimation\Position\beacon_config.h</name>
                 </file>
                 <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\Position\beacon_position_recorder.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\Position\beacon_position_recorder.h</name>
+                </file>
+                <file>
                     <name>$PROJ_DIR$\..\..\code\Estimation\Position\fixator.c</name>
                 </file>
                 <file>
@@ -1238,6 +1244,21 @@
                 </file>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Estimation\Position\odometer.h</name>
+                </file>
+            </group>
+            <group>
+                <name>lightsequence</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\lightsequence\light_sequence.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\lightsequence\light_sequence.h</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\lightsequence\light_sequence_config.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Estimation\lightsequence\light_sequence_config.h</name>
                 </file>
             </group>
             <group>

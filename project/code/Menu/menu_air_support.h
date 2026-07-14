@@ -14,16 +14,38 @@
 
 #include "zf_common_headfile.h"
 
+#define MENU_AIR_MAX_PARAMS                  (128U)
+#define MENU_AIR_EXPECTED_PARAM_COUNT        (128U)
+
+#if (MENU_AIR_EXPECTED_PARAM_COUNT > MENU_AIR_MAX_PARAMS)
+#error "Air parameter count exceeds storage capacity"
+#endif
+
+#if (MENU_AIR_EXPECTED_PARAM_COUNT > 255U)
+#error "Air parameter index exceeds uint8 protocol capacity"
+#endif
+
 #define MENU_AIR_SYNC_MODE_IDLE             (0U)
 #define MENU_AIR_SYNC_MODE_COMMIT           (1U)
 #define MENU_AIR_SYNC_MODE_FULL             (2U)
 #define MENU_AIR_SYNC_MODE_DONE             (3U)
 #define MENU_AIR_SYNC_MODE_FAIL             (4U)
+#define MENU_AIR_SYNC_MODE_PULL             (5U)
+#define MENU_AIR_SYNC_MODE_RECOVER          (6U)
 #define MENU_AIR_SYNC_REASON_NONE           (0U)
 #define MENU_AIR_SYNC_REASON_BOOT           (1U)
 #define MENU_AIR_SYNC_REASON_LOAD           (2U)
 #define MENU_AIR_SYNC_REASON_MANUAL         (3U)
 #define MENU_AIR_SYNC_REASON_COMMIT         (4U)
+#define MENU_AIR_SYNC_REASON_BOOT_OVERRIDE  (5U)
+#define MENU_AIR_SYNC_REASON_BOOT_SCREEN    (6U)
+
+#define MENU_AIR_CMD_STATE_IDLE             (0U)
+#define MENU_AIR_CMD_STATE_WAIT_START_ACK   (1U)
+#define MENU_AIR_CMD_STATE_INSTANT_RUNNING  (2U)
+#define MENU_AIR_CMD_STATE_WAIT_EXIT_ACK    (3U)
+#define MENU_AIR_CMD_INVALID_INDEX          (0xFFU)
+#define MENU_AIR_CMD_ACK_TEXT_MAX           (96U)
 
 /* Air参数配置结构体 */
 typedef struct
@@ -33,6 +55,10 @@ typedef struct
     float step;             // 编辑步进值
     float min_val;          // 最小值
     float max_val;          // 最大值
+    const char *menu_name;  // 所属菜单名称
+    uint8 visible;          // 0=仅从菜单隐藏，仍参与通信与Flash存档
+    const char * const *enum_labels; // 可选枚举文本，NULL表示按普通数值显示
+    uint8 enum_count;                // 枚举文本数量
 } menu_air_param_config_t;
 
 /* Air参数同步状态（供诊断页读取） */
@@ -52,9 +78,19 @@ typedef struct
     uint32 timeout_count;
 } menu_air_sync_status_t;
 
+typedef struct
+{
+    uint8 state;
+    uint8 active_index;
+    uint8 last_result;
+    uint8 last_status;
+    uint32 send_tick;
+    uint32 timeout_count;
+    char last_ack_text[MENU_AIR_CMD_ACK_TEXT_MAX + 1U];
+} menu_air_cmd_status_t;
+
 /* Air参数变量（菜单可调） */
-void menu_air_support_init(void);                                                       // 初始化（注册默认参数+加载slot0）
-void menu_register_param_air(const char *name, float *var, float step, float min, float max);  // 注册Air参数
+void menu_air_support_init(void);
 uint8 menu_get_air_param_count(void);                                                   // 获取参数数量
 float menu_get_air_param_by_index(uint8 index);                                         // 按索引读取
 uint8 menu_set_air_param_by_index(uint8 index, float value);                            // 按索引设置（自动标记dirty）
@@ -63,12 +99,24 @@ uint8 menu_is_air_connected(void);                                              
 uint8 menu_can_edit_air_params(void);                                                   // 是否允许编辑（在线且未运行）
 uint8 menu_sync_all_air_params(void);                                                   // 标记所有参数为dirty（触发全量同步）
 uint8 menu_air_commit_param(uint8 index);
+uint8 menu_air_commit_param_value(uint8 index, float value);
 uint8 menu_air_sync_all_start(uint8 reason);
 uint8 menu_air_is_busy(void);
 void menu_air_stop_param_sync(void);
+void menu_air_abort_param_sync_runtime(void);
 void menu_air_update_100HZ(void);                                                       // 100HZ同步轮询
 void menu_get_air_sync_status(menu_air_sync_status_t *status);                          // 获取同步状态
 uint8 menu_load_air_slot(uint8 slot);                                                   // 从Flash加载Air参数存档
 uint8 menu_save_air_slot(uint8 slot);                                                   // 保存Air参数到Flash
+
+uint8 menu_air_command_start(uint8 index);
+uint8 menu_air_command_stop(void);
+void menu_air_command_abort_runtime(void);
+void menu_air_command_update_100HZ(void);
+uint8 menu_air_command_is_running(uint8 index);
+uint8 menu_air_command_is_active(void);
+uint8 menu_air_command_get_count(void);
+const char *menu_air_command_get_name(uint8 index);
+void menu_get_air_command_status(menu_air_cmd_status_t *status);
 
 #endif

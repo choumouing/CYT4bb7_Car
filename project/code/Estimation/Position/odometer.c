@@ -130,6 +130,24 @@ void odometer_reset(void)
     s_slip_hold_ticks = 0U;
 }
 
+/**
+ * @brief 立即应用fixator生成的待修正位置。
+ * @param 无。
+ * @return 无。
+ */
+void odometer_apply_pending_fix(void)
+{
+#if (ODOMETER_BEACON_FIXATOR_ENABLE != 0U)
+    float fixed_position[ODOMETER_AXIS_NUM];
+
+    if(fixator_get_position_fix(fixed_position) != 0U)
+    {
+        g_odometer.position[x] = fixed_position[x];
+        g_odometer.position[y] = fixed_position[y];
+    }
+#endif
+}
+
 void odometer_update_100HZ(void)
 {
     float body_vel[ODOMETER_AXIS_NUM];
@@ -200,17 +218,7 @@ void odometer_update_100HZ(void)
     g_odometer.position[x] += g_odometer.vel[x] * ODOMETER_UPDATE_DT_S;
     g_odometer.position[y] += g_odometer.vel[y] * ODOMETER_UPDATE_DT_S;
 
-#if (ODOMETER_BEACON_FIXATOR_ENABLE != 0U)
-    {
-        float fixed_position[ODOMETER_AXIS_NUM];
-
-        if(fixator_get_position_fix(fixed_position) != 0U)
-        {
-            g_odometer.position[x] = fixed_position[x];
-            g_odometer.position[y] = fixed_position[y];
-        }
-    }
-#endif
+    odometer_apply_pending_fix();
 
     wifi_core_Poll();
 

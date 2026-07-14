@@ -8,6 +8,17 @@
 #ifndef _MENU_CONFIG_H_
 #define _MENU_CONFIG_H_
 
+/* 1=Car上电时从指定存档加载本车参数，0=使用Car代码参数。 */
+#define MENU_CAR_BOOT_FLASH_LOAD_ENABLE  (0U)
+#define MENU_CAR_BOOT_FLASH_LOAD_SLOT    (0U)
+
+/* 1=Car首次连接Air时覆盖Air参数，0=保留Air代码参数并从Air读取。 */
+#define MENU_AIR_BOOT_OVERRIDE_ENABLE        (0U)
+/* 覆盖开启时：1=使用Car Flash中的Air参数，0=使用Car代码中的Air参数。 */
+#define MENU_AIR_BOOT_FLASH_LOAD_ENABLE      (0U)
+/* 覆盖关闭时，该槽仍单独作为c1_screen_mode的启动恢复来源。 */
+#define MENU_AIR_BOOT_FLASH_LOAD_SLOT        (0U)
+
 
 
 //====================================================速度环参数声明====================================================
@@ -75,22 +86,6 @@ extern float mode8_velocity_strafe_kd;
 extern float mode8_velocity_forward_kp;
 extern float mode8_velocity_forward_ki;
 extern float mode8_velocity_forward_kd;
-
-extern float mode2_image_target_deadband_px;
-extern float mode2_distance_mid_threshold_px;
-extern float mode2_distance_far_threshold_px;
-extern float mode2_distance_near_speed_mps;
-extern float mode2_distance_mid_speed_mps;
-extern float mode2_distance_far_speed_mps;
-extern float mode2_image_pid_output_limit;
-extern float mode2_image_i_limit;
-extern float mode2_image_strafe_kp;
-extern float mode2_image_strafe_ki;
-extern float mode2_image_strafe_kd;
-extern float mode2_image_forward_kp;
-extern float mode2_image_forward_ki;
-extern float mode2_image_forward_kd;
-extern float mode2_max_accel_mps2;
 
 extern float s_curve_max_iter;
 extern float s_curve_conv_tol;

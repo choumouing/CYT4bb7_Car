@@ -8,7 +8,7 @@
  *
  * 数据来源：
  *   空地串口接收无人机运行数据和遥控通道。
- *   遥控通道来自无人机 CRSF 转发的 ch0~ch7。
+ *   遥控通道来自无人机 CRSF 转发的 ch0~ch8。
  */
 
 #ifndef CAR_LOOP_H
@@ -44,6 +44,21 @@ extern volatile float g_air_pos_est_vel_x;
 extern volatile float g_air_pos_est_vel_y;
 extern volatile float g_air_state;
 
+typedef struct
+{
+    float tof_raw_height_mm[4];
+    float flow_raw_x;
+    float flow_raw_y;
+    float flow_filtered_x;
+    float flow_filtered_y;
+    float imu_raw_gyro[3];
+    float imu_raw_acc[3];
+    float imu_filtered_gyro[3];
+    float imu_filtered_acc[3];
+} air_diag_telemetry_t;
+
+extern volatile air_diag_telemetry_t g_air_diag_telemetry;
+
 extern volatile float g_air_crsf_std_ch0;
 extern volatile float g_air_crsf_std_ch1;
 extern volatile float g_air_crsf_std_ch2;
@@ -52,6 +67,7 @@ extern volatile float g_air_crsf_std_ch4;
 extern volatile float g_air_crsf_std_ch5;
 extern volatile float g_air_crsf_std_ch6;
 extern volatile float g_air_crsf_std_ch7;
+extern volatile float g_air_crsf_std_ch8;
 extern volatile float g_air_yaw_angle_target_deg;
 extern volatile float g_air_sync_time_ms;
 extern volatile float g_air_car_plan_valid;
@@ -62,6 +78,8 @@ extern volatile float g_air_car_plan_beacon_index;
 extern volatile float g_air_car_plan_dist_px;
 extern volatile float g_air_beacon_lost_flag;
 
+/* Car实际输出或Air处于起飞、飞行、降落时返回1。 */
+uint8 car_menu_is_runtime_locked(void);
 /* 初始化：清零所有状态和标志位 */
 void car_loop_init(void);
 /* 主循环轮询：内部按 1000/100/25Hz 分频执行各周期任务 */
