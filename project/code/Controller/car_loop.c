@@ -391,7 +391,7 @@ static void car_loop_100HZ(void)
     car_data[0] = g_odometer.body_vel[x]; /* 实际横向速度，右正，m/s */
     car_data[1] = g_odometer.body_vel[y]; /* 实际前向速度，前正，m/s */
     car_data[2] = (g_beacon_detection.on_beacon != 0U) ? 1.0f : 0.0f;
-    car_data[3] = 0.0f;
+    car_data[3] = g_euler.yaw;
     car_data[4] = 0.0f;
     car_data[5] = 0.0f;
     car_data[6] = 0.0f;
