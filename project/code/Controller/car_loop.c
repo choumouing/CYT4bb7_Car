@@ -401,31 +401,6 @@ static void car_loop_100HZ(void)
     car_data[10] = (float)s_system_time_ms;
     air_comm_send_run_data(car_data, 11);
 
-    {
-        wifi_justfloat((float)light_sequence_result.status,             /* I1: 识别状态 */
-                       (float)light_sequence_result.last_beacon_id,     /* I2: 最近熄灭灯号 */
-                       (float)light_sequence_result.sequence_id,        /* I3: 唯一序列号 */
-                       (float)light_sequence_result.candidate_count,    /* I4: 剩余候选数量 */
-                       ((light_sequence_result.candidate_mask & 0x001U) != 0U) ? 1.0f : 0.0f, /* I5: 序列1 */
-                       ((light_sequence_result.candidate_mask & 0x002U) != 0U) ? 1.0f : 0.0f, /* I6: 序列2 */
-                       ((light_sequence_result.candidate_mask & 0x004U) != 0U) ? 1.0f : 0.0f, /* I7: 序列3 */
-                       ((light_sequence_result.candidate_mask & 0x008U) != 0U) ? 1.0f : 0.0f, /* I8: 序列4 */
-                       ((light_sequence_result.candidate_mask & 0x010U) != 0U) ? 1.0f : 0.0f, /* I9: 序列5 */
-                       ((light_sequence_result.candidate_mask & 0x020U) != 0U) ? 1.0f : 0.0f, /* I10: 序列6 */
-                       ((light_sequence_result.candidate_mask & 0x040U) != 0U) ? 1.0f : 0.0f, /* I11: 序列7 */
-                       ((light_sequence_result.candidate_mask & 0x080U) != 0U) ? 1.0f : 0.0f, /* I12: 序列8 */
-                       ((light_sequence_result.candidate_mask & 0x100U) != 0U) ? 1.0f : 0.0f, /* I13: 序列9 */
-                       ((light_sequence_result.candidate_mask & 0x200U) != 0U) ? 1.0f : 0.0f, /* I14: 序列10 */
-                       g_odometer.position[x],                                /* I15: 修正后全局X坐标，单位m */
-                       g_odometer.position[y],                                /* I16: 修正后全局Y坐标，单位m */
-                       g_air_beacon_lost_flag,
-                       encoder_get_left_front_count(),
-                       encoder_get_right_front_count(),
-                       encoder_get_left_rear_count(),
-                       encoder_get_right_rear_count()
-                    );                               /* I17: Air灭灯事件标志 */
-    }
-
     // wifi_justfloat((float)car_mode_get(),
     //                g_air_euler_yaw,
     //                g_air_yaw_angle_target_deg,
@@ -440,22 +415,22 @@ static void car_loop_100HZ(void)
     //                g_car_mode8_state.strafe_target,
     //                (float)g_car_mode8_state.output_valid);
 
-    // wifi_justfloat(g_air_tof_fused_height_mm,
-    //             g_air_euler_roll,
-    //             g_air_euler_pitch,
-    //             g_air_euler_yaw,
-    //             g_air_pos_est_vel_x,
-    //             g_air_pos_est_vel_y,
-    //             g_air_state,
-    //             g_air_crsf_std_ch0,
-    //             g_air_crsf_std_ch1,
-    //             g_air_crsf_std_ch2,
-    //             g_air_crsf_std_ch3,
-    //             g_air_crsf_std_ch4,
-    //             g_air_crsf_std_ch5,
-    //             g_air_crsf_std_ch6,
-    //             g_air_crsf_std_ch7,
-    //             g_air_crsf_std_ch8);
+    wifi_justfloat(g_air_tof_fused_height_mm,
+                 g_air_euler_roll,
+                 g_air_euler_pitch,
+                 g_air_euler_yaw,
+                 g_air_pos_est_vel_x,
+                 g_air_pos_est_vel_y,
+                 g_air_state,
+                 g_air_crsf_std_ch0,
+                 g_air_crsf_std_ch1,
+                 g_air_crsf_std_ch2,
+                 g_air_crsf_std_ch3,
+                 g_air_crsf_std_ch4,
+                 g_air_crsf_std_ch5,
+                 g_air_crsf_std_ch6,
+                 g_air_crsf_std_ch7,
+                 g_air_crsf_std_ch8);
 }
 
 static void car_loop_25HZ(void)
