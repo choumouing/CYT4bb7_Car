@@ -235,6 +235,7 @@ static menu_item_t air_param_menu[] = {
     {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Core1 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"2BL3 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Car Plan", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
