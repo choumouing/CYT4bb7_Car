@@ -250,8 +250,6 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(bl3_exp_time, 500.0f, 1.0f, 0.0f, 636.0f, "2BL3 Img"),
     MENU_AIR_ENUM_PARAM(c1_screen_mode, 0.0f, 1.0f, 0.0f, 2.0f, "Core1 Img",
                         s_air_screen_mode_labels),
-
-    MENU_AIR_PARAM(menutest2,2,1.0f,0.0f,3.0f, "Basic")
 };
 
 typedef char menu_air_param_count_must_match[
