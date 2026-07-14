@@ -315,7 +315,7 @@ static uint8 menu_build_air_param_menus(void)
     uint8 other_group;
     uint16 index;
     uint16 other_index;
-    uint8 group_count;
+    uint16 group_count;
     const menu_air_param_config_t *config;
     const menu_air_param_config_t *other_config;
     menu_item_t *item;
@@ -500,7 +500,8 @@ void menu_config_init(void)
     }
 
     menu_air_support_init();
-    if(menu_build_air_param_menus() != 0U)
+    if((menu_get_air_param_count() != MENU_AIR_EXPECTED_PARAM_COUNT) ||
+       (menu_build_air_param_menus() != 0U))
     {
         menu_show_error("Air Menu Error");
         return;

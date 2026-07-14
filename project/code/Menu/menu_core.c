@@ -13,11 +13,11 @@
 // 菜单状态变量
 static menu_item_t* current_menu = NULL;               // 当前菜单
 static menu_item_t* menu_stack[MENU_MAX_DEPTH];        // 菜单堆栈
-static uint8_t menu_index_stack[MENU_MAX_DEPTH];       // 返回时恢复的索引
-static uint8_t menu_offset_stack[MENU_MAX_DEPTH];      // 返回时恢复的偏移
+static uint16_t menu_index_stack[MENU_MAX_DEPTH];      // 返回时恢复的索引
+static uint16_t menu_offset_stack[MENU_MAX_DEPTH];     // 返回时恢复的偏移
 static uint8_t menu_depth = 0;                         // 当前菜单深度
-static uint8_t current_index = 0;                      // 当前选中项索引
-static uint8_t current_item_count = 0;                 // 当前菜单项数量
+static uint16_t current_index = 0;                     // 当前选中项索引
+static uint16_t current_item_count = 0;                // 当前菜单项数量
 static menu_state_t menu_state = MENU_STATE_NORMAL;    // 菜单状态
 
 // 参数管理变量
@@ -30,12 +30,12 @@ static float air_edit_value = 0.0f;
 
 // 显示控制变量
 static uint8_t need_refresh = 1;                       // 需要刷新标志
-static uint8_t display_offset = 0;                     // 显示偏移量（滚动支持）
+static uint16_t display_offset = 0;                    // 显示偏移量（滚动支持）
 static uint8_t diag_refresh_divider = 0;               // 动态页面20Hz刷新分频
 
 // 局部刷新优化变量
 static refresh_type_t refresh_type = REFRESH_FULL;     // 刷新类型
-static uint8_t last_selected_index = 0;                // 上次选中的项索引
+static uint16_t last_selected_index = 0;               // 上次选中的项索引
 #define MENU_DISPLAY_COLUMNS       (30U)
 static char display_text_cache[MENU_MAX_VISIBLE_LINES][MENU_DISPLAY_COLUMNS + 1U];
 static uint16_t display_color_cache[MENU_MAX_VISIBLE_LINES];
@@ -1208,7 +1208,7 @@ void menu_key_handler(menu_key_t key)
                         if(current_item_count > MENU_MAX_VISIBLE_LINES)
                         {
                             // 计算最后一页的起始偏移
-                            uint8_t last_page_start = ((current_item_count - 1) / MENU_MAX_VISIBLE_LINES) * MENU_MAX_VISIBLE_LINES;
+                            uint16_t last_page_start = ((current_item_count - 1U) / MENU_MAX_VISIBLE_LINES) * MENU_MAX_VISIBLE_LINES;
                             display_offset = last_page_start;
                         }
                         else
@@ -1603,18 +1603,16 @@ void menu_render_current(void)
 
     if(display_offset < current_item_count)
     {
-        display_count = (uint8_t)(current_item_count - display_offset);
-        if(display_count > MENU_MAX_VISIBLE_LINES)
-        {
-            display_count = MENU_MAX_VISIBLE_LINES;
-        }
+        uint16_t remaining_count = current_item_count - display_offset;
+        display_count = (remaining_count > MENU_MAX_VISIBLE_LINES) ?
+                        MENU_MAX_VISIBLE_LINES : (uint8_t)remaining_count;
     }
 
     for(i = 0U; i < MENU_MAX_VISIBLE_LINES; i++)
     {
         if(i < display_count)
         {
-            uint8_t item_index = (uint8_t)(display_offset + i);
+            uint16_t item_index = display_offset + i;
             uint8_t selected = (item_index == current_index);
             uint8_t editing = (selected && menu_state == MENU_STATE_EDIT);
 
@@ -1851,7 +1849,7 @@ void menu_clear_line(uint8_t line)
 /**
  * @brief 渲染单个菜单项（用于局部刷新）
  */
-void menu_render_single_item(uint8_t item_index)
+void menu_render_single_item(uint16_t item_index)
 {
     if(current_menu == NULL || item_index >= current_item_count) return;
 
@@ -1859,7 +1857,7 @@ void menu_render_single_item(uint8_t item_index)
     if(item_index < display_offset ||
        item_index >= display_offset + MENU_MAX_VISIBLE_LINES) return;
 
-    uint8_t line = item_index - display_offset;
+    uint8_t line = (uint8_t)(item_index - display_offset);
     uint8_t selected = (item_index == current_index);
     uint8_t editing = (selected && menu_state == MENU_STATE_EDIT);
 

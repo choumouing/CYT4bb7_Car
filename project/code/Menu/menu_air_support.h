@@ -14,15 +14,15 @@
 
 #include "zf_common_headfile.h"
 
-#define MENU_AIR_MAX_PARAMS                  (128U)
-#define MENU_AIR_EXPECTED_PARAM_COUNT        (128U)
+#define MENU_AIR_MAX_PARAMS                  (256U)
+#define MENU_AIR_EXPECTED_PARAM_COUNT        (129U)
 
 #if (MENU_AIR_EXPECTED_PARAM_COUNT > MENU_AIR_MAX_PARAMS)
 #error "Air parameter count exceeds storage capacity"
 #endif
 
-#if (MENU_AIR_EXPECTED_PARAM_COUNT > 255U)
-#error "Air parameter index exceeds uint8 protocol capacity"
+#if (MENU_AIR_MAX_PARAMS > 256U)
+#error "Air parameter index exceeds menu item capacity"
 #endif
 
 #define MENU_AIR_SYNC_MODE_IDLE             (0U)
@@ -64,10 +64,10 @@ typedef struct
 /* Air参数同步状态（供诊断页读取） */
 typedef struct
 {
-    uint8 dirty_count;          // 待同步参数数量
+    uint16 dirty_count;         // 待同步参数数量
     uint8 sending;              // 是否正在发送
-    uint8 active_index;         // 当前正在同步的参数索引
-    uint8 last_failed_index;    // 上次同步失败的索引
+    uint16 active_index;        // 当前正在同步的参数索引
+    uint16 last_failed_index;   // 上次同步失败的索引
     uint8 last_result;          // 上次ACK结果
     uint8 last_status;          // 上次ACK状态码
     uint32 send_count;          // 总发送次数
@@ -91,7 +91,7 @@ typedef struct
 
 /* Air参数变量（菜单可调） */
 void menu_air_support_init(void);
-uint8 menu_get_air_param_count(void);                                                   // 获取参数数量
+uint16 menu_get_air_param_count(void);                                                  // 获取参数数量
 float menu_get_air_param_by_index(uint8 index);                                         // 按索引读取
 uint8 menu_set_air_param_by_index(uint8 index, float value);                            // 按索引设置（自动标记dirty）
 const menu_air_param_config_t *menu_get_air_param_config(uint8 index);                  // 获取参数配置

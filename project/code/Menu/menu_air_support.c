@@ -6,7 +6,7 @@
 #define MENU_AIR_SLOT_SIZE                  (2U)
 #define MENU_AIR_MAGIC_NUMBER               (0x41495250UL)
 #define MENU_AIR_VERSION                    (4U)
-#define MENU_AIR_SYNC_INVALID_INDEX         (0xFFU)
+#define MENU_AIR_SYNC_INVALID_INDEX         (0xFFFFU)
 #define MENU_AIR_ACK_TYPE_SET_PARAM         (0x01U)
 #define MENU_AIR_ACK_TYPE_COMMAND           (0x03U)
 #define MENU_AIR_ACK_TYPE_GET_PARAM         (0x07U)
@@ -59,10 +59,20 @@ typedef struct
 
 typedef char menu_air_slot_param_size_must_be_two_words[
     (sizeof(menu_air_slot_param_t) == (2U * sizeof(uint32))) ? 1 : -1];
-typedef char menu_air_slot_data_must_fit_page[
-    ((((sizeof(menu_air_slot_header_t) + 3U) / 4U) +
-      (MENU_AIR_MAX_PARAMS * (sizeof(menu_air_slot_param_t) / sizeof(uint32)))) <=
-     FLASH_PAGE_LENGTH) ? 1 : -1];
+
+/* 每个Air槽预留两页；第一页保持旧格式，超过首页容量后续写第二页。 */
+#define MENU_AIR_SLOT_HEADER_WORDS \
+    ((uint32)((sizeof(menu_air_slot_header_t) + sizeof(uint32) - 1U) / sizeof(uint32)))
+#define MENU_AIR_SLOT_PARAM_WORDS \
+    ((uint32)(sizeof(menu_air_slot_param_t) / sizeof(uint32)))
+#define MENU_AIR_SLOT_FIRST_PAGE_PARAMS \
+    ((uint16)((FLASH_PAGE_LENGTH - MENU_AIR_SLOT_HEADER_WORDS) / MENU_AIR_SLOT_PARAM_WORDS))
+#define MENU_AIR_SLOT_NEXT_PAGE_PARAMS \
+    ((uint16)(FLASH_PAGE_LENGTH / MENU_AIR_SLOT_PARAM_WORDS))
+
+typedef char menu_air_slot_data_must_fit_pages[
+    (MENU_AIR_MAX_PARAMS <=
+     (MENU_AIR_SLOT_FIRST_PAGE_PARAMS + MENU_AIR_SLOT_NEXT_PAGE_PARAMS)) ? 1 : -1];
 
 static float s_air_param_values[MENU_AIR_MAX_PARAMS];
 static float s_air_confirmed_values[MENU_AIR_MAX_PARAMS];
@@ -78,7 +88,7 @@ static uint8 s_air_boot_override_done;
 static uint8 s_air_catalog_ready;
 static uint32 s_air_pull_retry_tick;
 static uint8 s_air_deferred_error_reason;
-static uint8 s_air_recover_index;
+static uint16 s_air_recover_index;
 static uint8 s_air_boot_screen_restore_done;
 static menu_air_cmd_status_t s_air_cmd_status;
 
@@ -239,17 +249,19 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(c1_exp_time, 400.0f, 1.0f, 0.0f, 636.0f, "Core1 Img"),
     MENU_AIR_PARAM(bl3_exp_time, 500.0f, 1.0f, 0.0f, 636.0f, "2BL3 Img"),
     MENU_AIR_ENUM_PARAM(c1_screen_mode, 0.0f, 1.0f, 0.0f, 2.0f, "Core1 Img",
-                        s_air_screen_mode_labels)
+                        s_air_screen_mode_labels),
+
+    MENU_AIR_PARAM(menutest2,2,1.0f,0.0f,3.0f, "Basic")
 };
 
 typedef char menu_air_param_count_must_match[
     ((sizeof(s_air_param_definitions) / sizeof(s_air_param_definitions[0])) ==
      MENU_AIR_EXPECTED_PARAM_COUNT) ? 1 : -1];
 
-static uint8 menu_air_dirty_count(void)
+static uint16 menu_air_dirty_count(void)
 {
     uint16 index;
-    uint8 count = 0U;
+    uint16 count = 0U;
 
     for(index = 0U; index < s_air_param_count; index++)
     {
@@ -268,7 +280,7 @@ static uint8 menu_air_ack_is_success(uint8 result, uint8 status)
              ((result == AIR_COMM_ACK_RESULT_ERROR) && (status == AIR_COMM_STATUS_OUT_OF_RANGE))) ? 1U : 0U);
 }
 
-static uint8 menu_air_param_is_exposure(uint8 index)
+static uint8 menu_air_param_is_exposure(uint16 index)
 {
     if(index >= s_air_param_count)
     {
@@ -279,7 +291,7 @@ static uint8 menu_air_param_is_exposure(uint8 index)
             (strcmp(s_air_params[index].name, MENU_AIR_2BL3_EXPOSURE_NAME) == 0)) ? 1U : 0U;
 }
 
-static uint8 menu_air_send_set_param(uint8 index, float value)
+static uint8 menu_air_send_set_param(uint16 index, float value)
 {
     if(index >= s_air_param_count)
     {
@@ -296,7 +308,7 @@ static uint8 menu_air_send_set_param(uint8 index, float value)
     return air_comm_car_set_param(s_air_params[index].name, value);
 }
 
-static uint8 menu_air_ack_failure_is_structural(uint8 active_index,
+static uint8 menu_air_ack_failure_is_structural(uint16 active_index,
                                                  uint8 ack_type,
                                                  uint8 expected_type,
                                                  uint8 ack_result,
@@ -323,7 +335,7 @@ static uint8 menu_air_ack_failure_is_structural(uint8 active_index,
             (ack_status == AIR_COMM_STATUS_NOT_FOUND)) ? 1U : 0U;
 }
 
-static void menu_air_store_confirmed(uint8 index, float value)
+static void menu_air_store_confirmed(uint16 index, float value)
 {
     if((index >= s_air_param_count) || (s_air_params[index].variable == NULL))
     {
@@ -338,7 +350,7 @@ static void menu_air_store_confirmed(uint8 index, float value)
     s_air_confirmed_valid[index] = 1U;
 }
 
-static void menu_air_restore_confirmed(uint8 index)
+static void menu_air_restore_confirmed(uint16 index)
 {
     if((index >= s_air_param_count) ||
        (s_air_params[index].variable == NULL) ||
@@ -408,7 +420,7 @@ static void menu_air_sync_reset(uint8 mode)
     s_air_recover_index = MENU_AIR_SYNC_INVALID_INDEX;
 }
 
-static void menu_air_start_param_recovery(uint8 index)
+static void menu_air_start_param_recovery(uint16 index)
 {
     menu_air_sync_reset(MENU_AIR_SYNC_MODE_RECOVER);
     s_air_sync_status.reason = MENU_AIR_SYNC_REASON_COMMIT;
@@ -428,7 +440,7 @@ static void menu_air_clear_dirty(void)
     s_air_sync_status.dirty_count = 0U;
 }
 
-static void menu_air_record_failure(uint8 index, uint8 result, uint8 status)
+static void menu_air_record_failure(uint16 index, uint8 result, uint8 status)
 {
     s_air_sync_status.last_failed_index = index;
     s_air_sync_status.last_result = result;
@@ -460,18 +472,52 @@ static uint32 menu_air_name_hash(const char *name)
     return hash;
 }
 
-static uint32 menu_air_calc_buffer_checksum(uint16 word_count, uint32 offset)
+static uint32 menu_air_checksum_add(uint32 checksum, uint32 word_index, uint32 value_bits)
+{
+    checksum ^= value_bits;
+    checksum = (checksum << 5) | (checksum >> 27);
+    checksum += (word_index + 1U) * 2654435761UL;
+    return checksum;
+}
+
+static uint32 menu_air_calc_buffer_checksum(uint32 checksum,
+                                            uint32 first_word_index,
+                                            uint16 word_count,
+                                            uint32 offset)
+{
+    uint16 index;
+
+    for(index = 0U; index < word_count; index++)
+    {
+        checksum = menu_air_checksum_add(
+            checksum,
+            first_word_index + index,
+            flash_union_buffer[offset + index].uint32_type);
+    }
+
+    return checksum;
+}
+
+static uint16 menu_air_slot_first_page_count(uint16 param_count)
+{
+    return (param_count < MENU_AIR_SLOT_FIRST_PAGE_PARAMS) ?
+           param_count : MENU_AIR_SLOT_FIRST_PAGE_PARAMS;
+}
+
+static uint32 menu_air_calc_current_params_checksum(void)
 {
     uint16 index;
     uint32 checksum = 0x13572468UL;
     uint32 value_bits;
+    uint32 word_index = 0U;
 
-    for(index = 0U; index < word_count; index++)
+    for(index = 0U; index < s_air_param_count; index++)
     {
-        value_bits = flash_union_buffer[offset + index].uint32_type;
-        checksum ^= value_bits;
-        checksum = (checksum << 5) | (checksum >> 27);
-        checksum += (uint32)(index + 1U) * 2654435761UL;
+        checksum = menu_air_checksum_add(checksum,
+                                         word_index++,
+                                         menu_air_name_hash(s_air_params[index].name));
+        memcpy(&value_bits, s_air_params[index].variable, sizeof(value_bits));
+        checksum = menu_air_checksum_add(checksum, word_index++, value_bits);
     }
 
     return checksum;
@@ -480,9 +526,10 @@ static uint32 menu_air_calc_buffer_checksum(uint16 word_count, uint32 offset)
 static uint8 menu_air_slot_valid(uint8 slot, menu_air_slot_header_t *out_header)
 {
     uint32 page;
-    uint32 offset;
-    uint32 data_words;
-    menu_air_slot_header_t *header;
+    uint32 checksum = 0x13572468UL;
+    uint16 first_count;
+    uint16 second_count;
+    menu_air_slot_header_t header;
 
     if(slot >= MENU_AIR_SLOT_COUNT)
     {
@@ -501,45 +548,102 @@ static uint8 menu_air_slot_valid(uint8 slot, menu_air_slot_header_t *out_header)
     }
 
     flash_read_page_to_buffer(0U, page, FLASH_PAGE_LENGTH);
-    header = (menu_air_slot_header_t *)flash_union_buffer;
+    memcpy(&header, flash_union_buffer, sizeof(header));
 
-    offset = (uint32)((sizeof(menu_air_slot_header_t) + 3U) / 4U);
-    data_words = (uint32)header->param_count *
-                 (uint32)(sizeof(menu_air_slot_param_t) / sizeof(uint32));
-
-    if((header->magic != MENU_AIR_MAGIC_NUMBER) ||
-       (header->version != MENU_AIR_VERSION) ||
-       (header->slot_id != slot) ||
-       (header->param_count == 0U) ||
-       (header->param_count > MENU_AIR_MAX_PARAMS) ||
-       ((offset + data_words) > FLASH_PAGE_LENGTH))
+    if((header.magic != MENU_AIR_MAGIC_NUMBER) ||
+       (header.version != MENU_AIR_VERSION) ||
+       (header.slot_id != slot) ||
+       (header.param_count == 0U) ||
+       (header.param_count > MENU_AIR_MAX_PARAMS))
     {
         return 0U;
     }
 
-    if(header->checksum != menu_air_calc_buffer_checksum((uint16)data_words, offset))
+    first_count = menu_air_slot_first_page_count(header.param_count);
+    second_count = (uint16)(header.param_count - first_count);
+    if(second_count > MENU_AIR_SLOT_NEXT_PAGE_PARAMS)
+    {
+        return 0U;
+    }
+
+    checksum = menu_air_calc_buffer_checksum(
+        checksum,
+        0U,
+        (uint16)(first_count * MENU_AIR_SLOT_PARAM_WORDS),
+        MENU_AIR_SLOT_HEADER_WORDS);
+
+    if(second_count > 0U)
+    {
+        if(flash_check(0U, page + 1U) == 0U)
+        {
+            return 0U;
+        }
+
+        flash_read_page_to_buffer(0U, page + 1U, FLASH_PAGE_LENGTH);
+        checksum = menu_air_calc_buffer_checksum(
+            checksum,
+            (uint32)first_count * MENU_AIR_SLOT_PARAM_WORDS,
+            (uint16)(second_count * MENU_AIR_SLOT_PARAM_WORDS),
+            0U);
+    }
+
+    if(header.checksum != checksum)
     {
         return 0U;
     }
 
     if(out_header != NULL)
     {
-        *out_header = *header;
+        *out_header = header;
     }
 
     return 1U;
 }
 
+static void menu_air_apply_slot_page(uint32 page,
+                                     uint32 offset,
+                                     uint16 saved_count)
+{
+    uint16 index;
+    uint16 saved_index;
+    uint32 name_hash;
+    float value;
+    menu_air_slot_param_t *slot_params;
+
+    if(saved_count == 0U)
+    {
+        return;
+    }
+
+    flash_read_page_to_buffer(0U, page, FLASH_PAGE_LENGTH);
+    slot_params = (menu_air_slot_param_t *)&flash_union_buffer[offset];
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        name_hash = menu_air_name_hash(s_air_params[index].name);
+        for(saved_index = 0U; saved_index < saved_count; saved_index++)
+        {
+            if(slot_params[saved_index].name_hash != name_hash)
+            {
+                continue;
+            }
+
+            value = car_math_clampf(slot_params[saved_index].value,
+                                    s_air_params[index].min_val,
+                                    s_air_params[index].max_val);
+            *(s_air_params[index].variable) = value;
+            break;
+        }
+    }
+}
+
 /* 从Car Flash读取指定Air存档到本地缓存，不触发串口同步。 */
 static uint8 menu_air_load_slot_values(uint8 slot)
 {
-    uint32 offset;
-    uint32 name_hash;
     uint16 index;
-    uint16 saved_index;
+    uint16 first_count;
+    uint16 second_count;
     float value;
     menu_air_slot_header_t header;
-    menu_air_slot_param_t *slot_params;
 
     if(menu_air_slot_valid(slot, &header) == 0U)
     {
@@ -554,52 +658,36 @@ static uint8 menu_air_load_slot_values(uint8 slot)
         *(s_air_params[index].variable) = value;
     }
 
-    offset = (uint32)((sizeof(menu_air_slot_header_t) + 3U) / 4U);
-    slot_params = (menu_air_slot_param_t *)&flash_union_buffer[offset];
-
-    for(index = 0U; index < s_air_param_count; index++)
-    {
-        name_hash = menu_air_name_hash(s_air_params[index].name);
-        for(saved_index = 0U; saved_index < header.param_count; saved_index++)
-        {
-            if(slot_params[saved_index].name_hash != name_hash)
-            {
-                continue;
-            }
-
-            value = slot_params[saved_index].value;
-            value = car_math_clampf(value,
-                                    s_air_params[index].min_val,
-                                    s_air_params[index].max_val);
-            *(s_air_params[index].variable) = value;
-            break;
-        }
-    }
+    first_count = menu_air_slot_first_page_count(header.param_count);
+    second_count = (uint16)(header.param_count - first_count);
+    menu_air_apply_slot_page(MENU_AIR_SLOT_BASE_PAGE + ((uint32)slot * MENU_AIR_SLOT_SIZE),
+                             MENU_AIR_SLOT_HEADER_WORDS,
+                             first_count);
+    menu_air_apply_slot_page(MENU_AIR_SLOT_BASE_PAGE + ((uint32)slot * MENU_AIR_SLOT_SIZE) + 1U,
+                             0U,
+                             second_count);
 
     menu_air_clear_dirty();
     return 0U;
 }
 
-/* 仅读取一个按名称保存的参数；旧存档缺少该字段时保持目标端实际值。 */
-static uint8 menu_air_load_slot_param_value(uint8 slot, const char *name, float *value)
+static uint8 menu_air_find_slot_value_in_page(uint32 page,
+                                              uint32 offset,
+                                              uint16 saved_count,
+                                              uint32 name_hash,
+                                              float *value)
 {
-    uint32 offset;
-    uint32 name_hash;
     uint16 saved_index;
-    menu_air_slot_header_t header;
     menu_air_slot_param_t *slot_params;
 
-    if((name == NULL) || (value == NULL) ||
-       (menu_air_slot_valid(slot, &header) == 0U))
+    if(saved_count == 0U)
     {
         return 0U;
     }
 
-    offset = (uint32)((sizeof(menu_air_slot_header_t) + 3U) / 4U);
+    flash_read_page_to_buffer(0U, page, FLASH_PAGE_LENGTH);
     slot_params = (menu_air_slot_param_t *)&flash_union_buffer[offset];
-    name_hash = menu_air_name_hash(name);
-
-    for(saved_index = 0U; saved_index < header.param_count; saved_index++)
+    for(saved_index = 0U; saved_index < saved_count; saved_index++)
     {
         if(slot_params[saved_index].name_hash == name_hash)
         {
@@ -611,7 +699,42 @@ static uint8 menu_air_load_slot_param_value(uint8 slot, const char *name, float 
     return 0U;
 }
 
-static uint8 menu_air_find_param_index(const char *name, uint8 *out_index)
+/* 仅读取一个按名称保存的参数；旧存档缺少该字段时保持目标端实际值。 */
+static uint8 menu_air_load_slot_param_value(uint8 slot, const char *name, float *value)
+{
+    uint32 page;
+    uint32 name_hash;
+    uint16 first_count;
+    uint16 second_count;
+    menu_air_slot_header_t header;
+
+    if((name == NULL) || (value == NULL) ||
+       (menu_air_slot_valid(slot, &header) == 0U))
+    {
+        return 0U;
+    }
+
+    page = MENU_AIR_SLOT_BASE_PAGE + ((uint32)slot * MENU_AIR_SLOT_SIZE);
+    name_hash = menu_air_name_hash(name);
+    first_count = menu_air_slot_first_page_count(header.param_count);
+    second_count = (uint16)(header.param_count - first_count);
+    if(menu_air_find_slot_value_in_page(page,
+                                        MENU_AIR_SLOT_HEADER_WORDS,
+                                        first_count,
+                                        name_hash,
+                                        value) != 0U)
+    {
+        return 1U;
+    }
+
+    return menu_air_find_slot_value_in_page(page + 1U,
+                                            0U,
+                                            second_count,
+                                            name_hash,
+                                            value);
+}
+
+static uint8 menu_air_find_param_index(const char *name, uint16 *out_index)
 {
     uint16 index;
 
@@ -624,7 +747,7 @@ static uint8 menu_air_find_param_index(const char *name, uint8 *out_index)
     {
         if(strcmp(s_air_params[index].name, name) == 0)
         {
-            *out_index = (uint8)index;
+            *out_index = index;
             return 1U;
         }
     }
@@ -635,7 +758,7 @@ static uint8 menu_air_find_param_index(const char *name, uint8 *out_index)
 /* 全量启动覆盖关闭时，仅从启动槽恢复核1屏幕模式。 */
 static uint8 menu_air_start_boot_screen_restore(void)
 {
-    uint8 index;
+    uint16 index;
     float value;
 
     if((menu_air_find_param_index(MENU_AIR_CORE1_SCREEN_MODE_NAME, &index) == 0U) ||
@@ -690,6 +813,7 @@ static void menu_air_load_code_defaults(void)
 void menu_air_support_init(void)
 {
     uint16 index;
+    uint16 other_index;
     const menu_air_param_definition_t *definition;
 
     s_air_param_count = 0U;
@@ -735,12 +859,24 @@ void menu_air_support_init(void)
                                                    definition->min_val,
                                                    definition->max_val);
     }
+
+    for(index = 0U; index < MENU_AIR_EXPECTED_PARAM_COUNT; index++)
+    {
+        for(other_index = 0U; other_index < index; other_index++)
+        {
+            if(menu_air_name_hash(s_air_params[index].name) ==
+               menu_air_name_hash(s_air_params[other_index].name))
+            {
+                return;
+            }
+        }
+    }
     s_air_param_count = MENU_AIR_EXPECTED_PARAM_COUNT;
 }
 
-uint8 menu_get_air_param_count(void)
+uint16 menu_get_air_param_count(void)
 {
-    return (uint8)s_air_param_count;
+    return s_air_param_count;
 }
 
 float menu_get_air_param_by_index(uint8 index)
@@ -839,7 +975,7 @@ uint8 menu_air_sync_all_start(uint8 reason)
 
     menu_air_sync_reset(MENU_AIR_SYNC_MODE_FULL);
     s_air_sync_status.reason = reason;
-    s_air_sync_status.dirty_count = (uint8)s_air_param_count;
+    s_air_sync_status.dirty_count = s_air_param_count;
     s_air_sync_status.last_result = AIR_COMM_ACK_RESULT_NONE;
     s_air_sync_status.last_status = AIR_COMM_STATUS_ERROR;
 
@@ -1032,7 +1168,7 @@ void menu_air_update_100HZ(void)
     uint8 ack_type = 0U;
     uint8 ack_result = AIR_COMM_ACK_RESULT_NONE;
     uint8 ack_status = AIR_COMM_STATUS_ERROR;
-    uint8 active_index;
+    uint16 active_index;
     uint8 expected_type;
     uint8 online = menu_is_air_connected();
     uint8 current_mode;
@@ -1319,7 +1455,7 @@ void menu_air_update_100HZ(void)
             return;
         }
 
-        active_index = (uint8)s_air_sync_next_index;
+        active_index = s_air_sync_next_index;
         air_comm_car_clear_last_ack();
         if(air_comm_car_get_param(s_air_params[active_index].name) == 0U)
         {
@@ -1371,7 +1507,7 @@ void menu_air_update_100HZ(void)
         return;
     }
 
-    active_index = (uint8)s_air_sync_next_index;
+    active_index = s_air_sync_next_index;
     air_comm_car_clear_last_ack();
     if(menu_air_send_set_param(active_index,
                                *(s_air_params[active_index].variable)) == 0U)
@@ -1460,9 +1596,11 @@ uint8 menu_load_air_slot(uint8 slot)
 uint8 menu_save_air_slot(uint8 slot)
 {
     uint32 page;
-    uint32 offset;
-    uint32 data_words;
     uint16 index;
+    uint16 first_count;
+    uint16 second_count;
+    uint16 param_index;
+    uint32 checksum;
     menu_air_slot_header_t *header;
     menu_air_slot_param_t *slot_params;
 
@@ -1496,32 +1634,54 @@ uint8 menu_save_air_slot(uint8 slot)
         return 1U;
     }
 
+    first_count = menu_air_slot_first_page_count(s_air_param_count);
+    second_count = (uint16)(s_air_param_count - first_count);
+    if(second_count > MENU_AIR_SLOT_NEXT_PAGE_PARAMS)
+    {
+        menu_show_error("Air Data Full");
+        return 1U;
+    }
+    checksum = menu_air_calc_current_params_checksum();
+
+    /* 先更新续页，最后写入带有效头的首页；旧的单页存档格式保持兼容。 */
+    flash_erase_page(0U, page + 1U);
+    if(second_count > 0U)
+    {
+        flash_buffer_clear();
+        slot_params = (menu_air_slot_param_t *)flash_union_buffer;
+        for(index = 0U; index < second_count; index++)
+        {
+            param_index = (uint16)(first_count + index);
+            slot_params[index].name_hash = menu_air_name_hash(s_air_params[param_index].name);
+            slot_params[index].value = *(s_air_params[param_index].variable);
+        }
+        (void)flash_write_page_from_buffer(
+            0U,
+            page + 1U,
+            (uint16)(second_count * MENU_AIR_SLOT_PARAM_WORDS));
+    }
+
     flash_buffer_clear();
     header = (menu_air_slot_header_t *)flash_union_buffer;
     header->magic = MENU_AIR_MAGIC_NUMBER;
     header->version = MENU_AIR_VERSION;
     header->slot_id = slot;
-    header->param_count = (uint16)s_air_param_count;
+    header->param_count = s_air_param_count;
+    header->checksum = checksum;
 
-    offset = (uint32)((sizeof(menu_air_slot_header_t) + 3U) / 4U);
-    data_words = (uint32)s_air_param_count *
-                 (uint32)(sizeof(menu_air_slot_param_t) / sizeof(uint32));
-    if((offset + data_words) > FLASH_PAGE_LENGTH)
-    {
-        menu_show_error("Air Data Full");
-        return 1U;
-    }
-
-    slot_params = (menu_air_slot_param_t *)&flash_union_buffer[offset];
-    for(index = 0U; index < s_air_param_count; index++)
+    slot_params = (menu_air_slot_param_t *)&flash_union_buffer[MENU_AIR_SLOT_HEADER_WORDS];
+    for(index = 0U; index < first_count; index++)
     {
         slot_params[index].name_hash = menu_air_name_hash(s_air_params[index].name);
         slot_params[index].value = *(s_air_params[index].variable);
     }
-    header->checksum = menu_air_calc_buffer_checksum((uint16)data_words, offset);
 
     flash_erase_page(0U, page);
-    (void)flash_write_page_from_buffer(0U, page, offset + data_words);
+    (void)flash_write_page_from_buffer(
+        0U,
+        page,
+        (uint16)(MENU_AIR_SLOT_HEADER_WORDS +
+                 ((uint32)first_count * MENU_AIR_SLOT_PARAM_WORDS)));
 
     if(menu_air_slot_valid(slot, NULL) == 0U)
     {

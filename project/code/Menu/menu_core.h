@@ -22,7 +22,7 @@ void menu_runtime_resume(void);
 extern volatile uint8_t timer_100HZ_flag;    // 100HZ定时器标志
 
 // 菜单系统配置
-#define MENU_MAX_ITEMS          32          // 每个菜单最大选项数
+#define MENU_MAX_ITEMS          256         // 每个菜单最大选项数
 #define MENU_MAX_DEPTH          8           // 最大菜单嵌套层级
 #define MENU_MAX_PARAMS         100         // 最大参数数量
 #define MENU_MAX_VISIBLE_LINES  8          // 屏幕最大可显示菜单行数
@@ -199,7 +199,7 @@ void menu_set_display_color(uint16_t text_color);     // 设置显示颜色
 void menu_request_refresh(refresh_type_t type);       // 请求指定类型的刷新
 void menu_render_current_optimized(void);             // 优化的渲染函数（局部刷新）
 void menu_clear_line(uint8_t line);                   // 清除指定行
-void menu_render_single_item(uint8_t item_index);     // 渲染单个菜单项
+void menu_render_single_item(uint16_t item_index);    // 渲染单个菜单项
 void menu_show_text_line(uint8_t line, const char *text, uint16_t color); // 仅更新一行中变化的字符
 void menu_invalidate_display_cache(void);             // 外部直接绘图后使文本缓存失效
 
