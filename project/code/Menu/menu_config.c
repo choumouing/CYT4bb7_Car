@@ -691,6 +691,7 @@ static void diag_air_tof_function(void)
 {
     char text[32];
 
+    menu_set_air_diag_full_data_request(1U);
     diag_begin();
     diag_show_line(0U, "Air ToF mm");
     sprintf(text, "T1:%6.0f T2:%6.0f",
@@ -711,6 +712,7 @@ static void diag_air_flow_function(void)
 {
     char text[32];
 
+    menu_set_air_diag_full_data_request(1U);
     diag_begin();
     diag_show_line(0U, "Air Flow X/Y");
     sprintf(text, "Raw:%7.1f %7.1f",
@@ -729,6 +731,7 @@ static void diag_air_imu_function(void)
 {
     char text[32];
 
+    menu_set_air_diag_full_data_request(1U);
     diag_begin();
     diag_show_line(0U, "Air IMU X/Y/Z");
     sprintf(text, "RG:%6.1f %6.1f %6.1f",

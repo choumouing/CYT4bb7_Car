@@ -54,7 +54,8 @@ volatile float g_air_car_plan_beacon_index = 0.0f;
 volatile float g_air_car_plan_dist_px = 0.0f;
 volatile float g_air_beacon_lost_flag = 0.0f;
 
-#define AIR_RUN_DATA_COUNT (45U)
+#define AIR_RUN_DATA_BASE_COUNT (25U)
+#define AIR_RUN_DATA_FULL_COUNT (45U)
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -88,7 +89,8 @@ volatile float g_air_beacon_lost_flag = 0.0f;
 
 static void on_air_data(const float *data, uint8 count)
 {
-    if (count != AIR_RUN_DATA_COUNT)
+    if ((count != AIR_RUN_DATA_BASE_COUNT) &&
+        (count != AIR_RUN_DATA_FULL_COUNT))
     {
         return;
     }
@@ -131,26 +133,31 @@ static void on_air_data(const float *data, uint8 count)
     g_air_car_plan_beacon_index = data[AIR_RUN_DATA_CAR_PLAN_BEACON_INDEX];
     g_air_car_plan_dist_px = data[AIR_RUN_DATA_CAR_PLAN_DIST_PX];
     g_air_beacon_lost_flag = data[AIR_RUN_DATA_BEACON_LOST_FLAG];
-    g_air_diag_telemetry.tof_raw_height_mm[0] = data[25];
-    g_air_diag_telemetry.tof_raw_height_mm[1] = data[26];
-    g_air_diag_telemetry.tof_raw_height_mm[2] = data[27];
-    g_air_diag_telemetry.tof_raw_height_mm[3] = data[28];
-    g_air_diag_telemetry.flow_raw_x = data[29];
-    g_air_diag_telemetry.flow_raw_y = data[30];
-    g_air_diag_telemetry.flow_filtered_x = data[31];
-    g_air_diag_telemetry.flow_filtered_y = data[32];
-    g_air_diag_telemetry.imu_raw_gyro[0] = data[33];
-    g_air_diag_telemetry.imu_raw_gyro[1] = data[34];
-    g_air_diag_telemetry.imu_raw_gyro[2] = data[35];
-    g_air_diag_telemetry.imu_raw_acc[0] = data[36];
-    g_air_diag_telemetry.imu_raw_acc[1] = data[37];
-    g_air_diag_telemetry.imu_raw_acc[2] = data[38];
-    g_air_diag_telemetry.imu_filtered_gyro[0] = data[39];
-    g_air_diag_telemetry.imu_filtered_gyro[1] = data[40];
-    g_air_diag_telemetry.imu_filtered_gyro[2] = data[41];
-    g_air_diag_telemetry.imu_filtered_acc[0] = data[42];
-    g_air_diag_telemetry.imu_filtered_acc[1] = data[43];
-    g_air_diag_telemetry.imu_filtered_acc[2] = data[44];
+    if((count == AIR_RUN_DATA_FULL_COUNT) &&
+       (menu_get_air_diag_full_data_request() != 0U) &&
+       (car_menu_is_runtime_locked() == 0U))
+    {
+        g_air_diag_telemetry.tof_raw_height_mm[0] = data[25];
+        g_air_diag_telemetry.tof_raw_height_mm[1] = data[26];
+        g_air_diag_telemetry.tof_raw_height_mm[2] = data[27];
+        g_air_diag_telemetry.tof_raw_height_mm[3] = data[28];
+        g_air_diag_telemetry.flow_raw_x = data[29];
+        g_air_diag_telemetry.flow_raw_y = data[30];
+        g_air_diag_telemetry.flow_filtered_x = data[31];
+        g_air_diag_telemetry.flow_filtered_y = data[32];
+        g_air_diag_telemetry.imu_raw_gyro[0] = data[33];
+        g_air_diag_telemetry.imu_raw_gyro[1] = data[34];
+        g_air_diag_telemetry.imu_raw_gyro[2] = data[35];
+        g_air_diag_telemetry.imu_raw_acc[0] = data[36];
+        g_air_diag_telemetry.imu_raw_acc[1] = data[37];
+        g_air_diag_telemetry.imu_raw_acc[2] = data[38];
+        g_air_diag_telemetry.imu_filtered_gyro[0] = data[39];
+        g_air_diag_telemetry.imu_filtered_gyro[1] = data[40];
+        g_air_diag_telemetry.imu_filtered_gyro[2] = data[41];
+        g_air_diag_telemetry.imu_filtered_acc[0] = data[42];
+        g_air_diag_telemetry.imu_filtered_acc[1] = data[43];
+        g_air_diag_telemetry.imu_filtered_acc[2] = data[44];
+    }
 }
 
 static void car_loop_runtime_reset(void)
@@ -392,7 +399,8 @@ static void car_loop_100HZ(void)
     car_data[1] = g_odometer.body_vel[y]; /* 实际前向速度，前正，m/s */
     car_data[2] = (g_beacon_detection.on_beacon != 0U) ? 1.0f : 0.0f;
     car_data[3] = g_euler.yaw;
-    car_data[4] = 0.0f;
+    car_data[4] = ((menu_runtime_locked == 0U) &&
+                   (menu_get_air_diag_full_data_request() != 0U)) ? 1.0f : 0.0f;
     car_data[5] = 0.0f;
     car_data[6] = 0.0f;
     car_data[7] = 0.0f;

@@ -15,6 +15,9 @@
 void menu_discard_key_events(void);
 void menu_runtime_suspend(void);
 void menu_runtime_resume(void);
+/* 设置/查询Air完整诊断遥测请求，仅A_ToF/A_Flow/A_IMU页面启用。 */
+void menu_set_air_diag_full_data_request(uint8_t enable);
+uint8_t menu_get_air_diag_full_data_request(void);
 
 
 

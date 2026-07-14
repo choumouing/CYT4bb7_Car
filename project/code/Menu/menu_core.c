@@ -36,6 +36,7 @@ static uint8_t diag_refresh_divider = 0;               // 动态页面20Hz刷新
 // 局部刷新优化变量
 static refresh_type_t refresh_type = REFRESH_FULL;     // 刷新类型
 static uint16_t last_selected_index = 0;               // 上次选中的项索引
+static uint8_t air_diag_full_data_request = 0U;        // 1=请求Air发送完整45项诊断遥测
 #define MENU_DISPLAY_COLUMNS       (30U)
 static char display_text_cache[MENU_MAX_VISIBLE_LINES][MENU_DISPLAY_COLUMNS + 1U];
 static uint16_t display_color_cache[MENU_MAX_VISIBLE_LINES];
@@ -548,6 +549,7 @@ void menu_discard_key_events(void)
 
 void menu_runtime_suspend(void)
 {
+    air_diag_full_data_request = 0U;
     menu_air_edit_reset();
     if((menu_state == MENU_STATE_EXTERNAL_VIEW) &&
        (external_view_config.allow_runtime_locked == 0U))
@@ -575,6 +577,18 @@ void menu_runtime_resume(void)
     menu_request_refresh(REFRESH_FULL);
 }
 
+/* 设置Air完整诊断遥测请求。 */
+void menu_set_air_diag_full_data_request(uint8_t enable)
+{
+    air_diag_full_data_request = (enable != 0U) ? 1U : 0U;
+}
+
+/* 查询Air完整诊断遥测请求。 */
+uint8_t menu_get_air_diag_full_data_request(void)
+{
+    return air_diag_full_data_request;
+}
+
 /**
  * @brief 菜单系统初始化
  */
@@ -599,6 +613,7 @@ void menu_init(void)
     current_item_count = 0;
     menu_state = MENU_STATE_NORMAL;
     diag_refresh_divider = 0U;
+    air_diag_full_data_request = 0U;
     param_count = 0;
     current_slot = 0;
     display_offset = 0;
@@ -1275,6 +1290,7 @@ void menu_key_handler(menu_key_t key)
                         case MENU_TYPE_DIAG_VIEW:
                             if(current_menu[current_index].function != NULL)
                             {
+                                air_diag_full_data_request = 0U;
                                 menu_state = MENU_STATE_DIAG_VIEW;
                                 diag_refresh_divider = 0U;
                                 current_menu[current_index].function();
@@ -1436,6 +1452,7 @@ void menu_key_handler(menu_key_t key)
         case MENU_STATE_DIAG_VIEW:
             if((key == KEY_BACK) || (key == KEY_ENTER))
             {
+                air_diag_full_data_request = 0U;
                 menu_state = MENU_STATE_NORMAL;
                 diag_refresh_divider = 0U;
                 menu_request_refresh(REFRESH_FULL);
