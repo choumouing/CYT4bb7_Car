@@ -1671,6 +1671,7 @@ void menu_render_current(void)
 void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t editing)
 {
     float value = 0.0f;
+    float step = 0.0f;
     char display_text[MENU_DISPLAY_COLUMNS + 1U];
     char value_text[20];
     const char *enum_label;
@@ -1717,6 +1718,10 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
         if(enum_label != NULL)
         {
             snprintf(value_text, sizeof(value_text), "%s", enum_label);
+        }
+        else if((menu_get_item_param_step(item, &step) != 0U) && (step < 0.001f))
+        {
+            snprintf(value_text, sizeof(value_text), "%.4f", (double)value);
         }
         else
         {

@@ -9,13 +9,13 @@
 #define _MENU_CONFIG_H_
 
 /* 1=Car上电时从指定存档加载本车参数，0=使用Car代码参数。 */
-#define MENU_CAR_BOOT_FLASH_LOAD_ENABLE  (1U)
+#define MENU_CAR_BOOT_FLASH_LOAD_ENABLE  (0U)
 #define MENU_CAR_BOOT_FLASH_LOAD_SLOT    (0U)
 
 /* 1=Car首次连接Air时覆盖Air参数，0=保留Air代码参数并从Air读取。 */
-#define MENU_AIR_BOOT_OVERRIDE_ENABLE        (1U)
+#define MENU_AIR_BOOT_OVERRIDE_ENABLE        (0U)
 /* 覆盖开启时：1=使用Car Flash中的Air参数，0=使用Car代码中的Air参数。 */
-#define MENU_AIR_BOOT_FLASH_LOAD_ENABLE      (1U)
+#define MENU_AIR_BOOT_FLASH_LOAD_ENABLE      (0U)
 /* 覆盖关闭时，该槽仍单独作为c1_screen_mode的启动恢复来源。 */
 #define MENU_AIR_BOOT_FLASH_LOAD_SLOT        (0U)
 
