@@ -12,7 +12,7 @@
 #define MENU_AIR_ACK_TYPE_GET_PARAM         (0x07U)
 #define MENU_AIR_COMMAND_TIMEOUT_MS         (1000U)
 #define MENU_AIR_PULL_RETRY_MS              (1000U)
-#define MENU_AIR_EXPOSURE_ACK_TIMEOUT_MS    (1600U)
+#define MENU_AIR_EXPOSURE_ACK_TIMEOUT_MS    (3000U)
 #define MENU_AIR_CORE1_EXPOSURE_NAME        "c1_exp_time"
 #define MENU_AIR_2BL3_EXPOSURE_NAME         "bl3_exp_time"
 #define MENU_AIR_CORE1_SCREEN_MODE_NAME     "c1_screen_mode"
