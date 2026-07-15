@@ -1,5 +1,6 @@
-/* Mode8: remote body velocity closed loop.
- * Remote gives body forward/right velocity targets in m/s.
+/* Mode8: remote horizontal velocity closed loop.
+ * Remote gives horizontal forward/right velocity targets in m/s.
+ * Targets are rotated into the body frame before velocity control.
  * Odometer gives body velocity feedback in m/s, X positive means right, Y positive means forward.
  * Output converts right-positive velocity to the wheel-space strafe command.
  */
@@ -140,6 +141,10 @@ void car_mode8_update_25HZ(uint32 now_ms)
 
 void car_mode8_update_100HZ(uint32 now_ms)
 {
+    float yaw_rad;
+    float cos_yaw;
+    float sin_yaw;
+
     (void)now_ms;
 
     car_mode8_pid_apply_params();
@@ -149,8 +154,15 @@ void car_mode8_update_100HZ(uint32 now_ms)
                                 &g_car_mode8_state.raw_forward_mps,
                                 &g_car_mode8_state.raw_strafe_mps);
 
-    g_car_mode8_state.velocity_forward_target_mps = g_car_mode8_state.raw_forward_mps;
-    g_car_mode8_state.velocity_strafe_target_mps = g_car_mode8_state.raw_strafe_mps;
+    yaw_rad = Control_GetYawAngle();
+    cos_yaw = cosf(yaw_rad);
+    sin_yaw = sinf(yaw_rad);
+    g_car_mode8_state.velocity_forward_target_mps =
+        (cos_yaw * g_car_mode8_state.raw_forward_mps) -
+        (sin_yaw * g_car_mode8_state.raw_strafe_mps);
+    g_car_mode8_state.velocity_strafe_target_mps =
+        (sin_yaw * g_car_mode8_state.raw_forward_mps) +
+        (cos_yaw * g_car_mode8_state.raw_strafe_mps);
 
     g_car_mode8_state.velocity_forward_feedback_mps = g_odometer.body_vel[y];
     g_car_mode8_state.velocity_strafe_feedback_mps = g_odometer.body_vel[x];
