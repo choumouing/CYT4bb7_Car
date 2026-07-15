@@ -248,7 +248,6 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(mode2_img_x_i_limit, 0.0f, 0.1f, 0.0f, 20.0f, "Mode2 Img"),
     MENU_AIR_PARAM(mode2_img_x_d_lpf, 0.0f, 0.1f, 0.0f, 20.0f, "Mode2 Img"),
     MENU_AIR_PARAM(mode2_img_y_kp, 2.15066126f, 0.01f, 1.0f, 4.0f, "Mode2 Img"),
-    MENU_AIR_PARAM(mode2_img_y_kp_max, 2.24267725f, 0.01f, 1.0f, 4.5f, "Mode2 Img"),
     MENU_AIR_PARAM(mode2_img_y_ki, 0.0f, 0.001f, 0.0f, 0.05f, "Mode2 Img"),
     MENU_AIR_PARAM(mode2_img_y_kd, 0.0f, 0.001f, 0.0f, 0.25f, "Mode2 Img"),
     MENU_AIR_PARAM(mode2_img_y_kff, 0.0f, 0.001f, 0.0f, 0.05f, "Mode2 Img"),
