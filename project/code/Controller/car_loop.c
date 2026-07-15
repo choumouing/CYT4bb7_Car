@@ -56,7 +56,23 @@ volatile float g_air_car_plan_beacon_index = 0.0f;
 volatile float g_air_car_plan_dist_px = 0.0f;
 volatile float g_air_beacon_lost_flag = 0.0f;
 
-#define AIR_RUN_DATA_COUNT (45U)
+#define AIR_RUN_DATA_CRITICAL_COUNT (15U) /* 飞行期间关键数据包的float数量 */
+#define AIR_RUN_DATA_DIAGNOSTIC_COUNT (45U) /* 常态完整诊断包的float数量 */
+#define AIR_RUN_CRITICAL_STATE (0U) /* 飞机运行状态 */
+#define AIR_RUN_CRITICAL_CRSF_CH0 (1U) /* CRSF标准化通道0 */
+#define AIR_RUN_CRITICAL_CRSF_CH1 (2U) /* CRSF标准化通道1 */
+#define AIR_RUN_CRITICAL_CRSF_CH2 (3U) /* CRSF标准化通道2 */
+#define AIR_RUN_CRITICAL_CRSF_CH3 (4U) /* CRSF标准化通道3 */
+#define AIR_RUN_CRITICAL_CRSF_CH4 (5U) /* CRSF标准化通道4 */
+#define AIR_RUN_CRITICAL_CRSF_CH5 (6U) /* CRSF标准化通道5 */
+#define AIR_RUN_CRITICAL_CRSF_CH6 (7U) /* CRSF标准化通道6 */
+#define AIR_RUN_CRITICAL_CRSF_CH7 (8U) /* CRSF标准化通道7 */
+#define AIR_RUN_CRITICAL_CRSF_CH8 (9U) /* CRSF标准化通道8 */
+#define AIR_RUN_CRITICAL_YAW_TARGET (10U) /* 飞机yaw目标角，单位deg */
+#define AIR_RUN_CRITICAL_PLAN_VALID (11U) /* 车模规划结果有效标志 */
+#define AIR_RUN_CRITICAL_PLAN_STRAFE (12U) /* 车模规划横移速度，单位m/s */
+#define AIR_RUN_CRITICAL_PLAN_FORWARD (13U) /* 车模规划前进速度，单位m/s */
+#define AIR_RUN_CRITICAL_BEACON_LOST (14U) /* 信标丢失标志 */
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -88,20 +104,14 @@ volatile float g_air_beacon_lost_flag = 0.0f;
 #define AIR_MENU_STATE_STANDBY (1.0f)
 #define AIR_MENU_STATE_RUNTIME_MIN (2.0f)
 
-static void on_air_data(const float *data, uint8 count)
+/**
+ * @brief 更新飞机状态及由状态驱动的车端菜单运行锁。
+ * @param air_state 飞机运行状态枚举对应的浮点值。
+ * @return 无。
+ */
+static void car_loop_update_air_runtime_state(float air_state)
 {
-    if (count != AIR_RUN_DATA_COUNT)
-    {
-        return;
-    }
-
-    g_air_tof_fused_height_mm = data[0];
-    g_air_euler_roll = data[1];
-    g_air_euler_pitch = data[2];
-    g_air_euler_yaw = data[3];
-    g_air_pos_est_vel_x = data[4];
-    g_air_pos_est_vel_y = data[5];
-    g_air_state = data[AIR_RUN_DATA_STATE];
+    g_air_state = air_state;
     s_air_run_data_seen = 1U;
     if(g_air_state >= AIR_MENU_STATE_RUNTIME_MIN)
     {
@@ -115,6 +125,48 @@ static void on_air_data(const float *data, uint8 count)
     {
         s_air_menu_runtime_locked = 1U;
     }
+}
+
+/**
+ * @brief 按数据数量解析飞机下发的关键运行包或完整诊断包。
+ * @param data 飞机下发的float数据数组。
+ * @param count 数组中的float数量，合法值为15或45。
+ * @return 无。
+ */
+static void on_air_data(const float *data, uint8 count)
+{
+    if (count == AIR_RUN_DATA_CRITICAL_COUNT)
+    {
+        car_loop_update_air_runtime_state(data[AIR_RUN_CRITICAL_STATE]);
+        g_air_crsf_std_ch0 = data[AIR_RUN_CRITICAL_CRSF_CH0];
+        g_air_crsf_std_ch1 = data[AIR_RUN_CRITICAL_CRSF_CH1];
+        g_air_crsf_std_ch2 = data[AIR_RUN_CRITICAL_CRSF_CH2];
+        g_air_crsf_std_ch3 = data[AIR_RUN_CRITICAL_CRSF_CH3];
+        g_air_crsf_std_ch4 = data[AIR_RUN_CRITICAL_CRSF_CH4];
+        g_air_crsf_std_ch5 = data[AIR_RUN_CRITICAL_CRSF_CH5];
+        g_air_crsf_std_ch6 = data[AIR_RUN_CRITICAL_CRSF_CH6];
+        g_air_crsf_std_ch7 = data[AIR_RUN_CRITICAL_CRSF_CH7];
+        g_air_crsf_std_ch8 = data[AIR_RUN_CRITICAL_CRSF_CH8];
+        g_air_yaw_angle_target_deg = data[AIR_RUN_CRITICAL_YAW_TARGET];
+        g_air_car_plan_valid = data[AIR_RUN_CRITICAL_PLAN_VALID];
+        g_air_car_plan_strafe_mps = data[AIR_RUN_CRITICAL_PLAN_STRAFE];
+        g_air_car_plan_forward_mps = data[AIR_RUN_CRITICAL_PLAN_FORWARD];
+        g_air_beacon_lost_flag = data[AIR_RUN_CRITICAL_BEACON_LOST];
+        return;
+    }
+
+    if (count != AIR_RUN_DATA_DIAGNOSTIC_COUNT)
+    {
+        return;
+    }
+
+    g_air_tof_fused_height_mm = data[0];
+    g_air_euler_roll = data[1];
+    g_air_euler_pitch = data[2];
+    g_air_euler_yaw = data[3];
+    g_air_pos_est_vel_x = data[4];
+    g_air_pos_est_vel_y = data[5];
+    car_loop_update_air_runtime_state(data[AIR_RUN_DATA_STATE]);
     g_air_crsf_std_ch0 = data[7];
     g_air_crsf_std_ch1 = data[8];
     g_air_crsf_std_ch2 = data[9];
