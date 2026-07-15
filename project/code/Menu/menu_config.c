@@ -55,7 +55,7 @@ float mode7_velocity_forward_kp = 80.0f;
 float mode7_velocity_forward_ki = 0.0f;
 float mode7_velocity_forward_kd = 20.0f;
 
-float mode5_velocity_smooth_tau_s = 0.12f;
+float mode5_velocity_smooth_tau_s = 0.162f;
 float mode5_velocity_output_limit = 650.0f;
 float mode5_velocity_pid_output_limit = 250.0f;
 float mode5_velocity_i_limit = 0.0f;
@@ -66,7 +66,7 @@ float mode5_velocity_forward_kp = 80.0f;
 float mode5_velocity_forward_ki = 0.0f;
 float mode5_velocity_forward_kd = 20.0f;
 
-float mode2_velocity_smooth_tau_s = 0.12f;
+float mode2_velocity_smooth_tau_s = 0.162f;
 float mode2_velocity_output_limit = 650.0f;
 float mode2_velocity_pid_output_limit = 250.0f;
 float mode2_velocity_i_limit = 0.0f;
@@ -77,7 +77,7 @@ float mode2_velocity_forward_kp = 80.0f;
 float mode2_velocity_forward_ki = 0.0f;
 float mode2_velocity_forward_kd = 20.0f;
 
-float mode8_velocity_smooth_tau_s = 0.12f;
+float mode8_velocity_smooth_tau_s = 0.162f;
 float mode8_velocity_output_limit = 650.0f;
 float mode8_velocity_pid_output_limit = 250.0f;
 float mode8_velocity_i_limit = 0.0f;
@@ -202,6 +202,7 @@ static menu_item_t mode2_velocity_pid_menu[] = {
 };
 
 static menu_item_t mode8_velocity_pid_menu[] = {
+    {"Smooth", MENU_TYPE_PARAMETER, .param_index = 25},
     {"CmdLimit", MENU_TYPE_PARAMETER, .param_index = 26},
     {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 27},
     {"ILimit", MENU_TYPE_PARAMETER, .param_index = 28},

@@ -7,7 +7,7 @@
 #include "car_mode.h"
 #include "car_loop.h"
 
-#define MODE8_MAX_VELOCITY_MPS       (2.0f)
+#define MODE8_FIXED_VELOCITY_MPS     (1.5f)   /* Mode8 遥控非零档固定合速度，单位 m/s */
 #define MODE8_STICK_MAX              (1000.0f)
 #define MODE8_STICK_ZONE_WIDTH       (200.0f)
 #define MODE8_MIN_OUTPUT_LIMIT       (0.0f)
@@ -58,7 +58,6 @@ static void car_mode8_stick_to_velocity(float strafe_stick,
                                         float *strafe_mps)
 {
     float radius;
-    float speed_mps;
 
     strafe_stick = car_math_limit_absf(strafe_stick, MODE8_STICK_MAX);
     forward_stick = car_math_limit_absf(forward_stick, MODE8_STICK_MAX);
@@ -71,25 +70,9 @@ static void car_mode8_stick_to_velocity(float strafe_stick,
         *strafe_mps = 0.0f;
         return;
     }
-    else if(radius < (2.0f * MODE8_STICK_ZONE_WIDTH))
-    {
-        speed_mps = 0.5f;
-    }
-    else if(radius < (3.0f * MODE8_STICK_ZONE_WIDTH))
-    {
-        speed_mps = 1.0f;
-    }
-    else if(radius < (4.0f * MODE8_STICK_ZONE_WIDTH))
-    {
-        speed_mps = 1.5f;
-    }
-    else
-    {
-        speed_mps = MODE8_MAX_VELOCITY_MPS;
-    }
 
-    *forward_mps = forward_stick * speed_mps / radius;
-    *strafe_mps = strafe_stick * speed_mps / radius;
+    *forward_mps = forward_stick * MODE8_FIXED_VELOCITY_MPS / radius;
+    *strafe_mps = strafe_stick * MODE8_FIXED_VELOCITY_MPS / radius;
 }
 
 static float car_mode8_limit_output(float value)
@@ -144,6 +127,8 @@ void car_mode8_update_100HZ(uint32 now_ms)
     float yaw_rad;
     float cos_yaw;
     float sin_yaw;
+    float forward_target_mps;
+    float strafe_target_mps;
 
     (void)now_ms;
 
@@ -157,12 +142,23 @@ void car_mode8_update_100HZ(uint32 now_ms)
     yaw_rad = Control_GetYawAngle();
     cos_yaw = cosf(yaw_rad);
     sin_yaw = sinf(yaw_rad);
-    g_car_mode8_state.velocity_forward_target_mps =
+    forward_target_mps =
         (cos_yaw * g_car_mode8_state.raw_forward_mps) -
         (sin_yaw * g_car_mode8_state.raw_strafe_mps);
-    g_car_mode8_state.velocity_strafe_target_mps =
+    strafe_target_mps =
         (sin_yaw * g_car_mode8_state.raw_forward_mps) +
         (cos_yaw * g_car_mode8_state.raw_strafe_mps);
+
+    g_car_mode8_state.velocity_forward_target_mps =
+        car_filter_lpf1_apply(g_car_mode8_state.velocity_forward_target_mps,
+                              forward_target_mps,
+                              ODOMETER_UPDATE_DT_S,
+                              mode8_velocity_smooth_tau_s);
+    g_car_mode8_state.velocity_strafe_target_mps =
+        car_filter_lpf1_apply(g_car_mode8_state.velocity_strafe_target_mps,
+                              strafe_target_mps,
+                              ODOMETER_UPDATE_DT_S,
+                              mode8_velocity_smooth_tau_s);
 
     g_car_mode8_state.velocity_forward_feedback_mps = g_odometer.body_vel[y];
     g_car_mode8_state.velocity_strafe_feedback_mps = g_odometer.body_vel[x];
