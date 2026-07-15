@@ -343,7 +343,7 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
 
     MENU_AIR_OPTIONAL_PARAM(bl3_beacon_min, 6.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
     MENU_AIR_OPTIONAL_PARAM(bl3_edge_min, 2.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
-    MENU_AIR_OPTIONAL_PARAM(bl3_top_max, 50.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_top_max, 74.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
     MENU_AIR_OPTIONAL_PARAM(bl3_edge_max, 60.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
 
     MENU_AIR_OPTIONAL_PARAM(bl3_lamp_min, 24.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Car Lamp"),
