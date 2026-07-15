@@ -269,7 +269,8 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(mode2_kp_car_x, 50.0f, 1.0f, 0.0f, 100.0f, "Mode2 Vel"),
     MENU_AIR_PARAM(mode2_kp_car_y, 78.12062696f, 1.0f, 60.0f, 100.0f, "Mode2 Vel"),
     MENU_AIR_PARAM(mode2_car_ff_y_limit_cmps, 88.22829786f, 1.0f, 50.0f, 140.0f, "Mode2 Vel"),
-    MENU_AIR_PARAM(Car_Speed, 1.2f, 0.1f, 0.0f, 3.0f, "Car Plan")
+    MENU_AIR_PARAM(Car_Speed, 1.5f, 0.1f, 0.0f, 3.0f, "Car Plan"),
+    MENU_AIR_PARAM(Car_Speed_Fast, 1.8f, 0.1f, 0.0f, 3.0f, "Car Plan")
 };
 
 typedef char menu_air_param_count_must_match[
