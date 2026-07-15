@@ -146,7 +146,8 @@ static const char * const s_air_bl3_stream_mode_labels[] =
 {
     "Raw",
     "Lamp Binary",
-    "Beacon Binary"
+    "Beacon Binary",
+    "Detected Overlay"
 };
 
 static const char * const s_air_full_lamp_names[] =
@@ -373,7 +374,7 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     {"bl3_area_gate", 1.0f, 1.0f, 0.0f, 1.0f, "2BL3 Calibration", 1U,
      s_air_on_off_labels, MENU_AIR_ARRAY_COUNT(s_air_on_off_labels), 1U, 0U},
 
-    MENU_AIR_OPTIONAL_ENUM_PARAM(bl3_stream_mode, 0.0f, 1.0f, 0.0f, 2.0f,
+    MENU_AIR_OPTIONAL_ENUM_PARAM(bl3_stream_mode, 0.0f, 1.0f, 0.0f, 3.0f,
                                  "2BL3 Stream", s_air_bl3_stream_mode_labels)
 };
 
