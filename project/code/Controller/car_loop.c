@@ -23,6 +23,8 @@ static uint32 s_beacon_beep_enter_count = 0U;
 static uint8 s_air_menu_runtime_locked = 0U;
 static uint8 s_air_run_data_seen = 0U;
 static uint8 s_menu_runtime_was_locked = 0U;
+/* Car yaw rate for Air upload, 10Hz low-pass output, unit: deg/s. */
+static float s_car_yaw_rate_lpf_dps = 0.0f;
 
 volatile float g_air_tof_fused_height_mm;
 volatile float g_air_euler_roll;
@@ -173,6 +175,7 @@ static void car_loop_runtime_reset(void)
     g_air_car_plan_dist_px = 0.0f;
     g_air_beacon_lost_flag = 0.0f;
     g_air_diag_telemetry = (air_diag_telemetry_t){0};
+    s_car_yaw_rate_lpf_dps = 0.0f;
     s_telemetry_timestamp_count = 0U;
     s_system_time_ms = 0U;
     s_beacon_beep_enter_count = 0U;
@@ -253,6 +256,8 @@ void car_loop_init(void)
 static void car_loop_1000HZ(void)
 {
     IMU_Update_1000HZ();
+    s_car_yaw_rate_lpf_dps += 0.06089863f *
+                              (g_imufilter_1000hz.gyroz - s_car_yaw_rate_lpf_dps);
     odometer_update_1000HZ();
     beacon_detection_update_1000HZ();
 }
@@ -392,7 +397,7 @@ static void car_loop_100HZ(void)
     car_data[1] = g_odometer.body_vel[y]; /* 实际前向速度，前正，m/s */
     car_data[2] = (g_beacon_detection.on_beacon != 0U) ? 1.0f : 0.0f;
     car_data[3] = g_euler.yaw;
-    car_data[4] = 0.0f;
+    car_data[4] = s_car_yaw_rate_lpf_dps;
     car_data[5] = 0.0f;
     car_data[6] = 0.0f;
     car_data[7] = 0.0f;
