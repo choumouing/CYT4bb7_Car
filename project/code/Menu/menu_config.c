@@ -336,7 +336,6 @@ static menu_item_t s_air_param_menu_storage[AIR_PARAM_MENU_STORAGE_COUNT];
 static menu_item_t *s_air_group_menus[AIR_PARAM_MENU_COUNT];
 /* 2BL3二级分组菜单在统一存储区中的起始指针。 */
 static menu_item_t *s_bl3_group_menus[BL3_PARAM_MENU_COUNT];
-static menu_item_t air_command_menu[2U];
 
 static menu_item_t load_air_slot_menu[] = {
     {"Load Air0", MENU_TYPE_FUNCTION, .function = load_air_slot_0_function},
@@ -395,7 +394,6 @@ static menu_item_t car_menu[] = {
 
 static menu_item_t air_menu[] = {
     {"A_params", MENU_TYPE_SUBMENU, .submenu = air_param_menu},
-    {"A_Command", MENU_TYPE_SUBMENU, .submenu = air_command_menu},
     {"A_Diag", MENU_TYPE_SUBMENU, .submenu = air_diag_menu},
     {"Sync Air", MENU_TYPE_FUNCTION, .function = sync_air_function},
     {"A_Load", MENU_TYPE_SUBMENU, .submenu = load_air_slot_menu},
@@ -573,20 +571,6 @@ static uint8 menu_build_air_param_menus(void)
         item->submenu = NULL;
         bl3_image_param_menu[group].submenu = s_bl3_group_menus[group];
     }
-
-    if(menu_air_command_get_count() != 1U)
-    {
-        return 1U;
-    }
-
-    memset(air_command_menu, 0, sizeof(air_command_menu));
-    strncpy(air_command_menu[0].name,
-            menu_air_command_get_name(0U),
-            sizeof(air_command_menu[0].name) - 1U);
-    air_command_menu[0].type = MENU_TYPE_AIR_COMMAND;
-    air_command_menu[0].param_index = 0U;
-    air_command_menu[1].type = MENU_TYPE_SUBMENU;
-    air_command_menu[1].submenu = NULL;
 
     for(group = 0U; group < AIR_PARAM_MENU_COUNT; group++)
     {
