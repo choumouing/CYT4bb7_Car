@@ -98,6 +98,17 @@ extern float mode4_velocity_forward_kp;
 extern float mode4_velocity_forward_ki;
 extern float mode4_velocity_forward_kd;
 
+extern float mode3_velocity_smooth_tau_s;
+extern float mode3_velocity_output_limit;
+extern float mode3_velocity_pid_output_limit;
+extern float mode3_velocity_i_limit;
+extern float mode3_velocity_strafe_kp;
+extern float mode3_velocity_strafe_ki;
+extern float mode3_velocity_strafe_kd;
+extern float mode3_velocity_forward_kp;
+extern float mode3_velocity_forward_ki;
+extern float mode3_velocity_forward_kd;
+
 extern float s_curve_max_iter;
 extern float s_curve_conv_tol;
 extern float s_curve_min_dist;

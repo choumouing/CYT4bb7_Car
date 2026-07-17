@@ -428,6 +428,7 @@ static void car_loop_100HZ(void)
         float yaw_target_rad = 0.0f;
 
         if((CAR_MODE_2 == car_mode_get()) ||
+           (CAR_MODE_3 == car_mode_get()) ||
            (CAR_MODE_4 == car_mode_get()) ||
            (CAR_MODE_5 == car_mode_get()) ||
            (CAR_MODE_8 == car_mode_get()))
