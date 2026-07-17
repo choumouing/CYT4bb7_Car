@@ -9,7 +9,7 @@
 #define MENU_CAR_S_CURVE_MAX_ITER_INDEX  (55U)
 #define MENU_CAR_S_CURVE_CONV_TOL_INDEX  (56U)
 #define MENU_CAR_S_CURVE_MIN_DIST_INDEX  (57U)
-#define MENU_CAR_EXPECTED_PARAM_COUNT     (58U)
+#define MENU_CAR_EXPECTED_PARAM_COUNT     (68U)
 
 #if (MENU_CAR_EXPECTED_PARAM_COUNT > MENU_MAX_PARAMS)
 #error "Car menu parameter count exceeds MENU_MAX_PARAMS"
@@ -87,6 +87,17 @@ float mode8_velocity_strafe_kd = 20.0f;
 float mode8_velocity_forward_kp = 80.0f;
 float mode8_velocity_forward_ki = 0.0f;
 float mode8_velocity_forward_kd = 20.0f;
+
+float mode4_velocity_smooth_tau_s = 0.162f;
+float mode4_velocity_output_limit = 650.0f;
+float mode4_velocity_pid_output_limit = 250.0f;
+float mode4_velocity_i_limit = 0.0f;
+float mode4_velocity_strafe_kp = 80.0f;
+float mode4_velocity_strafe_ki = 0.0f;
+float mode4_velocity_strafe_kd = 20.0f;
+float mode4_velocity_forward_kp = 80.0f;
+float mode4_velocity_forward_ki = 0.0f;
+float mode4_velocity_forward_kd = 20.0f;
 
 float s_curve_max_iter = 50.0f;
 float s_curve_conv_tol = 0.001f;
@@ -215,6 +226,20 @@ static menu_item_t mode8_velocity_pid_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
+static menu_item_t mode4_velocity_pid_menu[] = {
+    {"Smooth", MENU_TYPE_PARAMETER, .param_index = 58},
+    {"CmdLimit", MENU_TYPE_PARAMETER, .param_index = 59},
+    {"PidLimit", MENU_TYPE_PARAMETER, .param_index = 60},
+    {"ILimit", MENU_TYPE_PARAMETER, .param_index = 61},
+    {"SKp", MENU_TYPE_PARAMETER, .param_index = 62},
+    {"SKi", MENU_TYPE_PARAMETER, .param_index = 63},
+    {"SKd", MENU_TYPE_PARAMETER, .param_index = 64},
+    {"FKp", MENU_TYPE_PARAMETER, .param_index = 65},
+    {"FKi", MENU_TYPE_PARAMETER, .param_index = 66},
+    {"FKd", MENU_TYPE_PARAMETER, .param_index = 67},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
 static menu_item_t s_curve_menu[] = {
     {"MaxIter", MENU_TYPE_PARAMETER, .param_index = MENU_CAR_S_CURVE_MAX_ITER_INDEX},
     {"ConvTol", MENU_TYPE_PARAMETER, .param_index = MENU_CAR_S_CURVE_CONV_TOL_INDEX},
@@ -232,6 +257,8 @@ static menu_item_t air_param_menu[] = {
     {"Mode2 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode2 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode5", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode4 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Mode4 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode8 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Core1 Img", MENU_TYPE_SUBMENU, .submenu = NULL},
@@ -273,6 +300,7 @@ static menu_item_t car_param_menu[] = {
     {"Mode2 Vel", MENU_TYPE_SUBMENU, .submenu = mode2_velocity_pid_menu},
     {"Mode5 Vel", MENU_TYPE_SUBMENU, .submenu = mode5_velocity_pid_menu},
     {"Mode7 Vel", MENU_TYPE_SUBMENU, .submenu = mode7_velocity_pid_menu},
+    {"Mode4 Vel", MENU_TYPE_SUBMENU, .submenu = mode4_velocity_pid_menu},
     {"Mode8 Vel", MENU_TYPE_SUBMENU, .submenu = mode8_velocity_pid_menu},
     {"S Curve", MENU_TYPE_SUBMENU, .submenu = s_curve_menu},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
@@ -498,6 +526,17 @@ void menu_config_init(void)
     menu_register_param(&s_curve_max_iter, 1.0f, 5.0f, 200.0f);
     menu_register_param(&s_curve_conv_tol, 0.001f, 0.001f, 1000.0f);
     menu_register_param(&s_curve_min_dist, 0.1f, 1.0f, 1000.0f);
+
+    menu_register_param(&mode4_velocity_smooth_tau_s, 0.01f, 0.0f, 1.0f);
+    menu_register_param(&mode4_velocity_output_limit, 10.0f, 0.0f, 1500.0f);
+    menu_register_param(&mode4_velocity_pid_output_limit, 10.0f, 0.0f, 1000.0f);
+    menu_register_param(&mode4_velocity_i_limit, 1.0f, 0.0f, 1000.0f);
+    menu_register_param(&mode4_velocity_strafe_kp, 1.0f, 0.0f, 500.0f);
+    menu_register_param(&mode4_velocity_strafe_ki, 0.01f, 0.0f, 500.0f);
+    menu_register_param(&mode4_velocity_strafe_kd, 1.0f, 0.0f, 500.0f);
+    menu_register_param(&mode4_velocity_forward_kp, 1.0f, 0.0f, 500.0f);
+    menu_register_param(&mode4_velocity_forward_ki, 0.01f, 0.0f, 500.0f);
+    menu_register_param(&mode4_velocity_forward_kd, 1.0f, 0.0f, 500.0f);
 
     if(menu_get_param_count() != MENU_CAR_EXPECTED_PARAM_COUNT)
     {

@@ -1,53 +1,89 @@
+/* Mode4: remote horizontal velocity closed loop.
+ * Remote gives horizontal forward/right velocity targets in m/s.
+ * Targets are rotated into the body frame before velocity control.
+ * Odometer gives body velocity feedback in m/s, X positive means right, Y positive means forward.
+ * Output converts right-positive velocity to the wheel-space strafe command.
+ */
 #include "car_mode.h"
+#include "car_loop.h"
 
-#define MODE4_DEG_TO_RAD        (0.017453292519943295f)
-#define MODE4_HOLD_MS           (2000U)
-#define MODE4_STEP_MS           (1000U)
-#define MODE4_FULL_TURN_DEG     (360.0f)
-#define MODE4_STEP_RATE_COUNT   ((uint32)(sizeof(s_mode4_step_rates_deg_s) / sizeof(s_mode4_step_rates_deg_s[0])))
-#define MODE4_SMOOTH_RATE_COUNT ((uint32)(sizeof(s_mode4_smooth_rates_deg_s) / sizeof(s_mode4_smooth_rates_deg_s[0])))
+#define MODE4_FIXED_VELOCITY_MPS     (1.5f)   /* Mode4 遥控非零档固定合速度，单位 m/s */
+#define MODE4_STICK_MAX              (1000.0f)
+#define MODE4_STICK_ZONE_WIDTH       (200.0f)
+#define MODE4_MIN_OUTPUT_LIMIT       (0.0f)
 
-static const float s_mode4_step_rates_deg_s[] = {30.0f, 90.0f};
-static const float s_mode4_smooth_rates_deg_s[] = {10.0f, 45.0f};
-static uint8 s_mode4_started = 0U;
-static uint32 s_mode4_start_ms = 0U;
-static float s_mode4_yaw_target_deg = 0.0f;
+car_mode4_state_t g_car_mode4_state = {0};
 
-static uint32 car_mode4_step_phase_ms(float rate_deg_s)
+static PositionalPID s_mode4_forward_pid;
+static PositionalPID s_mode4_strafe_pid;
+
+static void car_mode4_pid_init(void)
 {
-    return (uint32)((MODE4_FULL_TURN_DEG / rate_deg_s) * 2.0f) * MODE4_STEP_MS;
+    PositionalPID_Init(&s_mode4_forward_pid,
+                       0.0f,
+                       mode4_velocity_forward_kp,
+                       mode4_velocity_forward_ki,
+                       mode4_velocity_forward_kd,
+                       mode4_velocity_i_limit,
+                       mode4_velocity_pid_output_limit);
+    PositionalPID_Init(&s_mode4_strafe_pid,
+                       0.0f,
+                       mode4_velocity_strafe_kp,
+                       mode4_velocity_strafe_ki,
+                       mode4_velocity_strafe_kd,
+                       mode4_velocity_i_limit,
+                       mode4_velocity_pid_output_limit);
+}
+static void car_mode4_pid_apply_params(void)
+{
+    s_mode4_forward_pid.kp_2 = 0.0f;
+    s_mode4_forward_pid.kp_1 = mode4_velocity_forward_kp;
+    s_mode4_forward_pid.ki = mode4_velocity_forward_ki;
+    s_mode4_forward_pid.kd = mode4_velocity_forward_kd;
+    s_mode4_forward_pid.i_limit = mode4_velocity_i_limit;
+    s_mode4_forward_pid.output_limit = mode4_velocity_pid_output_limit;
+
+    s_mode4_strafe_pid.kp_2 = 0.0f;
+    s_mode4_strafe_pid.kp_1 = mode4_velocity_strafe_kp;
+    s_mode4_strafe_pid.ki = mode4_velocity_strafe_ki;
+    s_mode4_strafe_pid.kd = mode4_velocity_strafe_kd;
+    s_mode4_strafe_pid.i_limit = mode4_velocity_i_limit;
+    s_mode4_strafe_pid.output_limit = mode4_velocity_pid_output_limit;
 }
 
-static uint32 car_mode4_smooth_phase_ms(float rate_deg_s)
+static void car_mode4_stick_to_velocity(float strafe_stick,
+                                        float forward_stick,
+                                        float *forward_mps,
+                                        float *strafe_mps)
 {
-    return (uint32)((MODE4_FULL_TURN_DEG * 2.0f * 1000.0f) / rate_deg_s);
-}
+    float radius;
 
-static float car_mode4_step_target(float rate_deg_s, uint32 phase_ms)
-{
-    uint32 step_index = phase_ms / MODE4_STEP_MS;
-    uint32 steps_per_turn = (uint32)(MODE4_FULL_TURN_DEG / rate_deg_s);
+    strafe_stick = car_math_limit_absf(strafe_stick, MODE4_STICK_MAX);
+    forward_stick = car_math_limit_absf(forward_stick, MODE4_STICK_MAX);
+    radius = sqrtf((strafe_stick * strafe_stick) +
+                   (forward_stick * forward_stick));
 
-    if(step_index < steps_per_turn)
+    if(radius < MODE4_STICK_ZONE_WIDTH)
     {
-        return rate_deg_s * (float)(step_index + 1U);
+        *forward_mps = 0.0f;
+        *strafe_mps = 0.0f;
+        return;
     }
 
-    return MODE4_FULL_TURN_DEG -
-           rate_deg_s * (float)(step_index - steps_per_turn + 1U);
+    *forward_mps = forward_stick * MODE4_FIXED_VELOCITY_MPS / radius;
+    *strafe_mps = strafe_stick * MODE4_FIXED_VELOCITY_MPS / radius;
 }
 
-static float car_mode4_smooth_target(float rate_deg_s, uint32 phase_ms)
+static float car_mode4_limit_output(float value)
 {
-    float phase_s = (float)phase_ms * 0.001f;
-    float one_turn_s = MODE4_FULL_TURN_DEG / rate_deg_s;
+    float limit = mode4_velocity_output_limit;
 
-    if(phase_s < one_turn_s)
+    if(limit < MODE4_MIN_OUTPUT_LIMIT)
     {
-        return rate_deg_s * phase_s;
+        limit = MODE4_MIN_OUTPUT_LIMIT;
     }
 
-    return MODE4_FULL_TURN_DEG - rate_deg_s * (phase_s - one_turn_s);
+    return car_math_limit_absf(value, limit);
 }
 
 void car_mode4_init(void)
@@ -57,79 +93,108 @@ void car_mode4_init(void)
 
 void car_mode4_reset(void)
 {
-    s_mode4_started = 0U;
-    s_mode4_start_ms = 0U;
-    s_mode4_yaw_target_deg = 0.0f;
+    car_mode4_pid_init();
+
+    g_car_mode4_state.raw_forward_mps = 0.0f;
+    g_car_mode4_state.raw_strafe_mps = 0.0f;
+    g_car_mode4_state.velocity_forward_target_mps = 0.0f;
+    g_car_mode4_state.velocity_strafe_target_mps = 0.0f;
+    g_car_mode4_state.velocity_forward_feedback_mps = 0.0f;
+    g_car_mode4_state.velocity_strafe_feedback_mps = 0.0f;
+    g_car_mode4_state.forward_feedforward = 0.0f;
+    g_car_mode4_state.strafe_feedforward = 0.0f;
+    g_car_mode4_state.forward_pid_output = 0.0f;
+    g_car_mode4_state.strafe_pid_output = 0.0f;
+    g_car_mode4_state.forward_target = 0.0f;
+    g_car_mode4_state.strafe_target = 0.0f;
+    g_car_mode4_state.forward_pid_p_term = 0.0f;
+    g_car_mode4_state.forward_pid_i_term = 0.0f;
+    g_car_mode4_state.forward_pid_d_term = 0.0f;
+    g_car_mode4_state.strafe_pid_p_term = 0.0f;
+    g_car_mode4_state.strafe_pid_i_term = 0.0f;
+    g_car_mode4_state.strafe_pid_d_term = 0.0f;
+    g_car_mode4_state.output_valid = 0U;
+}
+
+void car_mode4_update_25HZ(uint32 now_ms)
+{
+    (void)now_ms;
 }
 
 void car_mode4_update_100HZ(uint32 now_ms)
 {
-    uint32 elapsed_ms;
-    uint32 active_ms;
-    uint32 cycle_ms;
-    uint32 phase_ms;
-    uint32 span_ms;
-    uint32 i;
+    float yaw_rad;
+    float cos_yaw;
+    float sin_yaw;
+    float forward_target_mps;
+    float strafe_target_mps;
 
-    if(0U == s_mode4_started)
-    {
-        s_mode4_started = 1U;
-        s_mode4_start_ms = now_ms;
-    }
+    (void)now_ms;
 
-    elapsed_ms = now_ms - s_mode4_start_ms;
-    if(elapsed_ms < MODE4_HOLD_MS)
-    {
-        s_mode4_yaw_target_deg = 0.0f;
-    }
-    else
-    {
-        active_ms = elapsed_ms - MODE4_HOLD_MS;
-        cycle_ms = 0U;
-        for(i = 0U; i < MODE4_STEP_RATE_COUNT; i++)
-        {
-            cycle_ms += car_mode4_step_phase_ms(s_mode4_step_rates_deg_s[i]);
-        }
-        for(i = 0U; i < MODE4_SMOOTH_RATE_COUNT; i++)
-        {
-            cycle_ms += car_mode4_smooth_phase_ms(s_mode4_smooth_rates_deg_s[i]);
-        }
+    car_mode4_pid_apply_params();
 
-        active_ms %= cycle_ms;
-        phase_ms = active_ms;
-        for(i = 0U; i < MODE4_STEP_RATE_COUNT; i++)
-        {
-            span_ms = car_mode4_step_phase_ms(s_mode4_step_rates_deg_s[i]);
-            if(phase_ms < span_ms)
-            {
-                s_mode4_yaw_target_deg = car_mode4_step_target(s_mode4_step_rates_deg_s[i],
-                                                               phase_ms);
-                car_forward_target = 0.0f;
-                car_strafe_target = 0.0f;
-                return;
-            }
-            phase_ms -= span_ms;
-        }
-        for(i = 0U; i < MODE4_SMOOTH_RATE_COUNT; i++)
-        {
-            span_ms = car_mode4_smooth_phase_ms(s_mode4_smooth_rates_deg_s[i]);
-            if(phase_ms < span_ms)
-            {
-                s_mode4_yaw_target_deg = car_mode4_smooth_target(s_mode4_smooth_rates_deg_s[i],
-                                                                 phase_ms);
-                car_forward_target = 0.0f;
-                car_strafe_target = 0.0f;
-                return;
-            }
-            phase_ms -= span_ms;
-        }
-    }
+    car_mode4_stick_to_velocity(g_air_crsf_std_ch0,
+                                g_air_crsf_std_ch1,
+                                &g_car_mode4_state.raw_forward_mps,
+                                &g_car_mode4_state.raw_strafe_mps);
 
-    car_forward_target = 0.0f;
-    car_strafe_target = 0.0f;
-}
+    yaw_rad = Control_GetYawAngle();
+    cos_yaw = cosf(yaw_rad);
+    sin_yaw = sinf(yaw_rad);
+    forward_target_mps =
+        (cos_yaw * g_car_mode4_state.raw_forward_mps) -
+        (sin_yaw * g_car_mode4_state.raw_strafe_mps);
+    strafe_target_mps =
+        (sin_yaw * g_car_mode4_state.raw_forward_mps) +
+        (cos_yaw * g_car_mode4_state.raw_strafe_mps);
 
-float car_mode4_get_yaw_target_rad(void)
-{
-    return s_mode4_yaw_target_deg * MODE4_DEG_TO_RAD;
+    g_car_mode4_state.velocity_forward_target_mps =
+        car_filter_lpf1_apply(g_car_mode4_state.velocity_forward_target_mps,
+                              forward_target_mps,
+                              ODOMETER_UPDATE_DT_S,
+                              mode4_velocity_smooth_tau_s);
+    g_car_mode4_state.velocity_strafe_target_mps =
+        car_filter_lpf1_apply(g_car_mode4_state.velocity_strafe_target_mps,
+                              strafe_target_mps,
+                              ODOMETER_UPDATE_DT_S,
+                              mode4_velocity_smooth_tau_s);
+
+    g_car_mode4_state.velocity_forward_feedback_mps = g_odometer.body_vel[y];
+    g_car_mode4_state.velocity_strafe_feedback_mps = g_odometer.body_vel[x];
+
+    g_car_mode4_state.forward_feedforward =
+        g_car_mode4_state.velocity_forward_target_mps *
+        ODOMETER_FORWARD_COUNT_PER_METER *
+        ODOMETER_UPDATE_DT_S;
+    g_car_mode4_state.strafe_feedforward =
+        -g_car_mode4_state.velocity_strafe_target_mps *
+        ODOMETER_STRAFE_COUNT_PER_METER_ABS *
+        ODOMETER_UPDATE_DT_S;
+
+    g_car_mode4_state.forward_pid_output =
+        PositionalPID_Update(&s_mode4_forward_pid,
+                             g_car_mode4_state.velocity_forward_target_mps,
+                             g_car_mode4_state.velocity_forward_feedback_mps);
+    g_car_mode4_state.strafe_pid_output =
+        PositionalPID_Update(&s_mode4_strafe_pid,
+                             g_car_mode4_state.velocity_strafe_target_mps,
+                             g_car_mode4_state.velocity_strafe_feedback_mps);
+
+    g_car_mode4_state.forward_target =
+        car_mode4_limit_output(g_car_mode4_state.forward_feedforward +
+                               g_car_mode4_state.forward_pid_output);
+    g_car_mode4_state.strafe_target =
+        car_mode4_limit_output(g_car_mode4_state.strafe_feedforward -
+                               g_car_mode4_state.strafe_pid_output);
+
+    g_car_mode4_state.forward_pid_p_term = s_mode4_forward_pid.p_term;
+    g_car_mode4_state.forward_pid_i_term = s_mode4_forward_pid.i_term;
+    g_car_mode4_state.forward_pid_d_term = s_mode4_forward_pid.d_term;
+    g_car_mode4_state.strafe_pid_p_term = s_mode4_strafe_pid.p_term;
+    g_car_mode4_state.strafe_pid_i_term = s_mode4_strafe_pid.i_term;
+    g_car_mode4_state.strafe_pid_d_term = s_mode4_strafe_pid.d_term;
+    g_car_mode4_state.output_valid = 1U;
+
+    car_forward_target = g_car_mode4_state.forward_target;
+    car_strafe_target = g_car_mode4_state.strafe_target;
 }

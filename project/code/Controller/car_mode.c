@@ -157,6 +157,10 @@ void car_mode_update_25HZ(uint32 now_ms)
         car_mode2_update_25HZ(now_ms);
         break;
 
+    case CAR_MODE_4:
+        car_mode4_update_25HZ(now_ms);
+        break;
+
     case CAR_MODE_5:
         car_mode5_update_25HZ(now_ms);
         break;
