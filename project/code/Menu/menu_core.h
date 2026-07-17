@@ -79,6 +79,8 @@ typedef struct
     float step;
     float min_val;
     float max_val;
+    const char * const *enum_labels; // 可选枚举文本，NULL表示显示数值
+    uint8_t enum_count;              // 枚举文本数量
 } menu_external_param_config_t;
 
 typedef struct

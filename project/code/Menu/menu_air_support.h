@@ -14,8 +14,8 @@
 
 #include "zf_common_headfile.h"
 
-#define MENU_AIR_MAX_PARAMS                  (189U)
-#define MENU_AIR_EXPECTED_PARAM_COUNT        (189U)
+#define MENU_AIR_MAX_PARAMS                  (222U)
+#define MENU_AIR_EXPECTED_PARAM_COUNT        (222U)
 
 #if (MENU_AIR_EXPECTED_PARAM_COUNT > MENU_AIR_MAX_PARAMS)
 #error "Air parameter count exceeds storage capacity"
@@ -59,6 +59,9 @@ typedef struct
     uint8 visible;          // 0=仅从菜单隐藏，仍参与通信与Flash存档
     const char * const *enum_labels; // 可选枚举文本，NULL表示按普通数值显示
     uint8 enum_count;                // 枚举文本数量
+    uint8 optional;                  // 1表示旧Air固件缺少该参数时不阻断其余参数同步
+    uint8 available;                 // 1表示本次目录拉取已确认远端支持该参数
+    uint8 enter_confirm_only;        // 1表示Back取消编辑，仅Enter确认后下发
 } menu_air_param_config_t;
 
 /* Air参数同步状态（供诊断页读取） */
@@ -89,12 +92,31 @@ typedef struct
     char last_ack_text[MENU_AIR_CMD_ACK_TEXT_MAX + 1U];
 } menu_air_cmd_status_t;
 
+/* 2BL3面积表异步操作类型。 */
+#define MENU_AIR_AREA_OP_NONE              (0U) /* 当前没有面积表操作 */
+#define MENU_AIR_AREA_OP_READ              (1U) /* 读取一个面积表单元 */
+#define MENU_AIR_AREA_OP_WRITE             (2U) /* 写入一个面积表单元 */
+#define MENU_AIR_AREA_OP_SAVE              (3U) /* 保存运行表到两颗图像板Flash */
+#define MENU_AIR_AREA_OP_RELOAD            (4U) /* 从两颗图像板Flash重新加载 */
+#define MENU_AIR_AREA_OP_DEFAULTS          (5U) /* 两颗图像板恢复编译期默认运行表 */
+
+/* 2BL3面积表异步操作状态，供菜单页和诊断页读取。 */
+typedef struct
+{
+    uint8 active;                    // 1表示操作仍在等待Air ACK
+    uint8 op;                        // MENU_AIR_AREA_OP_*操作类型
+    uint8 last_result;               // 最近一次AirComm ACK结果
+    uint8 last_status;               // 最近一次AirComm ACK状态码
+    float last_value;                // 最近一次单元读回值
+} menu_air_area_status_t;
+
 /* Air参数变量（菜单可调） */
 void menu_air_support_init(void);
 uint8 menu_get_air_param_count(void);                                                   // 获取参数数量
 float menu_get_air_param_by_index(uint8 index);                                         // 按索引读取
 uint8 menu_set_air_param_by_index(uint8 index, float value);                            // 按索引设置（自动标记dirty）
 const menu_air_param_config_t *menu_get_air_param_config(uint8 index);                  // 获取参数配置
+uint8 menu_air_param_is_available(uint8 index);                                         // 远端是否支持指定参数
 uint8 menu_is_air_connected(void);                                                      // Air是否在线
 uint8 menu_can_edit_air_params(void);                                                   // 是否允许编辑（在线且未运行）
 uint8 menu_sync_all_air_params(void);                                                   // 标记所有参数为dirty（触发全量同步）
@@ -118,5 +140,49 @@ uint8 menu_air_command_is_active(void);
 uint8 menu_air_command_get_count(void);
 const char *menu_air_command_get_name(uint8 index);
 void menu_get_air_command_status(menu_air_cmd_status_t *status);
+
+/**
+ * @brief 异步读取两颗2BL3共享面积表的一个单元。
+ * @param camera 相机编号，0表示前摄，1表示后摄。
+ * @param bound 界限编号，0表示下限，1表示上限。
+ * @param row 行号，范围0～6。
+ * @param column 列号，范围0～8。
+ * @param value ACK成功后写入读回值的菜单变量指针。
+ * @return 0表示请求已发送，1表示参数非法、运行锁定或通信忙。
+ */
+uint8 menu_air_area_read(uint8 camera,
+                         uint8 bound,
+                         uint8 row,
+                         uint8 column,
+                         float *value);
+
+/**
+ * @brief 异步写入两颗2BL3共享面积表的一个单元。
+ * @param camera 相机编号，0表示前摄，1表示后摄。
+ * @param bound 界限编号，0表示下限，1表示上限。
+ * @param row 行号，范围0～6。
+ * @param column 列号，范围0～8。
+ * @param value 新面积值，范围0～22560像素。
+ * @return 0表示请求已发送，1表示参数非法、运行锁定或通信忙。
+ */
+uint8 menu_air_area_write(uint8 camera,
+                          uint8 bound,
+                          uint8 row,
+                          uint8 column,
+                          float value);
+
+/**
+ * @brief 异步执行2BL3面积表保存、重新加载或恢复默认命令。
+ * @param op MENU_AIR_AREA_OP_SAVE、RELOAD或DEFAULTS。
+ * @return 0表示请求已发送，1表示操作非法、运行锁定或通信忙。
+ */
+uint8 menu_air_area_command(uint8 op);
+
+/**
+ * @brief 获取2BL3面积表异步操作状态。
+ * @param status 输出状态指针，不能为空。
+ * @return 无。
+ */
+void menu_air_area_get_status(menu_air_area_status_t *status);
 
 #endif

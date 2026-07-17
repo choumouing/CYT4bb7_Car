@@ -13,9 +13,22 @@
 #define MENU_AIR_COMMAND_TIMEOUT_MS         (1000U)
 #define MENU_AIR_PULL_RETRY_MS              (1000U)
 #define MENU_AIR_EXPOSURE_ACK_TIMEOUT_MS    (3000U)
+#define MENU_AIR_AREA_ACK_TIMEOUT_MS        (3000U) /* 面积表Flash命令允许使用的最长ACK等待时间 */
 #define MENU_AIR_CORE1_EXPOSURE_NAME        "c1_exp_time"
 #define MENU_AIR_2BL3_EXPOSURE_NAME         "bl3_exp_time"
 #define MENU_AIR_CORE1_SCREEN_MODE_NAME     "c1_screen_mode"
+#define MENU_AIR_BL3_LAMP_MIN_NAME          "bl3_lamp_min"
+#define MENU_AIR_BL3_LAMP_MAX_NAME          "bl3_lamp_max"
+#define MENU_AIR_BL3_FRONT_MAX_NAME         "bl3_front_max"
+#define MENU_AIR_BL3_RING_IN_NAME           "bl3_ring_in"
+#define MENU_AIR_BL3_RING_OUT_NAME          "bl3_ring_out"
+#define MENU_AIR_AREA_CELL_ID_BASE          (0x2000U) /* 2BL3面积表动态单元参数ID基址 */
+#define MENU_AIR_AREA_CAMERA_STRIDE         (126U) /* 每颗相机包含两张7x9面积表 */
+#define MENU_AIR_AREA_BOUND_STRIDE          (63U) /* 每个上下限表包含7x9个单元 */
+#define MENU_AIR_AREA_NAME_PREFIX           "bl3_area_" /* Air动态面积单元参数名前缀 */
+#define MENU_AIR_AREA_SAVE_NAME             "bl3_area_save" /* 保存面积表到2BL3 Flash */
+#define MENU_AIR_AREA_RELOAD_NAME           "bl3_area_load" /* 从2BL3 Flash重新加载面积表 */
+#define MENU_AIR_AREA_DEFAULTS_NAME         "bl3_area_default" /* 恢复2BL3默认面积表 */
 
 #if ((MENU_AIR_BOOT_OVERRIDE_ENABLE != 0U) && (MENU_AIR_BOOT_OVERRIDE_ENABLE != 1U))
 #error "Air boot override enable must be 0 or 1"
@@ -40,6 +53,8 @@ typedef struct
     uint8 visible;
     const char * const *enum_labels;
     uint8 enum_count;
+    uint8 optional;
+    uint8 enter_confirm_only;
 } menu_air_param_definition_t;
 
 typedef struct
@@ -70,6 +85,8 @@ static menu_air_param_config_t s_air_params[MENU_AIR_MAX_PARAMS];
 static uint16 s_air_param_count;
 static uint8 s_air_param_dirty[MENU_AIR_MAX_PARAMS];
 static uint8 s_air_confirmed_valid[MENU_AIR_MAX_PARAMS];
+/* FULL同步中仍待下发的参数标记。 */
+static uint8 s_air_full_pending[MENU_AIR_MAX_PARAMS];
 static menu_air_sync_status_t s_air_sync_status;
 static uint16 s_air_sync_next_index;
 static uint8 s_air_last_online;
@@ -81,24 +98,68 @@ static uint8 s_air_deferred_error_reason;
 static uint8 s_air_recover_index;
 static uint8 s_air_boot_screen_restore_done;
 static menu_air_cmd_status_t s_air_cmd_status;
+/* 2BL3面积表异步请求状态，仅由菜单100Hz任务访问。 */
+static menu_air_area_status_t s_air_area_status;
+/* 面积表读取成功后需要更新的车端菜单值指针。 */
+static float *s_air_area_read_target;
+/* 当前面积表异步请求使用的动态参数名。 */
+static char s_air_area_name[AIR_COMM_PARAM_NAME_MAX + 1U];
+
+/* 取消尚未完成的2BL3面积表动态请求。 */
+static void menu_air_area_abort(void);
 
 #define MENU_AIR_STRINGIFY_INNER(value)     #value
 #define MENU_AIR_STRINGIFY(value)           MENU_AIR_STRINGIFY_INNER(value)
 #define MENU_AIR_ARRAY_COUNT(array_v) \
     ((uint8)(sizeof(array_v) / sizeof((array_v)[0])))
 #define MENU_AIR_PARAM_VISIBLE(member, default_v, step_v, min_v, max_v, menu_name_v, visible_v) \
-    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), (visible_v), NULL, 0U}
+    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), (visible_v), NULL, 0U, 0U, 0U}
 #define MENU_AIR_PARAM(member, default_v, step_v, min_v, max_v, menu_name_v) \
     MENU_AIR_PARAM_VISIBLE(member, default_v, step_v, min_v, max_v, menu_name_v, 1U)
 #define MENU_AIR_ENUM_PARAM(member, default_v, step_v, min_v, max_v, menu_name_v, labels_v) \
     {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), 1U, \
-     (labels_v), MENU_AIR_ARRAY_COUNT(labels_v)}
+     (labels_v), MENU_AIR_ARRAY_COUNT(labels_v), 0U, 0U}
+#define MENU_AIR_OPTIONAL_PARAM(member, default_v, step_v, min_v, max_v, menu_name_v) \
+    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), 1U, \
+     NULL, 0U, 1U, 0U}
+#define MENU_AIR_OPTIONAL_ENUM_PARAM(member, default_v, step_v, min_v, max_v, menu_name_v, labels_v) \
+    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), 1U, \
+     (labels_v), MENU_AIR_ARRAY_COUNT(labels_v), 1U, 1U}
 
 static const char * const s_air_screen_mode_labels[] =
 {
     "Data",
     "Raw",
     "Binary"
+};
+
+/* 2BL3面积门控开关显示文本。 */
+static const char * const s_air_on_off_labels[] =
+{
+    "Off",
+    "On"
+};
+
+/* 2BL3图传内容模式，仅在Enter确认后下发。 */
+static const char * const s_air_bl3_stream_mode_labels[] =
+{
+    "Raw",
+    "Lamp Binary",
+    "Beacon Binary",
+    "Detected Overlay"
+};
+
+static const char * const s_air_full_lamp_names[] =
+{
+    MENU_AIR_BL3_LAMP_MIN_NAME,
+    MENU_AIR_BL3_LAMP_MAX_NAME,
+    MENU_AIR_BL3_FRONT_MAX_NAME
+};
+
+static const char * const s_air_full_ring_names[] =
+{
+    MENU_AIR_BL3_RING_IN_NAME,
+    MENU_AIR_BL3_RING_OUT_NAME
 };
 
 static const menu_air_param_definition_t s_air_param_definitions[] =
@@ -236,9 +297,9 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(mode8_kp_car_y, 20.0f, 5.0f, 0.0f, 100.0f, "Mode8 Vel"),
 
     MENU_AIR_PARAM(c1_beacon_thr, 120.0f, 1.0f, 0.0f, 255.0f, "Core1 Img"),
-    MENU_AIR_PARAM(bl3_beacon_thr, 120.0f, 1.0f, 0.0f, 255.0f, "2BL3 Img"),
-    MENU_AIR_PARAM(c1_exp_time, 400.0f, 1.0f, 0.0f, 636.0f, "Core1 Img"),
-    MENU_AIR_PARAM(bl3_exp_time, 500.0f, 1.0f, 0.0f, 636.0f, "2BL3 Img"),
+    MENU_AIR_PARAM(bl3_beacon_thr, 120.0f, 1.0f, 0.0f, 255.0f, "2BL3 Threshold"),
+    MENU_AIR_PARAM(c1_exp_time, 400.0f, 10.0f, 0.0f, 636.0f, "Core1 Img"),
+    MENU_AIR_PARAM(bl3_exp_time, 500.0f, 10.0f, 0.0f, 636.0f, "2BL3 Threshold"),
     MENU_AIR_ENUM_PARAM(c1_screen_mode, 0.0f, 1.0f, 0.0f, 2.0f, "Core1 Img",
                         s_air_screen_mode_labels),
 
@@ -303,7 +364,50 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(mode4_turn_accel_ff_gain_x, 0.72f, 0.05f, 0.0f, 3.0f, "Mode4 Vel"),
     MENU_AIR_PARAM(mode4_turn_accel_ff_gain_y, 0.30f, 0.05f, 0.0f, 3.0f, "Mode4 Vel"),
     MENU_AIR_PARAM(mode4_turn_accel_ff_limit_x_deg, 18.0f, 2.0f, 0.0f, 20.0f, "Mode4 Vel"),
-    MENU_AIR_PARAM(mode4_turn_accel_ff_limit_y_deg, 14.0f, 2.0f, 0.0f, 20.0f, "Mode4 Vel")
+    MENU_AIR_PARAM(mode4_turn_accel_ff_limit_y_deg, 14.0f, 2.0f, 0.0f, 20.0f, "Mode4 Vel"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_edge_thr, 80.0f, 1.0f, 0.0f, 255.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_track_thr, 105.0f, 1.0f, 0.0f, 255.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_thr, 200.0f, 1.0f, 0.0f, 255.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_up_thr, 150.0f, 1.0f, 0.0f, 255.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_up_y, 64.0f, 0.5f, 0.0f, 224.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_bridge_gap, 4.0f, 0.5f, 0.0f, 224.0f, "2BL3 Threshold"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_beacon_min, 6.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_edge_min, 2.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_top_max, 74.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_edge_max, 60.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_min, 24.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_max, 100.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_front_max, 180.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_elong, 1.6f, 0.1f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_front_len, 10.0f, 0.5f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_back_len, 12.0f, 0.5f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_iso_gray, 120.0f, 1.0f, 0.0f, 255.0f, "2BL3 Background"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_iso_bg, 2.0f, 1.0f, 0.0f, 255.0f, "2BL3 Background"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_ring_in, 3.0f, 0.5f, 0.0f, 224.0f, "2BL3 Background"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_ring_out, 8.0f, 0.5f, 0.0f, 224.0f, "2BL3 Background"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_near_pad, 8.0f, 0.5f, 0.0f, 224.0f, "2BL3 Near Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_near_min, 21.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Near Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_near_gray, 150.0f, 1.0f, 0.0f, 255.0f, "2BL3 Near Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_near_bg, 20.0f, 1.0f, 0.0f, 255.0f, "2BL3 Near Lamp"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_match_dist, 18.0f, 0.5f, 0.0f, 224.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_gate_dist, 24.0f, 0.5f, 0.0f, 224.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_new_dist, 36.0f, 0.5f, 0.0f, 224.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_confirm, 2.0f, 1.0f, 1.0f, 255.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_misses, 3.0f, 1.0f, 0.0f, 255.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_pos_alpha, 0.65f, 0.01f, 0.0f, 1.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_vel_alpha, 0.30f, 0.01f, 0.0f, 1.0f, "2BL3 Tracking"),
+
+    {"bl3_area_gate", 1.0f, 1.0f, 0.0f, 1.0f, "2BL3 Calibration", 1U,
+     s_air_on_off_labels, MENU_AIR_ARRAY_COUNT(s_air_on_off_labels), 1U, 0U},
+
+    MENU_AIR_OPTIONAL_ENUM_PARAM(bl3_stream_mode, 0.0f, 1.0f, 0.0f, 3.0f,
+                                 "2BL3 Stream", s_air_bl3_stream_mode_labels)
 };
 
 typedef char menu_air_param_count_must_match[
@@ -317,7 +421,25 @@ static uint8 menu_air_dirty_count(void)
 
     for(index = 0U; index < s_air_param_count; index++)
     {
-        if(s_air_param_dirty[index] != 0U)
+        if((s_air_param_dirty[index] != 0U) &&
+           (s_air_params[index].available != 0U))
+        {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+/* 统计本次目录拉取确认可用的参数数量。 */
+static uint8 menu_air_available_count(void)
+{
+    uint16 index;
+    uint8 count = 0U;
+
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        if(s_air_params[index].available != 0U)
         {
             count++;
         }
@@ -400,6 +522,7 @@ static void menu_air_store_confirmed(uint8 index, float value)
     *(s_air_params[index].variable) = value;
     s_air_confirmed_values[index] = value;
     s_air_confirmed_valid[index] = 1U;
+    s_air_params[index].available = 1U;
 }
 
 static void menu_air_restore_confirmed(uint8 index)
@@ -470,6 +593,7 @@ static void menu_air_sync_reset(uint8 mode)
     s_air_sync_status.mode = mode;
     s_air_sync_next_index = 0U;
     s_air_recover_index = MENU_AIR_SYNC_INVALID_INDEX;
+    memset(s_air_full_pending, 0, sizeof(s_air_full_pending));
 }
 
 static void menu_air_start_param_recovery(uint8 index)
@@ -696,6 +820,186 @@ static uint8 menu_air_find_param_index(const char *name, uint8 *out_index)
     return 0U;
 }
 
+static uint8 menu_air_full_group_get_indices(const char * const *names,
+                                              uint8 count,
+                                              uint8 *indices)
+{
+    uint8 position;
+
+    if((names == NULL) || (indices == NULL))
+    {
+        return 0U;
+    }
+
+    for(position = 0U; position < count; position++)
+    {
+        if((menu_air_find_param_index(names[position], &indices[position]) == 0U) ||
+           (s_air_params[indices[position]].available == 0U) ||
+           (s_air_params[indices[position]].variable == NULL))
+        {
+            return 0U;
+        }
+    }
+
+    return 1U;
+}
+
+static uint8 menu_air_full_group_confirmed_is_valid(const uint8 *indices, uint8 count)
+{
+    uint8 position;
+
+    if(indices == NULL)
+    {
+        return 0U;
+    }
+
+    for(position = 0U; position < count; position++)
+    {
+        if(s_air_confirmed_valid[indices[position]] == 0U)
+        {
+            return 0U;
+        }
+    }
+
+    return 1U;
+}
+
+static uint8 menu_air_full_lamp_values_are_valid(float lamp_min,
+                                                  float lamp_max,
+                                                  float front_max)
+{
+    return ((lamp_min <= lamp_max) && (lamp_max <= front_max)) ? 1U : 0U;
+}
+
+static uint8 menu_air_full_ring_values_are_valid(float ring_in, float ring_out)
+{
+    return (ring_in < ring_out) ? 1U : 0U;
+}
+
+static uint8 menu_air_full_constraints_are_valid(void)
+{
+    uint8 lamp_indices[MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names)];
+    uint8 ring_indices[MENU_AIR_ARRAY_COUNT(s_air_full_ring_names)];
+
+    if(menu_air_full_group_get_indices(s_air_full_lamp_names,
+                                       MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names),
+                                       lamp_indices) != 0U)
+    {
+        if((menu_air_full_group_confirmed_is_valid(
+                lamp_indices,
+                MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names)) == 0U) ||
+           (menu_air_full_lamp_values_are_valid(
+                s_air_confirmed_values[lamp_indices[0]],
+                s_air_confirmed_values[lamp_indices[1]],
+                s_air_confirmed_values[lamp_indices[2]]) == 0U) ||
+           (menu_air_full_lamp_values_are_valid(
+                *(s_air_params[lamp_indices[0]].variable),
+                *(s_air_params[lamp_indices[1]].variable),
+                *(s_air_params[lamp_indices[2]].variable)) == 0U))
+        {
+            return 0U;
+        }
+    }
+
+    if(menu_air_full_group_get_indices(s_air_full_ring_names,
+                                       MENU_AIR_ARRAY_COUNT(s_air_full_ring_names),
+                                       ring_indices) != 0U)
+    {
+        if((menu_air_full_group_confirmed_is_valid(
+                ring_indices,
+                MENU_AIR_ARRAY_COUNT(s_air_full_ring_names)) == 0U) ||
+           (menu_air_full_ring_values_are_valid(
+                s_air_confirmed_values[ring_indices[0]],
+                s_air_confirmed_values[ring_indices[1]]) == 0U) ||
+           (menu_air_full_ring_values_are_valid(
+                *(s_air_params[ring_indices[0]].variable),
+                *(s_air_params[ring_indices[1]].variable)) == 0U))
+        {
+            return 0U;
+        }
+    }
+
+    return 1U;
+}
+
+static uint8 menu_air_full_candidate_is_safe(uint8 candidate_index)
+{
+    uint8 lamp_indices[MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names)];
+    uint8 ring_indices[MENU_AIR_ARRAY_COUNT(s_air_full_ring_names)];
+    float lamp_min;
+    float lamp_max;
+    float front_max;
+    float ring_in;
+    float ring_out;
+
+    if(candidate_index >= s_air_param_count)
+    {
+        return 0U;
+    }
+
+    if((menu_air_full_group_get_indices(s_air_full_lamp_names,
+                                        MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names),
+                                        lamp_indices) != 0U) &&
+       ((candidate_index == lamp_indices[0]) ||
+        (candidate_index == lamp_indices[1]) ||
+        (candidate_index == lamp_indices[2])))
+    {
+        if(menu_air_full_group_confirmed_is_valid(
+               lamp_indices,
+               MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names)) == 0U)
+        {
+            return 0U;
+        }
+
+        lamp_min = s_air_confirmed_values[lamp_indices[0]];
+        lamp_max = s_air_confirmed_values[lamp_indices[1]];
+        front_max = s_air_confirmed_values[lamp_indices[2]];
+        if(candidate_index == lamp_indices[0])
+        {
+            lamp_min = *(s_air_params[candidate_index].variable);
+        }
+        else if(candidate_index == lamp_indices[1])
+        {
+            lamp_max = *(s_air_params[candidate_index].variable);
+        }
+        else
+        {
+            front_max = *(s_air_params[candidate_index].variable);
+        }
+
+        return menu_air_full_lamp_values_are_valid(lamp_min, lamp_max, front_max);
+    }
+
+    if((menu_air_full_group_get_indices(s_air_full_ring_names,
+                                        MENU_AIR_ARRAY_COUNT(s_air_full_ring_names),
+                                        ring_indices) != 0U) &&
+       ((candidate_index == ring_indices[0]) ||
+        (candidate_index == ring_indices[1])))
+    {
+        if(menu_air_full_group_confirmed_is_valid(
+               ring_indices,
+               MENU_AIR_ARRAY_COUNT(s_air_full_ring_names)) == 0U)
+        {
+            return 0U;
+        }
+
+        ring_in = s_air_confirmed_values[ring_indices[0]];
+        ring_out = s_air_confirmed_values[ring_indices[1]];
+        if(candidate_index == ring_indices[0])
+        {
+            ring_in = *(s_air_params[candidate_index].variable);
+        }
+        else
+        {
+            ring_out = *(s_air_params[candidate_index].variable);
+        }
+
+        return menu_air_full_ring_values_are_valid(ring_in, ring_out);
+    }
+
+    return 1U;
+}
+
 /* 全量启动覆盖关闭时，仅从启动槽恢复核1屏幕模式。 */
 static uint8 menu_air_start_boot_screen_restore(void)
 {
@@ -761,9 +1065,13 @@ void menu_air_support_init(void)
     memset(s_air_confirmed_values, 0, sizeof(s_air_confirmed_values));
     memset(s_air_param_dirty, 0, sizeof(s_air_param_dirty));
     memset(s_air_confirmed_valid, 0, sizeof(s_air_confirmed_valid));
+    memset(s_air_full_pending, 0, sizeof(s_air_full_pending));
     memset(s_air_params, 0, sizeof(s_air_params));
     memset(&s_air_sync_status, 0, sizeof(s_air_sync_status));
     memset(&s_air_cmd_status, 0, sizeof(s_air_cmd_status));
+    memset(&s_air_area_status, 0, sizeof(s_air_area_status));
+    s_air_area_read_target = NULL;
+    s_air_area_name[0] = '\0';
     s_air_sync_status.active_index = MENU_AIR_SYNC_INVALID_INDEX;
     s_air_sync_status.last_failed_index = MENU_AIR_SYNC_INVALID_INDEX;
     s_air_sync_status.mode = MENU_AIR_SYNC_MODE_IDLE;
@@ -795,6 +1103,9 @@ void menu_air_support_init(void)
         s_air_params[index].visible = definition->visible;
         s_air_params[index].enum_labels = definition->enum_labels;
         s_air_params[index].enum_count = definition->enum_count;
+        s_air_params[index].optional = definition->optional;
+        s_air_params[index].available = (definition->optional == 0U) ? 1U : 0U;
+        s_air_params[index].enter_confirm_only = definition->enter_confirm_only;
         s_air_param_values[index] = car_math_clampf(definition->default_val,
                                                    definition->min_val,
                                                    definition->max_val);
@@ -824,7 +1135,8 @@ uint8 menu_set_air_param_by_index(uint8 index, float value)
         return 1U;
     }
 
-    if(menu_can_edit_air_params() == 0U)
+    if((menu_can_edit_air_params() == 0U) ||
+       (menu_air_param_is_available(index) == 0U))
     {
         return 1U;
     }
@@ -843,6 +1155,16 @@ const menu_air_param_config_t *menu_get_air_param_config(uint8 index)
     }
 
     return &s_air_params[index];
+}
+
+uint8 menu_air_param_is_available(uint8 index)
+{
+    if(index >= s_air_param_count)
+    {
+        return 0U;
+    }
+
+    return s_air_params[index].available;
 }
 
 uint8 menu_is_air_connected(void)
@@ -872,6 +1194,8 @@ uint8 menu_sync_all_air_params(void)
 
 uint8 menu_air_sync_all_start(uint8 reason)
 {
+    uint16 index;
+
     if(car_menu_is_runtime_locked() != 0U)
     {
         return 1U;
@@ -884,6 +1208,7 @@ uint8 menu_air_sync_all_start(uint8 reason)
        (s_air_sync_status.mode == MENU_AIR_SYNC_MODE_FULL) ||
        (s_air_sync_status.mode == MENU_AIR_SYNC_MODE_PULL) ||
        (s_air_sync_status.mode == MENU_AIR_SYNC_MODE_RECOVER) ||
+       (s_air_area_status.active != 0U) ||
        (menu_air_command_is_active() != 0U) ||
        (air_comm_car_has_pending_ack() != 0U))
     {
@@ -901,11 +1226,21 @@ uint8 menu_air_sync_all_start(uint8 reason)
         return 1U;
     }
 
+    if(menu_air_full_constraints_are_valid() == 0U)
+    {
+        menu_show_error("Air Param Invalid");
+        return 1U;
+    }
+
     menu_air_sync_reset(MENU_AIR_SYNC_MODE_FULL);
     s_air_sync_status.reason = reason;
-    s_air_sync_status.dirty_count = (uint8)s_air_param_count;
+    s_air_sync_status.dirty_count = menu_air_available_count();
     s_air_sync_status.last_result = AIR_COMM_ACK_RESULT_NONE;
     s_air_sync_status.last_status = AIR_COMM_STATUS_ERROR;
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        s_air_full_pending[index] = s_air_params[index].available;
+    }
 
     return 0U;
 }
@@ -917,6 +1252,7 @@ uint8 menu_air_is_busy(void)
             (s_air_sync_status.mode == MENU_AIR_SYNC_MODE_FULL) ||
             (s_air_sync_status.mode == MENU_AIR_SYNC_MODE_PULL) ||
             (s_air_sync_status.mode == MENU_AIR_SYNC_MODE_RECOVER) ||
+            (s_air_area_status.active != 0U) ||
             (menu_air_command_is_active() != 0U) ||
             (air_comm_car_has_pending_ack() != 0U)) ? 1U : 0U;
 }
@@ -981,6 +1317,8 @@ void menu_air_abort_param_sync_runtime(void)
 {
     uint8 mode = s_air_sync_status.mode;
 
+    menu_air_area_abort();
+
     if((mode != MENU_AIR_SYNC_MODE_COMMIT) &&
        (mode != MENU_AIR_SYNC_MODE_FULL) &&
        (mode != MENU_AIR_SYNC_MODE_PULL) &&
@@ -1030,6 +1368,12 @@ uint8 menu_air_commit_param_value(uint8 index, float value)
         return 1U;
     }
 
+    if(menu_air_param_is_available(index) == 0U)
+    {
+        menu_show_error("Param N/A");
+        return 1U;
+    }
+
     if(car_menu_is_runtime_locked() != 0U)
     {
         return 1U;
@@ -1071,12 +1415,255 @@ uint8 menu_air_commit_param_value(uint8 index, float value)
     return 0U;
 }
 
+/* 生成面积表动态单元参数名，名称中的十六进制值与2BL3参数ID一致。 */
+static uint8 menu_air_area_build_cell_name(uint8 camera,
+                                           uint8 bound,
+                                           uint8 row,
+                                           uint8 column)
+{
+    uint16 parameter_id;
+
+    if((camera > 1U) || (bound > 1U) || (row > 6U) || (column > 8U))
+    {
+        return 1U;
+    }
+
+    parameter_id = (uint16)(MENU_AIR_AREA_CELL_ID_BASE +
+                            ((uint16)camera * MENU_AIR_AREA_CAMERA_STRIDE) +
+                            ((uint16)bound * MENU_AIR_AREA_BOUND_STRIDE) +
+                            ((uint16)row * 9U) + column);
+    (void)snprintf(s_air_area_name,
+                   sizeof(s_air_area_name),
+                   "%s%04X",
+                   MENU_AIR_AREA_NAME_PREFIX,
+                   (unsigned int)parameter_id);
+    return 0U;
+}
+
+/* 启动一笔面积表动态参数请求，ACK在menu_air_update_100HZ中异步收敛。 */
+static uint8 menu_air_area_start(uint8 op, const char *name, float value, float *read_target)
+{
+    uint8 send_result;
+
+    if(name == NULL)
+    {
+        return 1U;
+    }
+    if(menu_can_edit_air_params() == 0U)
+    {
+        menu_show_error((menu_is_air_connected() == 0U) ? "Air Offline" :
+                        ((car_menu_is_runtime_locked() != 0U) ?
+                         "Runtime Lock" : "Air Not Ready"));
+        return 1U;
+    }
+    if(menu_air_is_busy() != 0U)
+    {
+        menu_show_error("Air Busy");
+        return 1U;
+    }
+
+    if(name != s_air_area_name)
+    {
+        strncpy(s_air_area_name, name, sizeof(s_air_area_name) - 1U);
+        s_air_area_name[sizeof(s_air_area_name) - 1U] = '\0';
+    }
+    air_comm_car_clear_last_ack();
+    if(op == MENU_AIR_AREA_OP_READ)
+    {
+        send_result = air_comm_car_get_param(s_air_area_name);
+    }
+    else
+    {
+        send_result = air_comm_car_set_param_with_timeout(s_air_area_name,
+                                                          value,
+                                                          MENU_AIR_AREA_ACK_TIMEOUT_MS);
+    }
+    if(send_result != 0U)
+    {
+        menu_show_error("Area Send Fail");
+        return 1U;
+    }
+
+    s_air_area_status.active = 1U;
+    s_air_area_status.op = op;
+    s_air_area_status.last_result = AIR_COMM_ACK_RESULT_NONE;
+    s_air_area_status.last_status = AIR_COMM_STATUS_ERROR;
+    s_air_area_read_target = read_target;
+    menu_show_progress("Area Working");
+    return 0U;
+}
+
+uint8 menu_air_area_read(uint8 camera,
+                         uint8 bound,
+                         uint8 row,
+                         uint8 column,
+                         float *value)
+{
+    if((value == NULL) ||
+       (menu_air_area_build_cell_name(camera, bound, row, column) != 0U))
+    {
+        menu_show_error("Area Index Err");
+        return 1U;
+    }
+
+    return menu_air_area_start(MENU_AIR_AREA_OP_READ, s_air_area_name, 0.0f, value);
+}
+
+uint8 menu_air_area_write(uint8 camera,
+                          uint8 bound,
+                          uint8 row,
+                          uint8 column,
+                          float value)
+{
+    if((value < 0.0f) || (value > 22560.0f) ||
+       (menu_air_area_build_cell_name(camera, bound, row, column) != 0U))
+    {
+        menu_show_error("Area Value Err");
+        return 1U;
+    }
+
+    return menu_air_area_start(MENU_AIR_AREA_OP_WRITE, s_air_area_name, value, NULL);
+}
+
+uint8 menu_air_area_command(uint8 op)
+{
+    const char *name;
+
+    if(op == MENU_AIR_AREA_OP_SAVE)
+    {
+        name = MENU_AIR_AREA_SAVE_NAME;
+    }
+    else if(op == MENU_AIR_AREA_OP_RELOAD)
+    {
+        name = MENU_AIR_AREA_RELOAD_NAME;
+    }
+    else if(op == MENU_AIR_AREA_OP_DEFAULTS)
+    {
+        name = MENU_AIR_AREA_DEFAULTS_NAME;
+    }
+    else
+    {
+        menu_show_error("Area Command Err");
+        return 1U;
+    }
+
+    return menu_air_area_start(op, name, 1.0f, NULL);
+}
+
+void menu_air_area_get_status(menu_air_area_status_t *status)
+{
+    if(status != NULL)
+    {
+        *status = s_air_area_status;
+    }
+}
+
+/* 运行锁定或通信断开时取消面积表请求，避免迟到ACK误更新菜单值。 */
+static void menu_air_area_abort(void)
+{
+    if(s_air_area_status.active == 0U)
+    {
+        return;
+    }
+
+    if(s_air_area_status.op == MENU_AIR_AREA_OP_READ)
+    {
+        air_comm_car_cancel_pending_get_param();
+    }
+    else
+    {
+        air_comm_car_cancel_pending_set_param();
+    }
+    s_air_area_status.active = 0U;
+    s_air_area_status.last_result = AIR_COMM_ACK_RESULT_TIMEOUT;
+    s_air_area_status.last_status = AIR_COMM_STATUS_ERROR;
+    s_air_area_read_target = NULL;
+}
+
+/* 消费面积表动态参数ACK，并在成功时更新单元值或报告命令完成。 */
+static void menu_air_area_poll(void)
+{
+    uint8 ack_type = 0U;
+    uint8 ack_result = AIR_COMM_ACK_RESULT_NONE;
+    uint8 ack_status = AIR_COMM_STATUS_ERROR;
+    uint8 expected_type;
+    float actual = 0.0f;
+    char ack_name[AIR_COMM_PARAM_NAME_MAX + 1U];
+    const char *success_text = "Area OK";
+
+    if(s_air_area_status.active == 0U)
+    {
+        return;
+    }
+    if((car_menu_is_runtime_locked() != 0U) || (menu_is_air_connected() == 0U))
+    {
+        menu_air_area_abort();
+        menu_show_error("Area Aborted");
+        return;
+    }
+    if(air_comm_car_has_pending_ack() != 0U)
+    {
+        return;
+    }
+
+    (void)air_comm_car_get_last_ack(&ack_type, &ack_result, &ack_status);
+    ack_name[0] = '\0';
+    (void)air_comm_car_get_last_ack_name(ack_name, (uint8)sizeof(ack_name));
+    expected_type = (s_air_area_status.op == MENU_AIR_AREA_OP_READ) ?
+                    MENU_AIR_ACK_TYPE_GET_PARAM : MENU_AIR_ACK_TYPE_SET_PARAM;
+    s_air_area_status.active = 0U;
+    s_air_area_status.last_result = ack_result;
+    s_air_area_status.last_status = ack_status;
+    s_air_sync_status.last_result = ack_result;
+    s_air_sync_status.last_status = ack_status;
+
+    if((ack_type != expected_type) ||
+       (ack_result != AIR_COMM_ACK_RESULT_OK) ||
+       (ack_status != AIR_COMM_STATUS_OK) ||
+       (strcmp(ack_name, s_air_area_name) != 0))
+    {
+        s_air_area_read_target = NULL;
+        menu_show_error(menu_air_error_text(ack_result, ack_status, "Area Fail"));
+        return;
+    }
+
+    (void)air_comm_car_get_last_ack_value(&actual);
+    s_air_area_status.last_value = actual;
+    if((s_air_area_status.op == MENU_AIR_AREA_OP_READ) &&
+       (s_air_area_read_target != NULL))
+    {
+        *s_air_area_read_target = actual;
+        success_text = "Area Read OK";
+    }
+    else if(s_air_area_status.op == MENU_AIR_AREA_OP_WRITE)
+    {
+        success_text = "Area Write OK";
+    }
+    else if(s_air_area_status.op == MENU_AIR_AREA_OP_SAVE)
+    {
+        success_text = "Area Saved";
+    }
+    else if(s_air_area_status.op == MENU_AIR_AREA_OP_RELOAD)
+    {
+        success_text = "Area Reloaded";
+    }
+    else if(s_air_area_status.op == MENU_AIR_AREA_OP_DEFAULTS)
+    {
+        success_text = "Area Defaults";
+    }
+    s_air_area_read_target = NULL;
+    menu_show_success(success_text);
+}
+
 static uint8 menu_air_pull_all_start(void)
 {
+    uint16 index;
+
     if((car_menu_is_runtime_locked() != 0U) ||
        (menu_is_air_connected() == 0U) ||
        (s_air_param_count != MENU_AIR_EXPECTED_PARAM_COUNT) ||
        (s_air_sync_status.sending != 0U) ||
+       (s_air_area_status.active != 0U) ||
        (menu_air_command_is_active() != 0U) ||
        (air_comm_car_has_pending_ack() != 0U))
     {
@@ -1088,6 +1675,15 @@ static uint8 menu_air_pull_all_start(void)
     s_air_sync_status.last_result = AIR_COMM_ACK_RESULT_NONE;
     s_air_sync_status.last_status = AIR_COMM_STATUS_ERROR;
     s_air_catalog_ready = 0U;
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        if(s_air_params[index].optional != 0U)
+        {
+            s_air_params[index].available = 0U;
+            s_air_confirmed_valid[index] = 0U;
+            s_air_param_dirty[index] = 0U;
+        }
+    }
     return 0U;
 }
 
@@ -1103,13 +1699,22 @@ void menu_air_update_100HZ(void)
     uint8 sync_reason;
     uint8 get_mode;
     uint8 structural_failure;
+    uint8 full_pending;
+    uint16 full_index;
     uint32 now = air_comm_car_get_tick();
     float confirmed_value;
     char ack_name[AIR_COMM_PARAM_NAME_MAX + 1U];
 
     if(car_menu_is_runtime_locked() != 0U)
     {
+        menu_air_area_abort();
         menu_air_abort_param_sync_runtime();
+        return;
+    }
+
+    if(s_air_area_status.active != 0U)
+    {
+        menu_air_area_poll();
         return;
     }
 
@@ -1196,6 +1801,19 @@ void menu_air_update_100HZ(void)
 
         ack_name[0] = '\0';
         (void)air_comm_car_get_last_ack_name(ack_name, (uint8)sizeof(ack_name));
+        if((current_mode == MENU_AIR_SYNC_MODE_PULL) &&
+           (active_index < s_air_param_count) &&
+           (s_air_params[active_index].optional != 0U) &&
+           (ack_type == MENU_AIR_ACK_TYPE_GET_PARAM) &&
+           (ack_result == AIR_COMM_ACK_RESULT_ERROR) &&
+           (ack_status == AIR_COMM_STATUS_NOT_FOUND) &&
+           (strcmp(ack_name, s_air_params[active_index].name) == 0))
+        {
+            s_air_params[active_index].available = 0U;
+            s_air_confirmed_valid[active_index] = 0U;
+            s_air_param_dirty[active_index] = 0U;
+            return;
+        }
         if((active_index >= s_air_param_count) ||
            (ack_type != expected_type) ||
            (ack_result == AIR_COMM_ACK_RESULT_NONE) ||
@@ -1288,10 +1906,13 @@ void menu_air_update_100HZ(void)
             return;
         }
 
-        if((current_mode == MENU_AIR_SYNC_MODE_FULL) &&
-           (s_air_sync_status.dirty_count > 0U))
+        if(current_mode == MENU_AIR_SYNC_MODE_FULL)
         {
-            s_air_sync_status.dirty_count--;
+            s_air_full_pending[active_index] = 0U;
+            if(s_air_sync_status.dirty_count > 0U)
+            {
+                s_air_sync_status.dirty_count--;
+            }
         }
         return;
     }
@@ -1415,7 +2036,25 @@ void menu_air_update_100HZ(void)
         return;
     }
 
-    if(s_air_sync_next_index >= s_air_param_count)
+
+    active_index = MENU_AIR_SYNC_INVALID_INDEX;
+    full_pending = 0U;
+    for(full_index = 0U; full_index < s_air_param_count; full_index++)
+    {
+        if(s_air_full_pending[full_index] == 0U)
+        {
+            continue;
+        }
+
+        full_pending = 1U;
+        if(menu_air_full_candidate_is_safe((uint8)full_index) != 0U)
+        {
+            active_index = (uint8)full_index;
+            break;
+        }
+    }
+
+    if(full_pending == 0U)
     {
         sync_reason = s_air_sync_status.reason;
         menu_air_sync_reset(MENU_AIR_SYNC_MODE_DONE);
@@ -1435,7 +2074,18 @@ void menu_air_update_100HZ(void)
         return;
     }
 
-    active_index = (uint8)s_air_sync_next_index;
+    if(active_index == MENU_AIR_SYNC_INVALID_INDEX)
+    {
+        menu_air_record_failure(MENU_AIR_SYNC_INVALID_INDEX,
+                                AIR_COMM_ACK_RESULT_ERROR,
+                                AIR_COMM_STATUS_ERROR);
+        menu_air_restore_all_confirmed();
+        menu_air_sync_reset(MENU_AIR_SYNC_MODE_FAIL);
+        menu_air_mark_catalog_stale();
+        menu_show_error("Air Param Invalid");
+        return;
+    }
+
     air_comm_car_clear_last_ack();
     if(menu_air_send_set_param(active_index,
                                *(s_air_params[active_index].variable)) == 0U)
@@ -1445,7 +2095,6 @@ void menu_air_update_100HZ(void)
         s_air_sync_status.last_result = AIR_COMM_ACK_RESULT_NONE;
         s_air_sync_status.last_status = AIR_COMM_STATUS_ERROR;
         s_air_sync_status.send_count++;
-        s_air_sync_next_index++;
     }
     else
     {

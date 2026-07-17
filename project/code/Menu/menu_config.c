@@ -125,6 +125,48 @@ static void diag_air_flow_function(void);
 static void diag_air_imu_function(void);
 static void diag_air_attitude_function(void);
 static void diag_air_rc_function(void);
+static void diag_2bl3_status_function(void);
+static void bl3_area_read_function(void);
+static void bl3_area_write_function(void);
+static void bl3_area_save_function(void);
+static void bl3_area_reload_function(void);
+static void bl3_area_defaults_function(void);
+
+/* 2BL3面积表编辑页的本地选择器，不进入Car或Air参数Flash。 */
+static float s_bl3_area_camera = 0.0f;
+static float s_bl3_area_bound = 0.0f;
+static float s_bl3_area_row = 0.0f;
+static float s_bl3_area_column = 0.0f;
+static float s_bl3_area_value = 0.0f;
+
+/* 面积表相机选择显示文本。 */
+static const char * const s_bl3_area_camera_labels[] = {"Front", "Back"};
+/* 面积表上下限选择显示文本。 */
+static const char * const s_bl3_area_bound_labels[] = {"Lower", "Upper"};
+
+/* 2BL3面积表编辑页的本地参数配置。 */
+static menu_external_param_config_t s_bl3_area_camera_config =
+{
+    &s_bl3_area_camera, 1.0f, 0.0f, 1.0f,
+    s_bl3_area_camera_labels, 2U
+};
+static menu_external_param_config_t s_bl3_area_bound_config =
+{
+    &s_bl3_area_bound, 1.0f, 0.0f, 1.0f,
+    s_bl3_area_bound_labels, 2U
+};
+static menu_external_param_config_t s_bl3_area_row_config =
+{
+    &s_bl3_area_row, 1.0f, 0.0f, 6.0f, NULL, 0U
+};
+static menu_external_param_config_t s_bl3_area_column_config =
+{
+    &s_bl3_area_column, 1.0f, 0.0f, 8.0f, NULL, 0U
+};
+static menu_external_param_config_t s_bl3_area_value_config =
+{
+    &s_bl3_area_value, 1.0f, 0.0f, 22560.0f, NULL, 0U
+};
 
 //====================================================菜单树定义====================================================
 // 轮速PID子菜单（增量式）
@@ -247,6 +289,49 @@ static menu_item_t s_curve_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
+/* 2BL3面积标定表专用编辑页。 */
+static menu_item_t bl3_area_table_menu[] = {
+    {"Camera", MENU_TYPE_EXTERNAL_PARAMETER, .external_param = &s_bl3_area_camera_config},
+    {"Bound", MENU_TYPE_EXTERNAL_PARAMETER, .external_param = &s_bl3_area_bound_config},
+    {"Row", MENU_TYPE_EXTERNAL_PARAMETER, .external_param = &s_bl3_area_row_config},
+    {"Column", MENU_TYPE_EXTERNAL_PARAMETER, .external_param = &s_bl3_area_column_config},
+    {"Value", MENU_TYPE_EXTERNAL_PARAMETER, .external_param = &s_bl3_area_value_config},
+    {"Read Cell", MENU_TYPE_FUNCTION, .function = bl3_area_read_function},
+    {"Write Cell", MENU_TYPE_FUNCTION, .function = bl3_area_write_function},
+    {"Save Flash", MENU_TYPE_FUNCTION, .function = bl3_area_save_function},
+    {"Reload Flash", MENU_TYPE_FUNCTION, .function = bl3_area_reload_function},
+    {"Restore Defaults", MENU_TYPE_FUNCTION, .function = bl3_area_defaults_function},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+/* 2BL3图像参数二级分类菜单。 */
+static menu_item_t bl3_image_param_menu[] = {
+    {"Stream", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Threshold", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Beacon Area", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Car Lamp", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Background", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Near Lamp", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Tracking", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Calibration", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+/* 二级菜单显示名与Air参数定义中的分组名映射。 */
+static const char * const s_bl3_param_group_names[] = {
+    "2BL3 Stream",
+    "2BL3 Threshold",
+    "2BL3 Beacon Area",
+    "2BL3 Car Lamp",
+    "2BL3 Background",
+    "2BL3 Near Lamp",
+    "2BL3 Tracking",
+    "2BL3 Calibration"
+};
+
+typedef char bl3_param_group_count_must_match[
+    ((sizeof(s_bl3_param_group_names) / sizeof(s_bl3_param_group_names[0])) == 8U) ? 1 : -1];
+
 static menu_item_t air_param_menu[] = {
     {"Basic", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Gyro PID", MENU_TYPE_SUBMENU, .submenu = NULL},
@@ -270,12 +355,15 @@ static menu_item_t air_param_menu[] = {
 enum
 {
     AIR_PARAM_MENU_COUNT = (sizeof(air_param_menu) / sizeof(air_param_menu[0])) - 1U,
-    AIR_PARAM_MENU_STORAGE_COUNT = MENU_AIR_EXPECTED_PARAM_COUNT + AIR_PARAM_MENU_COUNT
+    BL3_PARAM_MENU_COUNT = (sizeof(bl3_image_param_menu) / sizeof(bl3_image_param_menu[0])) - 1U,
+    AIR_PARAM_MENU_STORAGE_COUNT = MENU_AIR_EXPECTED_PARAM_COUNT + AIR_PARAM_MENU_COUNT +
+                                   BL3_PARAM_MENU_COUNT + 1U
 };
 
 static menu_item_t s_air_param_menu_storage[AIR_PARAM_MENU_STORAGE_COUNT];
 static menu_item_t *s_air_group_menus[AIR_PARAM_MENU_COUNT];
-static menu_item_t air_command_menu[2U];
+/* 2BL3二级分组菜单在统一存储区中的起始指针。 */
+static menu_item_t *s_bl3_group_menus[BL3_PARAM_MENU_COUNT];
 
 static menu_item_t load_air_slot_menu[] = {
     {"Load Air0", MENU_TYPE_FUNCTION, .function = load_air_slot_0_function},
@@ -315,6 +403,7 @@ static menu_item_t car_diag_menu[] = {
 
 static menu_item_t air_diag_menu[] = {
     {"A_State", MENU_TYPE_DIAG_VIEW, .function = diag_air_state_function},
+    {"2BL3 Status", MENU_TYPE_DIAG_VIEW, .function = diag_2bl3_status_function},
     {"A_ToF", MENU_TYPE_DIAG_VIEW, .function = diag_air_tof_function},
     {"A_Flow", MENU_TYPE_DIAG_VIEW, .function = diag_air_flow_function},
     {"A_IMU", MENU_TYPE_DIAG_VIEW, .function = diag_air_imu_function},
@@ -334,7 +423,6 @@ static menu_item_t car_menu[] = {
 
 static menu_item_t air_menu[] = {
     {"A_params", MENU_TYPE_SUBMENU, .submenu = air_param_menu},
-    {"A_Command", MENU_TYPE_SUBMENU, .submenu = air_command_menu},
     {"A_Diag", MENU_TYPE_SUBMENU, .submenu = air_diag_menu},
     {"Sync Air", MENU_TYPE_FUNCTION, .function = sync_air_function},
     {"A_Load", MENU_TYPE_SUBMENU, .submenu = load_air_slot_menu},
@@ -353,15 +441,18 @@ static uint8 menu_build_air_param_menus(void)
     uint16 cursor = 0U;
     uint8 group;
     uint8 other_group;
+    uint8 bl3_top_found = 0U;
     uint16 index;
     uint16 other_index;
     uint8 group_count;
     const menu_air_param_config_t *config;
     const menu_air_param_config_t *other_config;
+    const char *item_name;
     menu_item_t *item;
 
     memset(s_air_param_menu_storage, 0, sizeof(s_air_param_menu_storage));
     memset(s_air_group_menus, 0, sizeof(s_air_group_menus));
+    memset(s_bl3_group_menus, 0, sizeof(s_bl3_group_menus));
 
     for(index = 0U; index < menu_get_air_param_count(); index++)
     {
@@ -398,6 +489,13 @@ static uint8 menu_build_air_param_menus(void)
 
     for(group = 0U; group < AIR_PARAM_MENU_COUNT; group++)
     {
+        if(strcmp(air_param_menu[group].name, "2BL3 Img") == 0)
+        {
+            s_air_group_menus[group] = bl3_image_param_menu;
+            bl3_top_found = 1U;
+            continue;
+        }
+
         s_air_group_menus[group] = &s_air_param_menu_storage[cursor];
         group_count = 0U;
 
@@ -435,19 +533,73 @@ static uint8 menu_build_air_param_menus(void)
         item->submenu = NULL;
     }
 
-    if(menu_air_command_get_count() != 1U)
+    if(bl3_top_found == 0U)
     {
         return 1U;
     }
 
-    memset(air_command_menu, 0, sizeof(air_command_menu));
-    strncpy(air_command_menu[0].name,
-            menu_air_command_get_name(0U),
-            sizeof(air_command_menu[0].name) - 1U);
-    air_command_menu[0].type = MENU_TYPE_AIR_COMMAND;
-    air_command_menu[0].param_index = 0U;
-    air_command_menu[1].type = MENU_TYPE_SUBMENU;
-    air_command_menu[1].submenu = NULL;
+    for(group = 0U; group < BL3_PARAM_MENU_COUNT; group++)
+    {
+        s_bl3_group_menus[group] = &s_air_param_menu_storage[cursor];
+        group_count = 0U;
+
+        for(index = 0U; index < menu_get_air_param_count(); index++)
+        {
+            config = menu_get_air_param_config((uint8)index);
+            if((config == NULL) || (config->menu_name == NULL) ||
+               (config->visible == 0U) ||
+               (strcmp(config->menu_name, s_bl3_param_group_names[group]) != 0))
+            {
+                continue;
+            }
+
+            if((group_count >= MENU_MAX_ITEMS) ||
+               (cursor >= AIR_PARAM_MENU_STORAGE_COUNT))
+            {
+                return 1U;
+            }
+
+            item = &s_air_param_menu_storage[cursor++];
+            item_name = config->name;
+            if(strcmp(config->name, "bl3_area_gate") == 0)
+            {
+                item_name = "AreaGate";
+            }
+            else if(strcmp(config->name, "bl3_stream_mode") == 0)
+            {
+                item_name = "ImageMode";
+            }
+            strncpy(item->name, item_name, sizeof(item->name) - 1U);
+            item->name[sizeof(item->name) - 1U] = '\0';
+            item->type = MENU_TYPE_AIR_PARAMETER;
+            item->param_index = (uint8)index;
+            group_count++;
+        }
+
+        if(strcmp(s_bl3_param_group_names[group], "2BL3 Calibration") == 0)
+        {
+            if((group_count >= MENU_MAX_ITEMS) ||
+               (cursor >= AIR_PARAM_MENU_STORAGE_COUNT))
+            {
+                return 1U;
+            }
+            item = &s_air_param_menu_storage[cursor++];
+            strncpy(item->name, "Area Table", sizeof(item->name) - 1U);
+            item->type = MENU_TYPE_SUBMENU;
+            item->submenu = bl3_area_table_menu;
+            group_count++;
+        }
+
+        if(cursor >= AIR_PARAM_MENU_STORAGE_COUNT)
+        {
+            return 1U;
+        }
+        item = &s_air_param_menu_storage[cursor++];
+        item->name[0] = '\0';
+        item->type = MENU_TYPE_SUBMENU;
+        item->submenu = NULL;
+        bl3_image_param_menu[group].submenu = s_bl3_group_menus[group];
+    }
 
     for(group = 0U; group < AIR_PARAM_MENU_COUNT; group++)
     {
@@ -658,6 +810,59 @@ static void sync_air_function(void)
     }
 }
 
+/**
+ * @brief 按当前选择器异步读取一个2BL3面积表单元。
+ * @return 无；请求结果由菜单100Hz任务提示并更新Value。
+ */
+static void bl3_area_read_function(void)
+{
+    (void)menu_air_area_read((uint8)(s_bl3_area_camera + 0.5f),
+                             (uint8)(s_bl3_area_bound + 0.5f),
+                             (uint8)(s_bl3_area_row + 0.5f),
+                             (uint8)(s_bl3_area_column + 0.5f),
+                             &s_bl3_area_value);
+}
+
+/**
+ * @brief 按当前选择器异步写入一个2BL3面积表单元。
+ * @return 无；请求结果由菜单100Hz任务提示。
+ */
+static void bl3_area_write_function(void)
+{
+    (void)menu_air_area_write((uint8)(s_bl3_area_camera + 0.5f),
+                              (uint8)(s_bl3_area_bound + 0.5f),
+                              (uint8)(s_bl3_area_row + 0.5f),
+                              (uint8)(s_bl3_area_column + 0.5f),
+                              s_bl3_area_value);
+}
+
+/**
+ * @brief 异步保存两颗2BL3当前运行面积表到各自Flash。
+ * @return 无；请求结果由菜单100Hz任务提示。
+ */
+static void bl3_area_save_function(void)
+{
+    (void)menu_air_area_command(MENU_AIR_AREA_OP_SAVE);
+}
+
+/**
+ * @brief 异步从两颗2BL3 Flash重新加载面积表。
+ * @return 无；请求结果由菜单100Hz任务提示。
+ */
+static void bl3_area_reload_function(void)
+{
+    (void)menu_air_area_command(MENU_AIR_AREA_OP_RELOAD);
+}
+
+/**
+ * @brief 异步将两颗2BL3运行面积表恢复为编译期默认值。
+ * @return 无；该操作不会自动写入Flash。
+ */
+static void bl3_area_defaults_function(void)
+{
+    (void)menu_air_area_command(MENU_AIR_AREA_OP_DEFAULTS);
+}
+
 /* 显示一行诊断文本（line 0-7，每行16像素高） */
 static void diag_show_line(uint8 line, const char *text)
 {
@@ -765,6 +970,126 @@ static void diag_air_state_function(void)
     sprintf(text, "Sync:%7.0fms", (double)g_air_sync_time_ms);
     diag_show_line(3U, text);
     diag_clear_lines(4U, 6U);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+/**
+ * @brief 按名称读取一个已确认可用的Air菜单参数。
+ * @param name 参数名称。
+ * @param value 输出参数值。
+ * @return 1表示找到且远端可用，0表示不存在或当前固件不支持。
+ */
+static uint8 diag_get_air_param_value(const char *name, float *value)
+{
+    uint8 index;
+    const menu_air_param_config_t *config;
+
+    if((name == NULL) || (value == NULL))
+    {
+        return 0U;
+    }
+
+    for(index = 0U; index < menu_get_air_param_count(); index++)
+    {
+        config = menu_get_air_param_config(index);
+        if((config != NULL) && (strcmp(config->name, name) == 0) &&
+           (menu_air_param_is_available(index) != 0U))
+        {
+            *value = menu_get_air_param_by_index(index);
+            return 1U;
+        }
+    }
+
+    return 0U;
+}
+
+/**
+ * @brief 显示仅由现有RUN_DATA和菜单同步状态组成的2BL3诊断页。
+ * @return 无；不增加任何无线遥测字段或发送频率。
+ */
+static void diag_2bl3_status_function(void)
+{
+    uint8 index;
+    uint8 available_count = 0U;
+    float beacon_threshold = 0.0f;
+    float edge_threshold = 0.0f;
+    float track_threshold = 0.0f;
+    float exposure = 0.0f;
+    char beacon_threshold_text[8] = "N/A";
+    char edge_threshold_text[8] = "N/A";
+    char track_threshold_text[8] = "N/A";
+    char exposure_text[8] = "N/A";
+    char text[32];
+    const char *failed_name = "--";
+    const menu_air_param_config_t *config;
+    menu_air_sync_status_t sync_status;
+
+    menu_get_air_sync_status(&sync_status);
+    for(index = 0U; index < menu_get_air_param_count(); index++)
+    {
+        if(menu_air_param_is_available(index) != 0U)
+        {
+            available_count++;
+        }
+    }
+    if(sync_status.last_failed_index < menu_get_air_param_count())
+    {
+        config = menu_get_air_param_config(sync_status.last_failed_index);
+        if(config != NULL)
+        {
+            failed_name = config->name;
+        }
+    }
+
+    if(diag_get_air_param_value("bl3_beacon_thr", &beacon_threshold) != 0U)
+    {
+        snprintf(beacon_threshold_text, sizeof(beacon_threshold_text),
+                 "%3.0f", (double)beacon_threshold);
+    }
+    if(diag_get_air_param_value("bl3_edge_thr", &edge_threshold) != 0U)
+    {
+        snprintf(edge_threshold_text, sizeof(edge_threshold_text),
+                 "%3.0f", (double)edge_threshold);
+    }
+    if(diag_get_air_param_value("bl3_track_thr", &track_threshold) != 0U)
+    {
+        snprintf(track_threshold_text, sizeof(track_threshold_text),
+                 "%3.0f", (double)track_threshold);
+    }
+    if(diag_get_air_param_value("bl3_exp_time", &exposure) != 0U)
+    {
+        snprintf(exposure_text, sizeof(exposure_text),
+                 "%3.0f", (double)exposure);
+    }
+
+    diag_begin();
+    diag_show_line(0U, "2BL3 Status");
+    snprintf(text, sizeof(text), "On:%u Fr:%u Cam:%u",
+             (unsigned int)air_comm_car_is_online(),
+             (unsigned int)air_comm_car_is_run_data_fresh(),
+             (unsigned int)(uint8)g_air_car_plan_camera);
+    diag_show_line(1U, text);
+    snprintf(text, sizeof(text), "B:%u D:%5.1f Lost:%u",
+             (unsigned int)(uint8)g_air_car_plan_beacon_index,
+             (double)g_air_car_plan_dist_px,
+             (unsigned int)(uint8)g_air_beacon_lost_flag);
+    diag_show_line(2U, text);
+    snprintf(text, sizeof(text), "Sync:%u Dirty:%u",
+             (unsigned int)available_count,
+             (unsigned int)sync_status.dirty_count);
+    diag_show_line(3U, text);
+    snprintf(text, sizeof(text), "Ack:%u Fail:%.11s",
+             (unsigned int)sync_status.last_status,
+             failed_name);
+    diag_show_line(4U, text);
+    snprintf(text, sizeof(text), "Thr:%s Edge:%s",
+             beacon_threshold_text,
+             edge_threshold_text);
+    diag_show_line(5U, text);
+    snprintf(text, sizeof(text), "Track:%s Exp:%s",
+             track_threshold_text,
+             exposure_text);
+    diag_show_line(6U, text);
     diag_show_line(7U, "Back/Enter Exit");
 }
 
