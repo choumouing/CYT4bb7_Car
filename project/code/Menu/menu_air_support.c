@@ -151,7 +151,9 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(yaw_angle_i_limit, 0.0f, 1.0f,  0.0f, 5000.0f, "Angle PID"),
     MENU_AIR_PARAM(yaw_angle_d_lpf, 0.0f,   1.0f,  0.0f,  500.0f, "Angle PID"),
 
-    MENU_AIR_PARAM(vel_z_ki, 80.0f,      1.0f, 0.0f, 3000.0f, "Basic"),
+    MENU_AIR_PARAM(pos_z_kp, 1.3f,       0.05f, 0.0f, 3000.0f, "Basic"),
+    MENU_AIR_PARAM(vel_z_kp, 30.0f,      5.0f,  0.0f, 3000.0f, "Basic"),
+    MENU_AIR_PARAM(vel_z_ki, 80.0f,      5.0f,  0.0f, 3000.0f, "Basic"),
     MENU_AIR_PARAM(vel_z_i_limit, 450.0f, 1.0f, 0.0f, 5000.0f, "Basic"),
 
     MENU_AIR_PARAM(mode7_vel_x_kp, 0.15f,      0.01f,  0.0f, 3000.0f, "Mode7 Vel"),
@@ -322,7 +324,12 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(mode3_turn_accel_ff_gain_x, 0.72f, 0.05f, 0.0f, 3.0f, "Mode3 Vel"),
     MENU_AIR_PARAM(mode3_turn_accel_ff_gain_y, 0.30f, 0.05f, 0.0f, 3.0f, "Mode3 Vel"),
     MENU_AIR_PARAM(mode3_turn_accel_ff_limit_x_deg, 18.0f, 2.0f, 0.0f, 20.0f, "Mode3 Vel"),
-    MENU_AIR_PARAM(mode3_turn_accel_ff_limit_y_deg, 14.0f, 2.0f, 0.0f, 20.0f, "Mode3 Vel")
+    MENU_AIR_PARAM(mode3_turn_accel_ff_limit_y_deg, 14.0f, 2.0f, 0.0f, 20.0f, "Mode3 Vel"),
+    MENU_AIR_PARAM(yaw_change_mode2, 1.0f, 1.0f, 0.0f, 1.0f, "Yaw Change"),
+    MENU_AIR_PARAM(yaw_change_mode3, 1.0f, 1.0f, 0.0f, 1.0f, "Yaw Change"),
+    MENU_AIR_PARAM(yaw_change_mode4, 0.0f, 1.0f, 0.0f, 1.0f, "Yaw Change"),
+    MENU_AIR_PARAM(yaw_change_mode5, 0.0f, 1.0f, 0.0f, 1.0f, "Yaw Change"),
+    MENU_AIR_PARAM(yaw_change_mode8, 0.0f, 1.0f, 0.0f, 1.0f, "Yaw Change")
 };
 
 typedef char menu_air_param_count_must_match[
