@@ -113,12 +113,9 @@ void odometer_init(void)
     odometer_reset();
 }
 
-void odometer_reset(void)
+static void odometer_reset_state(const float initial_position[ODOMETER_AXIS_NUM])
 {
-    float initial_position[ODOMETER_AXIS_NUM];
-
     g_odometer = (odometer_data_t){0};
-    beacon_config_get_initial_position(initial_position);
     g_odometer.position[x] = initial_position[x];
     g_odometer.position[y] = initial_position[y];
     s_yaw_zero_rad = 0.0f;
@@ -133,6 +130,22 @@ void odometer_reset(void)
     s_yaw_ready = 0U;
     s_accel_bias_ready = 0U;
     s_slip_hold_ticks = 0U;
+}
+
+void odometer_reset(void)
+{
+    float initial_position[ODOMETER_AXIS_NUM];
+
+    beacon_config_get_initial_position(initial_position);
+    odometer_reset_state(initial_position);
+}
+
+void odometer_reset_to_predata_start(void)
+{
+    beacon_config_data_t map_data;
+
+    beacon_config_get_predata(&map_data);
+    odometer_reset_state(map_data.initial_position);
 }
 
 /**

@@ -22,6 +22,7 @@ static uint16 s_air_comm_beep_tick = 200U;
 static uint32 s_beacon_beep_enter_count = 0U;
 static uint8 s_air_menu_runtime_locked = 0U;
 static uint8 s_air_run_data_seen = 0U;
+static uint8 s_air_takeoff_reset_pending = 0U;
 static uint8 s_menu_runtime_was_locked = 0U;
 /* Car yaw rate for Air upload, 10Hz low-pass output, unit: deg/s. */
 static float s_car_yaw_rate_lpf_dps = 0.0f;
@@ -102,6 +103,8 @@ volatile float g_air_beacon_lost_flag = 0.0f;
 #define AIR_YAW_TARGET_DEG_TO_RAD (-0.017453292519943295f)
 #define AIR_MENU_STATE_INIT (0.0f)
 #define AIR_MENU_STATE_STANDBY (1.0f)
+#define AIR_MENU_STATE_TAKEOFF (2.0f)
+#define AIR_MENU_STATE_FLYING (3.0f)
 #define AIR_MENU_STATE_RUNTIME_MIN (2.0f)
 
 /**
@@ -111,6 +114,15 @@ volatile float g_air_beacon_lost_flag = 0.0f;
  */
 static void car_loop_update_air_runtime_state(float air_state)
 {
+    /* 通信回调只挂起任务级复位，由100Hz主循环统一修改估计器状态。 */
+    if(((air_state == AIR_MENU_STATE_TAKEOFF) ||
+        (air_state == AIR_MENU_STATE_FLYING)) &&
+       ((s_air_run_data_seen == 0U) ||
+        (g_air_state < AIR_MENU_STATE_TAKEOFF)))
+    {
+        s_air_takeoff_reset_pending = 1U;
+    }
+
     g_air_state = air_state;
     s_air_run_data_seen = 1U;
     if(g_air_state >= AIR_MENU_STATE_RUNTIME_MIN)
@@ -233,6 +245,7 @@ static void car_loop_runtime_reset(void)
     s_beacon_beep_enter_count = 0U;
     s_air_menu_runtime_locked = 0U;
     s_air_run_data_seen = 0U;
+    s_air_takeoff_reset_pending = 0U;
     s_menu_runtime_was_locked = 0U;
 }
 
@@ -330,6 +343,15 @@ static void car_loop_100HZ(void)
 
     encoder_update_100HZ();
     odometer_update_100HZ();
+    /* 新一轮起飞统一清除上一轮定位、检测和灯序识别状态。 */
+    if(s_air_takeoff_reset_pending != 0U)
+    {
+        odometer_reset_to_predata_start();
+        beacon_detection_reset();
+        fixator_reset();
+        LightSequence_Reset();
+        s_air_takeoff_reset_pending = 0U;
+    }
     beacon_position_recorder_update_100HZ();
     beacon_detection_update_100HZ();
     fixator_update_100HZ();

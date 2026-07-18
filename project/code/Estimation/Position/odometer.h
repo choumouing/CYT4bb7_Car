@@ -124,6 +124,9 @@ void odometer_init(void);
 /* 重置里程计：清零速度/位置/偏航基准，当前朝向变为 Y 轴正方向 */
 void odometer_reset(void);
 
+/* 忽略当前地图数据源，将里程计重置到Predata地图配置的发车区坐标。 */
+void odometer_reset_to_predata_start(void);
+
 /* 100Hz 周期更新：读取四轮编码器 → 正运动学 → 坐标变换 → 积分 */
 void odometer_update_100HZ(void);
 void odometer_update_1000HZ(void);
