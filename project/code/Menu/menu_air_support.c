@@ -152,7 +152,7 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(yaw_angle_d_lpf, 0.0f,   1.0f,  0.0f,  500.0f, "Angle PID"),
 
     MENU_AIR_PARAM(pos_z_kp, 1.3f,       0.05f, 0.0f, 3000.0f, "Basic"),
-    MENU_AIR_PARAM(vel_z_kp, 30.0f,      5.0f,  0.0f, 3000.0f, "Basic"),
+    MENU_AIR_PARAM(vel_z_kp, 420.0f,     20.0f, 0.0f, 1000.0f, "Basic"),
     MENU_AIR_PARAM(vel_z_ki, 80.0f,      5.0f,  0.0f, 3000.0f, "Basic"),
     MENU_AIR_PARAM(vel_z_i_limit, 450.0f, 1.0f, 0.0f, 5000.0f, "Basic"),
 
