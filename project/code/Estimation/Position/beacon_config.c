@@ -1,7 +1,7 @@
 #include "beacon_config.h"
 
 #define BEACON_CONFIG_FLASH_MAGIC   (0x42434647UL)
-#define BEACON_CONFIG_FLASH_VERSION (1U)
+#define BEACON_CONFIG_FLASH_VERSION (2U)
 #define BEACON_CONFIG_COORD_LIMIT_M (1000.0f)
 
 #if (BEACON_CONFIG_FLASH_PAGE >= FLASH_PAGE_NUM)
@@ -34,20 +34,19 @@ typedef char beacon_config_flash_data_must_fit_page[
  * 坐标含义：车体中心位于信标中心时的全局坐标，单位 m。
  * X 正方向为右侧。
  * Y 正方向为前方。
- * 数组下标0至6依次对应灯序识别中的1号至7号灯。
+ * 数组下标0至5依次对应灯序识别中的1号至6号灯。
  * 发车区坐标作为 odometer 初始全局坐标。
  */
 static const beacon_config_data_t s_default_predata =
 {
-    {2.50f, 0.25f},
+    {3.25f, 0.25f},
     {
-        {1.35f, 1.00f},
-        {3.60f, 1.00f},
-        {4.20f, 2.00f},
-        {2.25f, 2.50f},
-        {3.15f, 4.00f},
-        {0.90f, 4.00f},
-        {0.00f, 5.00f}
+        {2.2f, 2.0f},
+        {1.6f, 3.7f},
+        {2.9f, 4.8f},
+        {3.1f, 3.2f},
+        {4.1f, 2.1f},
+        {4.5f, 3.9f},
     }
 };
 

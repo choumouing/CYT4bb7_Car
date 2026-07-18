@@ -3,7 +3,7 @@
 
 #include "zf_common_headfile.h"
 
-#define BEACON_CONFIG_BEACON_COUNT (7U)
+#define BEACON_CONFIG_BEACON_COUNT (6U)
 #define BEACON_CONFIG_FLASH_PAGE   (70U) /* Work Flash 第70页，保存Predata与数据源 */
 
 typedef struct
