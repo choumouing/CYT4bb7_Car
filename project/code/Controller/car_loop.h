@@ -73,6 +73,8 @@ extern volatile float g_air_sync_time_ms;
 extern volatile float g_air_car_plan_valid;
 extern volatile float g_air_car_plan_strafe_mps;
 extern volatile float g_air_car_plan_forward_mps;
+extern float g_car_plan_strafe_mps;
+extern float g_car_plan_forward_mps;
 extern volatile float g_air_car_plan_camera;
 extern volatile float g_air_car_plan_beacon_index;
 extern volatile float g_air_car_plan_dist_px;

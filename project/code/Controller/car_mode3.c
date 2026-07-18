@@ -103,9 +103,9 @@ void car_mode3_update_100HZ(uint32 now_ms)
 
     if (g_air_car_plan_valid > 0.5f)
     {
-        g_car_mode3_state.raw_forward_mps = car_math_limit_absf(g_air_car_plan_forward_mps,
+        g_car_mode3_state.raw_forward_mps = car_math_limit_absf(g_car_plan_forward_mps,
                                                                 MODE3_MAX_VELOCITY_MPS);
-        g_car_mode3_state.raw_strafe_mps = car_math_limit_absf(g_air_car_plan_strafe_mps,
+        g_car_mode3_state.raw_strafe_mps = car_math_limit_absf(g_car_plan_strafe_mps,
                                                                MODE3_MAX_VELOCITY_MPS);
     }
     else
