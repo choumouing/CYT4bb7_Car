@@ -13,7 +13,7 @@ typedef struct
     uint8 remaining_mask;
 } light_sequence_candidate_t;
 
-/* 10套序列各自的当前筛选进度。 */
+/* 各套序列的当前筛选进度。 */
 static light_sequence_candidate_t s_candidates[LIGHT_SEQUENCE_PRESET_COUNT];
 
 /* 当前灯号与序列识别结果。 */
@@ -22,10 +22,10 @@ static light_sequence_result_t s_result;
 /* 上一次100Hz更新时的Air熄灯标志，用于检测0到1上升沿。 */
 static uint8 s_last_beacon_lost_flag;
 
-/* 7盏灯最近一次被正式接受的时间戳，单位ms。 */
+/* 各盏灯最近一次被正式接受的时间戳，单位ms。 */
 static uint32 s_last_accepted_time_ms[LIGHT_SEQUENCE_BEACON_COUNT];
 
-/* 最近接受时间有效位，bit0至bit6分别对应1号至7号灯。 */
+/* 最近接受时间有效位，bit0至bit5分别对应1号至6号灯。 */
 static uint8 s_accepted_time_valid_mask;
 
 /**
@@ -106,34 +106,31 @@ static uint8 LightSequence_PresetValid(const light_sequence_preset_t *preset)
 }
 
 /**
- * @brief 根据修正后的车辆坐标查找匹配半径内最近的信标灯。
+ * @brief 根据修正后的车辆坐标在Predata地图中查找匹配半径内最近的信标灯。
  * @param car_position_x 车辆全局X坐标，单位m。
  * @param car_position_y 车辆全局Y坐标，单位m。
- * @return 匹配成功返回1至7号灯，匹配失败返回0。
+ * @return 匹配成功返回1至6号灯，匹配失败返回0。
  */
 static uint8 LightSequence_FindNearestBeacon(float car_position_x,
                                              float car_position_y)
 {
     const float match_radius_sq =
         LIGHT_SEQUENCE_MATCH_RADIUS_M * LIGHT_SEQUENCE_MATCH_RADIUS_M;
+    beacon_config_data_t map_data;
     float nearest_distance_sq = 0.0f;
     uint8 nearest_beacon_id = LIGHT_SEQUENCE_BEACON_ID_NONE;
     uint8 beacon_index;
 
+    beacon_config_get_predata(&map_data);
     for(beacon_index = 0U; beacon_index < LIGHT_SEQUENCE_BEACON_COUNT; beacon_index++)
     {
-        beacon_config_point_t beacon;
+        const beacon_config_point_t *beacon = &map_data.beacons[beacon_index];
         float dx;
         float dy;
         float distance_sq;
 
-        if(beacon_config_get_beacon(beacon_index, &beacon) == 0U)
-        {
-            continue;
-        }
-
-        dx = car_position_x - beacon.x;
-        dy = car_position_y - beacon.y;
+        dx = car_position_x - beacon->x;
+        dy = car_position_y - beacon->y;
         distance_sq = (dx * dx) + (dy * dy);
 
         if((nearest_beacon_id == LIGHT_SEQUENCE_BEACON_ID_NONE) ||
@@ -196,7 +193,7 @@ static void LightSequence_RefreshResult(void)
 }
 
 /**
- * @brief 复位灯号与序列识别状态，重新加载全部10套候选。
+ * @brief 复位灯号与序列识别状态，重新加载全部候选。
  * @param 无。
  * @return 无。
  */

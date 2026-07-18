@@ -23,14 +23,14 @@ typedef enum
 typedef struct
 {
     uint8 status;          /* light_sequence_status_e识别状态 */
-    uint8 last_beacon_id;  /* 最近一次熄灯上升沿匹配的灯号，1至7，0表示未匹配 */
-    uint8 sequence_id;     /* 唯一确定的序列编号，1至10，0表示未确定 */
+    uint8 last_beacon_id;  /* 最近一次熄灯上升沿匹配的灯号，1至6，0表示未匹配 */
+    uint8 sequence_id;     /* 唯一确定的序列编号，1至4，0表示未确定 */
     uint8 candidate_count; /* 当前剩余候选序列数量 */
-    uint16 candidate_mask; /* bit0至bit9分别对应序列1至10 */
+    uint16 candidate_mask; /* bit0至bit3分别对应序列1至4 */
 } light_sequence_result_t;
 
 /**
- * @brief 复位灯号与序列识别状态，重新加载全部10套候选。
+ * @brief 复位灯号与序列识别状态，重新加载全部候选。
  * @param 无。
  * @return 无。
  */

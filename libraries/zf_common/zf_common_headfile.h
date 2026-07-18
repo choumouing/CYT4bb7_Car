@@ -143,6 +143,7 @@
 
 #include "Controller/control.h"
 #include "Controller/Planner/s_curve_planner.h"
+#include "Controller/carplanfix.h"
 #include "Controller/car_mode.h"
 #include "Controller/car_start_sbus.h"
 #include "Controller/car_loop.h"

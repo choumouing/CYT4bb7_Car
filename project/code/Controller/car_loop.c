@@ -22,6 +22,7 @@ static uint16 s_air_comm_beep_tick = 200U;
 static uint32 s_beacon_beep_enter_count = 0U;
 static uint8 s_air_menu_runtime_locked = 0U;
 static uint8 s_air_run_data_seen = 0U;
+static uint8 s_air_takeoff_reset_pending = 0U;
 static uint8 s_menu_runtime_was_locked = 0U;
 /* Car yaw rate for Air upload, 10Hz low-pass output, unit: deg/s. */
 static float s_car_yaw_rate_lpf_dps = 0.0f;
@@ -102,6 +103,8 @@ volatile float g_air_beacon_lost_flag = 0.0f;
 #define AIR_YAW_TARGET_DEG_TO_RAD (-0.017453292519943295f)
 #define AIR_MENU_STATE_INIT (0.0f)
 #define AIR_MENU_STATE_STANDBY (1.0f)
+#define AIR_MENU_STATE_TAKEOFF (2.0f)
+#define AIR_MENU_STATE_FLYING (3.0f)
 #define AIR_MENU_STATE_RUNTIME_MIN (2.0f)
 
 /**
@@ -111,6 +114,15 @@ volatile float g_air_beacon_lost_flag = 0.0f;
  */
 static void car_loop_update_air_runtime_state(float air_state)
 {
+    /* 通信回调只挂起任务级复位，由100Hz主循环统一修改估计器状态。 */
+    if(((air_state == AIR_MENU_STATE_TAKEOFF) ||
+        (air_state == AIR_MENU_STATE_FLYING)) &&
+       ((s_air_run_data_seen == 0U) ||
+        (g_air_state < AIR_MENU_STATE_TAKEOFF)))
+    {
+        s_air_takeoff_reset_pending = 1U;
+    }
+
     g_air_state = air_state;
     s_air_run_data_seen = 1U;
     if(g_air_state >= AIR_MENU_STATE_RUNTIME_MIN)
@@ -233,6 +245,7 @@ static void car_loop_runtime_reset(void)
     s_beacon_beep_enter_count = 0U;
     s_air_menu_runtime_locked = 0U;
     s_air_run_data_seen = 0U;
+    s_air_takeoff_reset_pending = 0U;
     s_menu_runtime_was_locked = 0U;
 }
 
@@ -320,6 +333,8 @@ static void car_loop_100HZ(void)
     float odometer_raw_position[2];
     float odometer_fixed_position[2];
     float beacon_detected_flag;
+    float carplanfix_forward_mps;
+    float carplanfix_strafe_mps;
     light_sequence_result_t light_sequence_result;
     uint8 menu_runtime_locked;
 
@@ -328,6 +343,15 @@ static void car_loop_100HZ(void)
 
     encoder_update_100HZ();
     odometer_update_100HZ();
+    /* 新一轮起飞统一清除上一轮定位、检测和灯序识别状态。 */
+    if(s_air_takeoff_reset_pending != 0U)
+    {
+        odometer_reset();
+        beacon_detection_reset();
+        fixator_reset();
+        LightSequence_Reset();
+        s_air_takeoff_reset_pending = 0U;
+    }
     beacon_position_recorder_update_100HZ();
     beacon_detection_update_100HZ();
     fixator_update_100HZ();
@@ -456,6 +480,22 @@ static void car_loop_100HZ(void)
     car_data[10] = (float)s_system_time_ms;
     air_comm_send_run_data(car_data, 11);
 
+    if((g_air_car_plan_valid > 0.5f) &&
+       ((car_mode_get() == CAR_MODE_2) ||
+        (car_mode_get() == CAR_MODE_3) ||
+        (car_mode_get() == CAR_MODE_5)))
+    {
+        (void)carplanfix_resolve(g_air_car_plan_forward_mps,
+                                 g_air_car_plan_strafe_mps,
+                                 g_air_yaw_angle_target_deg,
+                                 &carplanfix_forward_mps,
+                                 &carplanfix_strafe_mps);
+    }
+    else
+    {
+        carplanfix_reset();
+    }
+
     // wifi_justfloat((float)car_mode_get(),
     //                g_air_euler_yaw,
     //                g_air_yaw_angle_target_deg,
@@ -470,7 +510,7 @@ static void car_loop_100HZ(void)
     //                g_car_mode8_state.strafe_target,
     //                (float)g_car_mode8_state.output_valid);
 
-    wifi_justfloat(g_air_tof_fused_height_mm,
+/*     wifi_justfloat(g_air_tof_fused_height_mm,
                  g_air_euler_roll,
                  g_air_euler_pitch,
                  g_air_euler_yaw,
@@ -485,7 +525,20 @@ static void car_loop_100HZ(void)
                  g_air_crsf_std_ch5,
                  g_air_crsf_std_ch6,
                  g_air_crsf_std_ch7,
-                 g_air_crsf_std_ch8);
+                 g_air_crsf_std_ch8); */
+    wifi_justfloat(g_air_beacon_lost_flag,                         /* I1: Air熄灯标志 */
+                   g_odometer.position[x],                         /* I2: 修正后X坐标，m */
+                   g_odometer.position[y],                         /* I3: 修正后Y坐标，m */
+                   (float)light_sequence_result.status,            /* I4: 识别状态 */
+                   (float)light_sequence_result.last_beacon_id,    /* I5: 最近匹配灯号 */
+                   (float)light_sequence_result.candidate_count,   /* I6: 剩余候选数量 */
+                   (float)light_sequence_result.candidate_mask,    /* I7: 候选位掩码 */
+                   (light_sequence_result.candidate_mask & 0x01U) != 0U ? 1.0f : 0.0f, /* I8: 序列1候选 */
+                   (light_sequence_result.candidate_mask & 0x02U) != 0U ? 1.0f : 0.0f, /* I9: 序列2候选 */
+                   (light_sequence_result.candidate_mask & 0x04U) != 0U ? 1.0f : 0.0f, /* I10: 序列3候选 */
+                   (light_sequence_result.candidate_mask & 0x08U) != 0U ? 1.0f : 0.0f, /* I11: 序列4候选 */
+                   (float)light_sequence_result.sequence_id);      /* I12: 最终灯序，0为未确定 */
+
 }
 
 static void car_loop_25HZ(void)

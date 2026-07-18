@@ -128,6 +128,9 @@ void odometer_reset(void);
 void odometer_update_100HZ(void);
 void odometer_update_1000HZ(void);
 
+/* 获取相对于最近一次odometer_reset()航向零点的当前实际航向，单位rad。 */
+float odometer_get_heading_rad(void);
+
 /**
  * @brief 立即应用fixator生成的待修正位置，使后续模块读取修正后的全局坐标。
  * @param 无。

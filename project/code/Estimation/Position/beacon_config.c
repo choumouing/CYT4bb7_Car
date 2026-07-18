@@ -1,7 +1,7 @@
 #include "beacon_config.h"
 
 #define BEACON_CONFIG_FLASH_MAGIC   (0x42434647UL)
-#define BEACON_CONFIG_FLASH_VERSION (1U)
+#define BEACON_CONFIG_FLASH_VERSION (2U)
 #define BEACON_CONFIG_COORD_LIMIT_M (1000.0f)
 
 #if (BEACON_CONFIG_FLASH_PAGE >= FLASH_PAGE_NUM)
@@ -10,15 +10,9 @@
 
 typedef struct
 {
-    beacon_config_source_e source;
-    beacon_config_data_t predata;
-} beacon_config_state_t;
-
-typedef struct
-{
     uint32 magic;
     uint16 version;
-    uint8 source;
+    uint8 legacy_source;
     uint8 reserved;
     beacon_config_data_t predata;
     uint32 checksum;
@@ -34,24 +28,23 @@ typedef char beacon_config_flash_data_must_fit_page[
  * 坐标含义：车体中心位于信标中心时的全局坐标，单位 m。
  * X 正方向为右侧。
  * Y 正方向为前方。
- * 数组下标0至6依次对应灯序识别中的1号至7号灯。
+ * 数组下标0至5依次对应灯序识别中的1号至6号灯。
  * 发车区坐标作为 odometer 初始全局坐标。
  */
 static const beacon_config_data_t s_default_predata =
 {
-    {2.50f, 0.25f},
+    {3.25f, 0.25f},
     {
-        {1.35f, 1.00f},
-        {3.60f, 1.00f},
-        {4.20f, 2.00f},
-        {2.25f, 2.50f},
-        {3.15f, 4.00f},
-        {0.90f, 4.00f},
-        {0.00f, 5.00f}
+        {2.2f, 2.0f},
+        {1.6f, 3.7f},
+        {2.9f, 4.8f},
+        {3.1f, 3.2f},
+        {4.1f, 2.1f},
+        {4.5f, 3.9f},
     }
 };
 
-static beacon_config_state_t s_beacon_config;
+static beacon_config_data_t s_beacon_config;
 
 static uint32 beacon_config_checksum_mix(uint32 checksum, uint32 value)
 {
@@ -74,7 +67,7 @@ static uint32 beacon_config_calc_checksum(const beacon_config_flash_data_t *data
 
     checksum = beacon_config_checksum_mix(checksum, data->magic);
     checksum = beacon_config_checksum_mix(checksum, data->version);
-    checksum = beacon_config_checksum_mix(checksum, data->source);
+    checksum = beacon_config_checksum_mix(checksum, data->legacy_source);
 
     for(index = 0U; index < 2U; index++)
     {
@@ -128,7 +121,7 @@ static uint8 beacon_config_flash_data_valid(const beacon_config_flash_data_t *da
     if((data == NULL) ||
        (data->magic != BEACON_CONFIG_FLASH_MAGIC) ||
        (data->version != BEACON_CONFIG_FLASH_VERSION) ||
-       (data->source > (uint8)BEACON_CONFIG_SOURCE_PREDATA) ||
+       (data->legacy_source > 1U) ||
        (beacon_config_predata_valid(&data->predata) == 0U))
     {
         return 0U;
@@ -152,16 +145,13 @@ static uint8 beacon_config_read_flash(beacon_config_flash_data_t *data)
     return beacon_config_flash_data_valid(data);
 }
 
-static uint8 beacon_config_write_state(const beacon_config_state_t *state)
+static uint8 beacon_config_write(const beacon_config_data_t *config)
 {
     beacon_config_flash_data_t data;
     beacon_config_flash_data_t verify;
     uint32 words;
 
-    if((state == NULL) ||
-       ((state->source != BEACON_CONFIG_SOURCE_RECDATA) &&
-        (state->source != BEACON_CONFIG_SOURCE_PREDATA)) ||
-       (beacon_config_predata_valid(&state->predata) == 0U))
+    if(beacon_config_predata_valid(config) == 0U)
     {
         return 0U;
     }
@@ -169,8 +159,8 @@ static uint8 beacon_config_write_state(const beacon_config_state_t *state)
     memset(&data, 0, sizeof(data));
     data.magic = BEACON_CONFIG_FLASH_MAGIC;
     data.version = BEACON_CONFIG_FLASH_VERSION;
-    data.source = (uint8)state->source;
-    data.predata = state->predata;
+    data.legacy_source = 1U;
+    data.predata = *config;
     data.checksum = beacon_config_calc_checksum(&data);
     words = (uint32)(sizeof(data) / sizeof(uint32));
 
@@ -188,7 +178,7 @@ static uint8 beacon_config_write_state(const beacon_config_state_t *state)
         return 0U;
     }
 
-    s_beacon_config = *state;
+    s_beacon_config = *config;
     return 1U;
 }
 
@@ -199,24 +189,17 @@ void beacon_config_init(void)
     beacon_config_reset();
     if(beacon_config_read_flash(&data) != 0U)
     {
-        s_beacon_config.source = (beacon_config_source_e)data.source;
-        s_beacon_config.predata = data.predata;
+        s_beacon_config = data.predata;
     }
 }
 
 void beacon_config_reset(void)
 {
-    s_beacon_config.source = BEACON_CONFIG_SOURCE_PREDATA;
-    s_beacon_config.predata = s_default_predata;
+    s_beacon_config = s_default_predata;
 }
 
 uint16 beacon_config_get_count(void)
 {
-    if(s_beacon_config.source == BEACON_CONFIG_SOURCE_RECDATA)
-    {
-        return beacon_position_recorder_get_count();
-    }
-
     return BEACON_CONFIG_BEACON_COUNT;
 }
 
@@ -227,20 +210,7 @@ uint8 beacon_config_get_beacon(uint16 index, beacon_config_point_t *beacon)
         return 0U;
     }
 
-    if(s_beacon_config.source == BEACON_CONFIG_SOURCE_RECDATA)
-    {
-        float point[2];
-
-        if(beacon_position_recorder_get_point(index, point) == 0U)
-        {
-            return 0U;
-        }
-        beacon->x = point[x];
-        beacon->y = point[y];
-        return 1U;
-    }
-
-    *beacon = s_beacon_config.predata.beacons[index];
+    *beacon = s_beacon_config.beacons[index];
     return 1U;
 }
 
@@ -251,54 +221,19 @@ void beacon_config_get_initial_position(float position[2])
         return;
     }
 
-    if(s_beacon_config.source == BEACON_CONFIG_SOURCE_RECDATA)
-    {
-        position[x] = 0.0f;
-        position[y] = 0.0f;
-        return;
-    }
-
-    position[x] = s_beacon_config.predata.initial_position[x];
-    position[y] = s_beacon_config.predata.initial_position[y];
-}
-
-beacon_config_source_e beacon_config_get_source(void)
-{
-    return s_beacon_config.source;
-}
-
-uint8 beacon_config_set_source(beacon_config_source_e source)
-{
-    beacon_config_state_t candidate;
-
-    if((source != BEACON_CONFIG_SOURCE_RECDATA) &&
-       (source != BEACON_CONFIG_SOURCE_PREDATA))
-    {
-        return 0U;
-    }
-    candidate = s_beacon_config;
-    candidate.source = source;
-    return beacon_config_write_state(&candidate);
+    position[x] = s_beacon_config.initial_position[x];
+    position[y] = s_beacon_config.initial_position[y];
 }
 
 void beacon_config_get_predata(beacon_config_data_t *data)
 {
     if(data != NULL)
     {
-        *data = s_beacon_config.predata;
+        *data = s_beacon_config;
     }
 }
 
 uint8 beacon_config_save_predata(const beacon_config_data_t *data)
 {
-    beacon_config_state_t candidate;
-
-    if(beacon_config_predata_valid(data) == 0U)
-    {
-        return 0U;
-    }
-
-    candidate = s_beacon_config;
-    candidate.predata = *data;
-    return beacon_config_write_state(&candidate);
+    return beacon_config_write(data);
 }
