@@ -51,7 +51,7 @@
 #define AIR_COMM_PARAM_NAME_MAX             (32U)   /* 参数名最大长度（字节） */
 #define AIR_COMM_COMMAND_NAME_MAX           (32U)   /* 远程命令名最大长度，不含 '\0' */
 #define AIR_COMM_ACK_TEXT_MAX               (96U)   /* 远程命令 ACK 文本最大长度，不含 '\0' */
-#define AIR_COMM_RUN_DATA_MAX_FLOATS        (48U)   /* 实时数据最大 float 个数 */
+#define AIR_COMM_RUN_DATA_MAX_FLOATS        (52U)   /* 实时数据最大 float 个数 */
 #define AIR_COMM_BAUDRATE                   (1152000U) /* UART 波特率 1.152Mbps */
 
 /* ===== ACK 状态码（对端返回的操作结果） ===== */
@@ -177,6 +177,7 @@ uint8 air_comm_car_set_param(const char *name, float value);
 /* timeout_ms为本次SET从首次发送开始计算的ACK总等待时间。 */
 uint8 air_comm_car_set_param_with_timeout(const char *name, float value, uint32 timeout_ms);
 uint8 air_comm_car_get_param(const char *name);
+uint8 air_comm_car_get_param_with_timeout(const char *name, uint32 timeout_ms);
 
 /**
  * @brief 执行 Air 端远程命令（需 ACK）

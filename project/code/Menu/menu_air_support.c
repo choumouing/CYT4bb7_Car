@@ -3,10 +3,10 @@
 
 #define MENU_AIR_SLOT_BASE_PAGE             (80U)
 #define MENU_AIR_SLOT_COUNT                 (4U)
-#define MENU_AIR_SLOT_SIZE                  (2U)
+#define MENU_AIR_SLOT_SIZE                  (3U)
 #define MENU_AIR_MAGIC_NUMBER               (0x41495250UL)
-#define MENU_AIR_VERSION                    (4U)
-#define MENU_AIR_SYNC_INVALID_INDEX         (0xFFU)
+#define MENU_AIR_VERSION                    (5U)
+#define MENU_AIR_SYNC_INVALID_INDEX         (0xFFFFU)
 #define MENU_AIR_ACK_TYPE_SET_PARAM         (0x01U)
 #define MENU_AIR_ACK_TYPE_COMMAND           (0x03U)
 #define MENU_AIR_ACK_TYPE_GET_PARAM         (0x07U)
@@ -16,6 +16,10 @@
 #define MENU_AIR_CORE1_EXPOSURE_NAME        "c1_exp_time"
 #define MENU_AIR_2BL3_EXPOSURE_NAME         "bl3_exp_time"
 #define MENU_AIR_CORE1_SCREEN_MODE_NAME     "c1_screen_mode"
+#define MENU_AIR_BL3_LAMP_MIN_NAME          "bl3_lamp_min"
+#define MENU_AIR_BL3_LAMP_MAX_NAME          "bl3_lamp_max"
+#define MENU_AIR_BL3_RING_IN_NAME           "bl3_ring_in"
+#define MENU_AIR_BL3_RING_OUT_NAME          "bl3_ring_out"
 
 #if ((MENU_AIR_BOOT_OVERRIDE_ENABLE != 0U) && (MENU_AIR_BOOT_OVERRIDE_ENABLE != 1U))
 #error "Air boot override enable must be 0 or 1"
@@ -40,6 +44,8 @@ typedef struct
     uint8 visible;
     const char * const *enum_labels;
     uint8 enum_count;
+    uint8 optional;
+    uint8 enter_confirm_only;
 } menu_air_param_definition_t;
 
 typedef struct
@@ -62,7 +68,7 @@ typedef char menu_air_slot_param_size_must_be_two_words[
 typedef char menu_air_slot_data_must_fit_page[
     ((((sizeof(menu_air_slot_header_t) + 3U) / 4U) +
       (MENU_AIR_MAX_PARAMS * (sizeof(menu_air_slot_param_t) / sizeof(uint32)))) <=
-     FLASH_PAGE_LENGTH) ? 1 : -1];
+     (MENU_AIR_SLOT_SIZE * FLASH_PAGE_LENGTH)) ? 1 : -1];
 
 static float s_air_param_values[MENU_AIR_MAX_PARAMS];
 static float s_air_confirmed_values[MENU_AIR_MAX_PARAMS];
@@ -70,6 +76,9 @@ static menu_air_param_config_t s_air_params[MENU_AIR_MAX_PARAMS];
 static uint16 s_air_param_count;
 static uint8 s_air_param_dirty[MENU_AIR_MAX_PARAMS];
 static uint8 s_air_confirmed_valid[MENU_AIR_MAX_PARAMS];
+/* FULL同步中仍待下发的参数标记。 */
+static uint8 s_air_full_pending[MENU_AIR_MAX_PARAMS];
+static uint32 s_air_slot_words[MENU_AIR_SLOT_SIZE * FLASH_PAGE_LENGTH];
 static menu_air_sync_status_t s_air_sync_status;
 static uint16 s_air_sync_next_index;
 static uint8 s_air_last_online;
@@ -78,7 +87,7 @@ static uint8 s_air_boot_override_done;
 static uint8 s_air_catalog_ready;
 static uint32 s_air_pull_retry_tick;
 static uint8 s_air_deferred_error_reason;
-static uint8 s_air_recover_index;
+static uint16 s_air_recover_index;
 static uint8 s_air_boot_screen_restore_done;
 static menu_air_cmd_status_t s_air_cmd_status;
 
@@ -87,18 +96,47 @@ static menu_air_cmd_status_t s_air_cmd_status;
 #define MENU_AIR_ARRAY_COUNT(array_v) \
     ((uint8)(sizeof(array_v) / sizeof((array_v)[0])))
 #define MENU_AIR_PARAM_VISIBLE(member, default_v, step_v, min_v, max_v, menu_name_v, visible_v) \
-    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), (visible_v), NULL, 0U}
+    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), (visible_v), NULL, 0U, 0U, 0U}
 #define MENU_AIR_PARAM(member, default_v, step_v, min_v, max_v, menu_name_v) \
     MENU_AIR_PARAM_VISIBLE(member, default_v, step_v, min_v, max_v, menu_name_v, 1U)
 #define MENU_AIR_ENUM_PARAM(member, default_v, step_v, min_v, max_v, menu_name_v, labels_v) \
     {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), 1U, \
-     (labels_v), MENU_AIR_ARRAY_COUNT(labels_v)}
+     (labels_v), MENU_AIR_ARRAY_COUNT(labels_v), 0U, 0U}
+#define MENU_AIR_OPTIONAL_PARAM(member, default_v, step_v, min_v, max_v, menu_name_v) \
+    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), 1U, \
+     NULL, 0U, 1U, 0U}
+#define MENU_AIR_OPTIONAL_ENUM_PARAM(member, default_v, step_v, min_v, max_v, menu_name_v, labels_v) \
+    {MENU_AIR_STRINGIFY(member), (default_v), (step_v), (min_v), (max_v), (menu_name_v), 1U, \
+     (labels_v), MENU_AIR_ARRAY_COUNT(labels_v), 1U, 1U}
 
 static const char * const s_air_screen_mode_labels[] =
 {
     "Data",
     "Raw",
-    "Binary"
+    "Beacon Bin",
+    "Lamp Bin",
+    "Overlay"
+};
+
+/* 2BL3图传内容模式，仅在Enter确认后下发。 */
+static const char * const s_air_bl3_stream_mode_labels[] =
+{
+    "Raw",
+    "Lamp Binary",
+    "Beacon Binary",
+    "Detected Overlay"
+};
+
+static const char * const s_air_full_lamp_names[] =
+{
+    MENU_AIR_BL3_LAMP_MIN_NAME,
+    MENU_AIR_BL3_LAMP_MAX_NAME
+};
+
+static const char * const s_air_full_ring_names[] =
+{
+    MENU_AIR_BL3_RING_IN_NAME,
+    MENU_AIR_BL3_RING_OUT_NAME
 };
 
 static const menu_air_param_definition_t s_air_param_definitions[] =
@@ -223,12 +261,99 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(mode8_vel_y_kff, 0.0f,     0.001f, 0.0f, 3000.0f, "Mode8 Vel"),
     MENU_AIR_PARAM(mode8_vel_y_i_limit, 3.0f, 0.1f,   0.0f, 5000.0f, "Mode8 Vel"),
     MENU_AIR_PARAM(mode8_vel_y_d_lpf, 0.0f,   0.1f,   0.0f,  500.0f, "Mode8 Vel"),
-    MENU_AIR_PARAM(c1_beacon_thr, 120.0f, 1.0f, 0.0f, 255.0f, "Core1 Img"),
-    MENU_AIR_PARAM(bl3_beacon_thr, 120.0f, 1.0f, 0.0f, 255.0f, "2BL3 Img"),
-    MENU_AIR_PARAM(c1_exp_time, 400.0f, 1.0f, 0.0f, 636.0f, "Core1 Img"),
-    MENU_AIR_PARAM(bl3_exp_time, 500.0f, 1.0f, 0.0f, 636.0f, "2BL3 Img"),
-    MENU_AIR_ENUM_PARAM(c1_screen_mode, 0.0f, 1.0f, 0.0f, 2.0f, "Core1 Img",
-                        s_air_screen_mode_labels),
+    MENU_AIR_OPTIONAL_PARAM(c1_beacon_thr, 120.0f, 1.0f, 0.0f, 255.0f, "Core1 Camera"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_beacon_thr, 120.0f, 1.0f, 0.0f, 255.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(c1_exp_time, 400.0f, 1.0f, 0.0f, 636.0f, "Core1 Camera"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_exp_time, 500.0f, 1.0f, 0.0f, 636.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_ENUM_PARAM(c1_screen_mode, 0.0f, 1.0f, 0.0f, 4.0f, "Core1 Camera",
+                                 s_air_screen_mode_labels),
+    MENU_AIR_OPTIONAL_PARAM(c1_beacon_min, 10.0f, 1.0f, 0.0f, 22560.0f, "Core1 Beacon"),
+    MENU_AIR_OPTIONAL_PARAM(c1_edge_min, 10.0f, 1.0f, 0.0f, 22560.0f, "Core1 Beacon"),
+    MENU_AIR_OPTIONAL_PARAM(c1_edge_thr, 100.0f, 1.0f, 0.0f, 255.0f, "Core1 Beacon"),
+    MENU_AIR_OPTIONAL_PARAM(c1_lamp_thr, 200.0f, 1.0f, 0.0f, 255.0f, "Core1 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(c1_lamp_min, 24.0f, 1.0f, 0.0f, 22560.0f, "Core1 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(c1_lamp_max, 1200.0f, 1.0f, 0.0f, 22560.0f, "Core1 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(c1_lamp_elong, 1.6f, 0.1f, 0.0f, 224.0f, "Core1 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(c1_lamp_len, 8.0f, 0.5f, 0.0f, 224.0f, "Core1 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(c1_near_pad, 8.0f, 1.0f, 0.0f, 224.0f, "Core1 Near Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(c1_near_min, 45.0f, 1.0f, 0.0f, 22560.0f, "Core1 Near Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(c1_near_iso_min, 18.0f, 1.0f, 0.0f, 22560.0f, "Core1 Near Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(c1_near_bg, 40.0f, 1.0f, 0.0f, 255.0f, "Core1 Near Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(c1_match_dist, 18.0f, 0.5f, 0.0f, 224.0f, "Core1 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(c1_gate_dist, 24.0f, 0.5f, 0.0f, 224.0f, "Core1 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(c1_new_dist, 36.0f, 0.5f, 0.0f, 224.0f, "Core1 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(c1_confirm, 2.0f, 1.0f, 1.0f, 255.0f, "Core1 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(c1_misses, 3.0f, 1.0f, 0.0f, 255.0f, "Core1 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(c1_pos_alpha, 0.65f, 0.01f, 0.0f, 1.0f, "Core1 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(c1_vel_alpha, 0.30f, 0.01f, 0.0f, 1.0f, "Core1 Tracking"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_edge_thr, 80.0f, 1.0f, 0.0f, 255.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_track_thr, 105.0f, 1.0f, 0.0f, 255.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_thr, 200.0f, 1.0f, 0.0f, 255.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_up_thr, 150.0f, 1.0f, 0.0f, 255.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_up_y, 64.0f, 0.5f, 0.0f, 224.0f, "2BL3 Threshold"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_bridge_gap, 4.0f, 0.5f, 0.0f, 224.0f, "2BL3 Threshold"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_beacon_min, 6.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_edge_min, 2.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_top_max, 50.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_edge_max, 60.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Beacon Area"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_min, 24.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_max, 230.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_elong, 1.6f, 0.1f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_back_len, 12.0f, 0.5f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_iso_gray, 120.0f, 1.0f, 0.0f, 255.0f, "2BL3 Background"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_iso_bg, 2.0f, 1.0f, 0.0f, 255.0f, "2BL3 Background"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_ring_in, 3.0f, 0.5f, 0.0f, 224.0f, "2BL3 Background"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_ring_out, 8.0f, 0.5f, 0.0f, 224.0f, "2BL3 Background"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_near_pad, 8.0f, 0.5f, 0.0f, 224.0f, "2BL3 Near Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_near_min, 21.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Near Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_near_gray, 150.0f, 1.0f, 0.0f, 255.0f, "2BL3 Near Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_near_bg, 20.0f, 1.0f, 0.0f, 255.0f, "2BL3 Near Lamp"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_match_dist, 18.0f, 0.5f, 0.0f, 224.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_gate_dist, 24.0f, 0.5f, 0.0f, 224.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_new_dist, 36.0f, 0.5f, 0.0f, 224.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_confirm, 2.0f, 1.0f, 1.0f, 255.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_misses, 3.0f, 1.0f, 0.0f, 255.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_pos_alpha, 0.65f, 0.01f, 0.0f, 1.0f, "2BL3 Tracking"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_vel_alpha, 0.30f, 0.01f, 0.0f, 1.0f, "2BL3 Tracking"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_lamp_width, 3.5f, 0.1f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_narrow_width, 2.7f, 0.1f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_narrow_elong, 3.5f, 0.1f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_upper_area, 120.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_upper_len, 22.0f, 0.5f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_upper_width, 5.5f, 0.1f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_compact_y, 20.0f, 0.5f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_compact_area, 36.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_compact_len, 14.0f, 0.5f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_compact_width, 3.0f, 0.1f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_compact_elong, 3.0f, 0.1f, 0.0f, 224.0f, "2BL3 Car Lamp"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_vglare_elong, 1.8f, 0.1f, 0.0f, 224.0f, "2BL3 Reflection"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_vglare_gray, 200.0f, 1.0f, 0.0f, 255.0f, "2BL3 Reflection"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_linear_elong, 6.0f, 0.1f, 0.0f, 224.0f, "2BL3 Reflection"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_weak_c_thr, 70.0f, 1.0f, 0.0f, 255.0f, "2BL3 Weak Center"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_weak_c_min, 3.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Weak Center"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_weak_c_max, 12.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Weak Center"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_weak_c_gray, 90.0f, 1.0f, 0.0f, 255.0f, "2BL3 Weak Center"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_weak_c_bg, 10.0f, 1.0f, 0.0f, 255.0f, "2BL3 Weak Center"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_shape_min, 6.0f, 1.0f, 0.0f, 22560.0f, "2BL3 Shape Filter"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_shape_ratio, 2.0f, 0.1f, 1.0f, 224.0f, "2BL3 Shape Filter"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_shape_fill, 60.0f, 1.0f, 0.0f, 100.0f, "2BL3 Shape Filter"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_shape_s_fill, 50.0f, 1.0f, 0.0f, 100.0f, "2BL3 Shape Filter"),
+
+    MENU_AIR_OPTIONAL_PARAM(bl3_top_v_elong, 3.0f, 0.1f, 0.0f, 224.0f, "2BL3 Vertical Top"),
+    MENU_AIR_OPTIONAL_PARAM(bl3_sat_t_gray, 240.0f, 1.0f, 0.0f, 255.0f, "2BL3 Saturated Top"),
+
+    MENU_AIR_OPTIONAL_ENUM_PARAM(bl3_stream_mode, 0.0f, 1.0f, 0.0f, 3.0f,
+                                 "2BL3 Stream", s_air_bl3_stream_mode_labels),
 
     MENU_AIR_PARAM(mode2_img_x_kp, 2.8f, 0.1f, 1.0f, 4.5f, "Mode2 Img"),
     MENU_AIR_PARAM(mode2_img_x_ki, 0.0f, 0.01f, 0.0f, 0.05f, "Mode2 Img"),
@@ -336,14 +461,32 @@ typedef char menu_air_param_count_must_match[
     ((sizeof(s_air_param_definitions) / sizeof(s_air_param_definitions[0])) ==
      MENU_AIR_EXPECTED_PARAM_COUNT) ? 1 : -1];
 
-static uint8 menu_air_dirty_count(void)
+static uint16 menu_air_dirty_count(void)
 {
     uint16 index;
-    uint8 count = 0U;
+    uint16 count = 0U;
 
     for(index = 0U; index < s_air_param_count; index++)
     {
-        if(s_air_param_dirty[index] != 0U)
+        if((s_air_param_dirty[index] != 0U) &&
+           (s_air_params[index].available != 0U))
+        {
+            count++;
+        }
+    }
+
+    return count;
+}
+
+/* 统计本次目录拉取确认可用的参数数量。 */
+static uint16 menu_air_available_count(void)
+{
+    uint16 index;
+    uint16 count = 0U;
+
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        if(s_air_params[index].available != 0U)
         {
             count++;
         }
@@ -358,7 +501,7 @@ static uint8 menu_air_ack_is_success(uint8 result, uint8 status)
              ((result == AIR_COMM_ACK_RESULT_ERROR) && (status == AIR_COMM_STATUS_OUT_OF_RANGE))) ? 1U : 0U);
 }
 
-static uint8 menu_air_param_is_exposure(uint8 index)
+static uint8 menu_air_param_is_exposure(uint16 index)
 {
     if(index >= s_air_param_count)
     {
@@ -369,7 +512,7 @@ static uint8 menu_air_param_is_exposure(uint8 index)
             (strcmp(s_air_params[index].name, MENU_AIR_2BL3_EXPOSURE_NAME) == 0)) ? 1U : 0U;
 }
 
-static uint8 menu_air_send_set_param(uint8 index, float value)
+static uint8 menu_air_send_set_param(uint16 index, float value)
 {
     if(index >= s_air_param_count)
     {
@@ -386,7 +529,24 @@ static uint8 menu_air_send_set_param(uint8 index, float value)
     return air_comm_car_set_param(s_air_params[index].name, value);
 }
 
-static uint8 menu_air_ack_failure_is_structural(uint8 active_index,
+static uint8 menu_air_send_get_param(uint16 index)
+{
+    if(index >= s_air_param_count)
+    {
+        return 1U;
+    }
+
+    if(menu_air_param_is_exposure(index) != 0U)
+    {
+        return air_comm_car_get_param_with_timeout(
+            s_air_params[index].name,
+            MENU_AIR_EXPOSURE_ACK_TIMEOUT_MS);
+    }
+
+    return air_comm_car_get_param(s_air_params[index].name);
+}
+
+static uint8 menu_air_ack_failure_is_structural(uint16 active_index,
                                                  uint8 ack_type,
                                                  uint8 expected_type,
                                                  uint8 ack_result,
@@ -413,7 +573,30 @@ static uint8 menu_air_ack_failure_is_structural(uint8 active_index,
             (ack_status == AIR_COMM_STATUS_NOT_FOUND)) ? 1U : 0U;
 }
 
-static void menu_air_store_confirmed(uint8 index, float value)
+/* 可选远程参数失败只隔离当前项，协议类型或参数名错位仍按结构性故障处理。 */
+static uint8 menu_air_optional_get_failure_can_skip(uint16 active_index,
+                                                    uint8 ack_type,
+                                                    uint8 ack_result,
+                                                    const char *ack_name)
+{
+    if((active_index >= s_air_param_count) ||
+       (s_air_params[active_index].optional == 0U))
+    {
+        return 0U;
+    }
+
+    if(ack_result == AIR_COMM_ACK_RESULT_TIMEOUT)
+    {
+        return 1U;
+    }
+
+    return ((ack_result == AIR_COMM_ACK_RESULT_ERROR) &&
+            (ack_type == MENU_AIR_ACK_TYPE_GET_PARAM) &&
+            (ack_name != NULL) &&
+            (strcmp(ack_name, s_air_params[active_index].name) == 0)) ? 1U : 0U;
+}
+
+static void menu_air_store_confirmed(uint16 index, float value)
 {
     if((index >= s_air_param_count) || (s_air_params[index].variable == NULL))
     {
@@ -426,9 +609,10 @@ static void menu_air_store_confirmed(uint8 index, float value)
     *(s_air_params[index].variable) = value;
     s_air_confirmed_values[index] = value;
     s_air_confirmed_valid[index] = 1U;
+    s_air_params[index].available = 1U;
 }
 
-static void menu_air_restore_confirmed(uint8 index)
+static void menu_air_restore_confirmed(uint16 index)
 {
     if((index >= s_air_param_count) ||
        (s_air_params[index].variable == NULL) ||
@@ -496,9 +680,10 @@ static void menu_air_sync_reset(uint8 mode)
     s_air_sync_status.mode = mode;
     s_air_sync_next_index = 0U;
     s_air_recover_index = MENU_AIR_SYNC_INVALID_INDEX;
+    memset(s_air_full_pending, 0, sizeof(s_air_full_pending));
 }
 
-static void menu_air_start_param_recovery(uint8 index)
+static void menu_air_start_param_recovery(uint16 index)
 {
     menu_air_sync_reset(MENU_AIR_SYNC_MODE_RECOVER);
     s_air_sync_status.reason = MENU_AIR_SYNC_REASON_COMMIT;
@@ -518,9 +703,11 @@ static void menu_air_clear_dirty(void)
     s_air_sync_status.dirty_count = 0U;
 }
 
-static void menu_air_record_failure(uint8 index, uint8 result, uint8 status)
+static void menu_air_record_failure(uint16 index, uint8 result, uint8 status)
 {
     s_air_sync_status.last_failed_index = index;
+    s_air_sync_status.last_failed_result = result;
+    s_air_sync_status.last_failed_status = status;
     s_air_sync_status.last_result = result;
     s_air_sync_status.last_status = status;
     s_air_sync_status.fail_count++;
@@ -558,7 +745,7 @@ static uint32 menu_air_calc_buffer_checksum(uint16 word_count, uint32 offset)
 
     for(index = 0U; index < word_count; index++)
     {
-        value_bits = flash_union_buffer[offset + index].uint32_type;
+        value_bits = s_air_slot_words[offset + index];
         checksum ^= value_bits;
         checksum = (checksum << 5) | (checksum >> 27);
         checksum += (uint32)(index + 1U) * 2654435761UL;
@@ -572,6 +759,9 @@ static uint8 menu_air_slot_valid(uint8 slot, menu_air_slot_header_t *out_header)
     uint32 page;
     uint32 offset;
     uint32 data_words;
+    uint32 total_words;
+    uint8 required_pages;
+    uint8 page_index;
     menu_air_slot_header_t *header;
 
     if(slot >= MENU_AIR_SLOT_COUNT)
@@ -585,26 +775,41 @@ static uint8 menu_air_slot_valid(uint8 slot, menu_air_slot_header_t *out_header)
         return 0U;
     }
 
+    memset(s_air_slot_words, 0xFF, sizeof(s_air_slot_words));
     if(flash_check(0U, page) == 0U)
     {
         return 0U;
     }
-
-    flash_read_page_to_buffer(0U, page, FLASH_PAGE_LENGTH);
-    header = (menu_air_slot_header_t *)flash_union_buffer;
+    flash_read_page(0U, page, s_air_slot_words, FLASH_PAGE_LENGTH);
+    header = (menu_air_slot_header_t *)s_air_slot_words;
 
     offset = (uint32)((sizeof(menu_air_slot_header_t) + 3U) / 4U);
     data_words = (uint32)header->param_count *
                  (uint32)(sizeof(menu_air_slot_param_t) / sizeof(uint32));
 
+    total_words = offset + data_words;
     if((header->magic != MENU_AIR_MAGIC_NUMBER) ||
        (header->version != MENU_AIR_VERSION) ||
        (header->slot_id != slot) ||
        (header->param_count == 0U) ||
        (header->param_count > MENU_AIR_MAX_PARAMS) ||
-       ((offset + data_words) > FLASH_PAGE_LENGTH))
+       (total_words > (MENU_AIR_SLOT_SIZE * FLASH_PAGE_LENGTH)))
     {
         return 0U;
+    }
+
+    required_pages = (uint8)((total_words + FLASH_PAGE_LENGTH - 1U) /
+                             FLASH_PAGE_LENGTH);
+    for(page_index = 1U; page_index < required_pages; page_index++)
+    {
+        if(flash_check(0U, page + page_index) == 0U)
+        {
+            return 0U;
+        }
+        flash_read_page(0U,
+                        page + page_index,
+                        &s_air_slot_words[(uint32)page_index * FLASH_PAGE_LENGTH],
+                        FLASH_PAGE_LENGTH);
     }
 
     if(header->checksum != menu_air_calc_buffer_checksum((uint16)data_words, offset))
@@ -645,7 +850,7 @@ static uint8 menu_air_load_slot_values(uint8 slot)
     }
 
     offset = (uint32)((sizeof(menu_air_slot_header_t) + 3U) / 4U);
-    slot_params = (menu_air_slot_param_t *)&flash_union_buffer[offset];
+    slot_params = (menu_air_slot_param_t *)&s_air_slot_words[offset];
 
     for(index = 0U; index < s_air_param_count; index++)
     {
@@ -701,7 +906,7 @@ static uint8 menu_air_load_slot_param_value(uint8 slot, const char *name, float 
     return 0U;
 }
 
-static uint8 menu_air_find_param_index(const char *name, uint8 *out_index)
+static uint8 menu_air_find_param_index(const char *name, uint16 *out_index)
 {
     uint16 index;
 
@@ -714,7 +919,7 @@ static uint8 menu_air_find_param_index(const char *name, uint8 *out_index)
     {
         if(strcmp(s_air_params[index].name, name) == 0)
         {
-            *out_index = (uint8)index;
+            *out_index = index;
             return 1U;
         }
     }
@@ -722,10 +927,179 @@ static uint8 menu_air_find_param_index(const char *name, uint8 *out_index)
     return 0U;
 }
 
+static uint8 menu_air_full_group_get_indices(const char * const *names,
+                                              uint8 count,
+                                              uint16 *indices)
+{
+    uint8 position;
+
+    if((names == NULL) || (indices == NULL))
+    {
+        return 0U;
+    }
+
+    for(position = 0U; position < count; position++)
+    {
+        if((menu_air_find_param_index(names[position], &indices[position]) == 0U) ||
+           (s_air_params[indices[position]].available == 0U) ||
+           (s_air_params[indices[position]].variable == NULL))
+        {
+            return 0U;
+        }
+    }
+
+    return 1U;
+}
+
+static uint8 menu_air_full_group_confirmed_is_valid(const uint16 *indices, uint8 count)
+{
+    uint8 position;
+
+    if(indices == NULL)
+    {
+        return 0U;
+    }
+
+    for(position = 0U; position < count; position++)
+    {
+        if(s_air_confirmed_valid[indices[position]] == 0U)
+        {
+            return 0U;
+        }
+    }
+
+    return 1U;
+}
+
+static uint8 menu_air_full_lamp_values_are_valid(float lamp_min, float lamp_max)
+{
+    return (lamp_min <= lamp_max) ? 1U : 0U;
+}
+
+static uint8 menu_air_full_ring_values_are_valid(float ring_in, float ring_out)
+{
+    return (ring_in < ring_out) ? 1U : 0U;
+}
+
+static uint8 menu_air_full_constraints_are_valid(void)
+{
+    uint16 lamp_indices[MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names)];
+    uint16 ring_indices[MENU_AIR_ARRAY_COUNT(s_air_full_ring_names)];
+
+    if(menu_air_full_group_get_indices(s_air_full_lamp_names,
+                                       MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names),
+                                       lamp_indices) != 0U)
+    {
+        if((menu_air_full_group_confirmed_is_valid(
+                lamp_indices,
+                MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names)) == 0U) ||
+           (menu_air_full_lamp_values_are_valid(
+                s_air_confirmed_values[lamp_indices[0]],
+                s_air_confirmed_values[lamp_indices[1]]) == 0U) ||
+           (menu_air_full_lamp_values_are_valid(
+                *(s_air_params[lamp_indices[0]].variable),
+                *(s_air_params[lamp_indices[1]].variable)) == 0U))
+        {
+            return 0U;
+        }
+    }
+
+    if(menu_air_full_group_get_indices(s_air_full_ring_names,
+                                       MENU_AIR_ARRAY_COUNT(s_air_full_ring_names),
+                                       ring_indices) != 0U)
+    {
+        if((menu_air_full_group_confirmed_is_valid(
+                ring_indices,
+                MENU_AIR_ARRAY_COUNT(s_air_full_ring_names)) == 0U) ||
+           (menu_air_full_ring_values_are_valid(
+                s_air_confirmed_values[ring_indices[0]],
+                s_air_confirmed_values[ring_indices[1]]) == 0U) ||
+           (menu_air_full_ring_values_are_valid(
+                *(s_air_params[ring_indices[0]].variable),
+                *(s_air_params[ring_indices[1]].variable)) == 0U))
+        {
+            return 0U;
+        }
+    }
+
+    return 1U;
+}
+
+static uint8 menu_air_full_candidate_is_safe(uint16 candidate_index)
+{
+    uint16 lamp_indices[MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names)];
+    uint16 ring_indices[MENU_AIR_ARRAY_COUNT(s_air_full_ring_names)];
+    float lamp_min;
+    float lamp_max;
+    float ring_in;
+    float ring_out;
+
+    if(candidate_index >= s_air_param_count)
+    {
+        return 0U;
+    }
+
+    if((menu_air_full_group_get_indices(s_air_full_lamp_names,
+                                        MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names),
+                                        lamp_indices) != 0U) &&
+       ((candidate_index == lamp_indices[0]) ||
+        (candidate_index == lamp_indices[1])))
+    {
+        if(menu_air_full_group_confirmed_is_valid(
+               lamp_indices,
+               MENU_AIR_ARRAY_COUNT(s_air_full_lamp_names)) == 0U)
+        {
+            return 0U;
+        }
+
+        lamp_min = s_air_confirmed_values[lamp_indices[0]];
+        lamp_max = s_air_confirmed_values[lamp_indices[1]];
+        if(candidate_index == lamp_indices[0])
+        {
+            lamp_min = *(s_air_params[candidate_index].variable);
+        }
+        else
+        {
+            lamp_max = *(s_air_params[candidate_index].variable);
+        }
+
+        return menu_air_full_lamp_values_are_valid(lamp_min, lamp_max);
+    }
+
+    if((menu_air_full_group_get_indices(s_air_full_ring_names,
+                                        MENU_AIR_ARRAY_COUNT(s_air_full_ring_names),
+                                        ring_indices) != 0U) &&
+       ((candidate_index == ring_indices[0]) ||
+        (candidate_index == ring_indices[1])))
+    {
+        if(menu_air_full_group_confirmed_is_valid(
+               ring_indices,
+               MENU_AIR_ARRAY_COUNT(s_air_full_ring_names)) == 0U)
+        {
+            return 0U;
+        }
+
+        ring_in = s_air_confirmed_values[ring_indices[0]];
+        ring_out = s_air_confirmed_values[ring_indices[1]];
+        if(candidate_index == ring_indices[0])
+        {
+            ring_in = *(s_air_params[candidate_index].variable);
+        }
+        else
+        {
+            ring_out = *(s_air_params[candidate_index].variable);
+        }
+
+        return menu_air_full_ring_values_are_valid(ring_in, ring_out);
+    }
+
+    return 1U;
+}
+
 /* 全量启动覆盖关闭时，仅从启动槽恢复核1屏幕模式。 */
 static uint8 menu_air_start_boot_screen_restore(void)
 {
-    uint8 index;
+    uint16 index;
     float value;
 
     if((menu_air_find_param_index(MENU_AIR_CORE1_SCREEN_MODE_NAME, &index) == 0U) ||
@@ -787,6 +1161,7 @@ void menu_air_support_init(void)
     memset(s_air_confirmed_values, 0, sizeof(s_air_confirmed_values));
     memset(s_air_param_dirty, 0, sizeof(s_air_param_dirty));
     memset(s_air_confirmed_valid, 0, sizeof(s_air_confirmed_valid));
+    memset(s_air_full_pending, 0, sizeof(s_air_full_pending));
     memset(s_air_params, 0, sizeof(s_air_params));
     memset(&s_air_sync_status, 0, sizeof(s_air_sync_status));
     memset(&s_air_cmd_status, 0, sizeof(s_air_cmd_status));
@@ -821,6 +1196,9 @@ void menu_air_support_init(void)
         s_air_params[index].visible = definition->visible;
         s_air_params[index].enum_labels = definition->enum_labels;
         s_air_params[index].enum_count = definition->enum_count;
+        s_air_params[index].optional = definition->optional;
+        s_air_params[index].available = (definition->optional == 0U) ? 1U : 0U;
+        s_air_params[index].enter_confirm_only = definition->enter_confirm_only;
         s_air_param_values[index] = car_math_clampf(definition->default_val,
                                                    definition->min_val,
                                                    definition->max_val);
@@ -828,12 +1206,12 @@ void menu_air_support_init(void)
     s_air_param_count = MENU_AIR_EXPECTED_PARAM_COUNT;
 }
 
-uint8 menu_get_air_param_count(void)
+uint16 menu_get_air_param_count(void)
 {
-    return (uint8)s_air_param_count;
+    return s_air_param_count;
 }
 
-float menu_get_air_param_by_index(uint8 index)
+float menu_get_air_param_by_index(uint16 index)
 {
     if((index >= s_air_param_count) || (s_air_params[index].variable == NULL))
     {
@@ -843,14 +1221,15 @@ float menu_get_air_param_by_index(uint8 index)
     return *(s_air_params[index].variable);
 }
 
-uint8 menu_set_air_param_by_index(uint8 index, float value)
+uint8 menu_set_air_param_by_index(uint16 index, float value)
 {
     if((index >= s_air_param_count) || (s_air_params[index].variable == NULL))
     {
         return 1U;
     }
 
-    if(menu_can_edit_air_params() == 0U)
+    if((menu_can_edit_air_params() == 0U) ||
+       (menu_air_param_is_available(index) == 0U))
     {
         return 1U;
     }
@@ -861,7 +1240,7 @@ uint8 menu_set_air_param_by_index(uint8 index, float value)
     return 0U;
 }
 
-const menu_air_param_config_t *menu_get_air_param_config(uint8 index)
+const menu_air_param_config_t *menu_get_air_param_config(uint16 index)
 {
     if(index >= s_air_param_count)
     {
@@ -869,6 +1248,16 @@ const menu_air_param_config_t *menu_get_air_param_config(uint8 index)
     }
 
     return &s_air_params[index];
+}
+
+uint8 menu_air_param_is_available(uint16 index)
+{
+    if(index >= s_air_param_count)
+    {
+        return 0U;
+    }
+
+    return s_air_params[index].available;
 }
 
 uint8 menu_is_air_connected(void)
@@ -898,6 +1287,8 @@ uint8 menu_sync_all_air_params(void)
 
 uint8 menu_air_sync_all_start(uint8 reason)
 {
+    uint16 index;
+
     if(car_menu_is_runtime_locked() != 0U)
     {
         return 1U;
@@ -927,11 +1318,21 @@ uint8 menu_air_sync_all_start(uint8 reason)
         return 1U;
     }
 
+    if(menu_air_full_constraints_are_valid() == 0U)
+    {
+        menu_show_error("Air Param Invalid");
+        return 1U;
+    }
+
     menu_air_sync_reset(MENU_AIR_SYNC_MODE_FULL);
     s_air_sync_status.reason = reason;
-    s_air_sync_status.dirty_count = (uint8)s_air_param_count;
+    s_air_sync_status.dirty_count = menu_air_available_count();
     s_air_sync_status.last_result = AIR_COMM_ACK_RESULT_NONE;
     s_air_sync_status.last_status = AIR_COMM_STATUS_ERROR;
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        s_air_full_pending[index] = s_air_params[index].available;
+    }
 
     return 0U;
 }
@@ -1039,7 +1440,7 @@ void menu_air_abort_param_sync_runtime(void)
     menu_air_mark_catalog_stale();
 }
 
-uint8 menu_air_commit_param(uint8 index)
+uint8 menu_air_commit_param(uint16 index)
 {
     if((index >= s_air_param_count) || (s_air_params[index].variable == NULL))
     {
@@ -1049,10 +1450,16 @@ uint8 menu_air_commit_param(uint8 index)
     return menu_air_commit_param_value(index, *(s_air_params[index].variable));
 }
 
-uint8 menu_air_commit_param_value(uint8 index, float value)
+uint8 menu_air_commit_param_value(uint16 index, float value)
 {
     if((index >= s_air_param_count) || (s_air_params[index].variable == NULL))
     {
+        return 1U;
+    }
+
+    if(menu_air_param_is_available(index) == 0U)
+    {
+        menu_show_error("Param N/A");
         return 1U;
     }
 
@@ -1099,6 +1506,8 @@ uint8 menu_air_commit_param_value(uint8 index, float value)
 
 static uint8 menu_air_pull_all_start(void)
 {
+    uint16 index;
+
     if((car_menu_is_runtime_locked() != 0U) ||
        (menu_is_air_connected() == 0U) ||
        (s_air_param_count != MENU_AIR_EXPECTED_PARAM_COUNT) ||
@@ -1114,6 +1523,15 @@ static uint8 menu_air_pull_all_start(void)
     s_air_sync_status.last_result = AIR_COMM_ACK_RESULT_NONE;
     s_air_sync_status.last_status = AIR_COMM_STATUS_ERROR;
     s_air_catalog_ready = 0U;
+    for(index = 0U; index < s_air_param_count; index++)
+    {
+        if(s_air_params[index].optional != 0U)
+        {
+            s_air_params[index].available = 0U;
+            s_air_confirmed_valid[index] = 0U;
+            s_air_param_dirty[index] = 0U;
+        }
+    }
     return 0U;
 }
 
@@ -1122,13 +1540,15 @@ void menu_air_update_100HZ(void)
     uint8 ack_type = 0U;
     uint8 ack_result = AIR_COMM_ACK_RESULT_NONE;
     uint8 ack_status = AIR_COMM_STATUS_ERROR;
-    uint8 active_index;
+    uint16 active_index;
     uint8 expected_type;
     uint8 online = menu_is_air_connected();
     uint8 current_mode;
     uint8 sync_reason;
     uint8 get_mode;
     uint8 structural_failure;
+    uint8 full_pending;
+    uint16 full_index;
     uint32 now = air_comm_car_get_tick();
     float confirmed_value;
     char ack_name[AIR_COMM_PARAM_NAME_MAX + 1U];
@@ -1222,6 +1642,18 @@ void menu_air_update_100HZ(void)
 
         ack_name[0] = '\0';
         (void)air_comm_car_get_last_ack_name(ack_name, (uint8)sizeof(ack_name));
+        if((current_mode == MENU_AIR_SYNC_MODE_PULL) &&
+           (menu_air_optional_get_failure_can_skip(active_index,
+                                                   ack_type,
+                                                   ack_result,
+                                                   ack_name) != 0U))
+        {
+            menu_air_record_failure(active_index, ack_result, ack_status);
+            s_air_params[active_index].available = 0U;
+            s_air_confirmed_valid[active_index] = 0U;
+            s_air_param_dirty[active_index] = 0U;
+            return;
+        }
         if((active_index >= s_air_param_count) ||
            (ack_type != expected_type) ||
            (ack_result == AIR_COMM_ACK_RESULT_NONE) ||
@@ -1314,10 +1746,13 @@ void menu_air_update_100HZ(void)
             return;
         }
 
-        if((current_mode == MENU_AIR_SYNC_MODE_FULL) &&
-           (s_air_sync_status.dirty_count > 0U))
+        if(current_mode == MENU_AIR_SYNC_MODE_FULL)
         {
-            s_air_sync_status.dirty_count--;
+            s_air_full_pending[active_index] = 0U;
+            if(s_air_sync_status.dirty_count > 0U)
+            {
+                s_air_sync_status.dirty_count--;
+            }
         }
         return;
     }
@@ -1340,7 +1775,7 @@ void menu_air_update_100HZ(void)
         }
 
         air_comm_car_clear_last_ack();
-        if(air_comm_car_get_param(s_air_params[active_index].name) == 0U)
+        if(menu_air_send_get_param(active_index) == 0U)
         {
             s_air_sync_status.sending = 1U;
             s_air_sync_status.active_index = active_index;
@@ -1409,9 +1844,9 @@ void menu_air_update_100HZ(void)
             return;
         }
 
-        active_index = (uint8)s_air_sync_next_index;
+        active_index = s_air_sync_next_index;
         air_comm_car_clear_last_ack();
-        if(air_comm_car_get_param(s_air_params[active_index].name) == 0U)
+        if(menu_air_send_get_param(active_index) == 0U)
         {
             s_air_sync_status.sending = 1U;
             s_air_sync_status.active_index = active_index;
@@ -1441,7 +1876,25 @@ void menu_air_update_100HZ(void)
         return;
     }
 
-    if(s_air_sync_next_index >= s_air_param_count)
+
+    active_index = MENU_AIR_SYNC_INVALID_INDEX;
+    full_pending = 0U;
+    for(full_index = 0U; full_index < s_air_param_count; full_index++)
+    {
+        if(s_air_full_pending[full_index] == 0U)
+        {
+            continue;
+        }
+
+        full_pending = 1U;
+        if(menu_air_full_candidate_is_safe(full_index) != 0U)
+        {
+            active_index = full_index;
+            break;
+        }
+    }
+
+    if(full_pending == 0U)
     {
         sync_reason = s_air_sync_status.reason;
         menu_air_sync_reset(MENU_AIR_SYNC_MODE_DONE);
@@ -1461,7 +1914,18 @@ void menu_air_update_100HZ(void)
         return;
     }
 
-    active_index = (uint8)s_air_sync_next_index;
+    if(active_index == MENU_AIR_SYNC_INVALID_INDEX)
+    {
+        menu_air_record_failure(MENU_AIR_SYNC_INVALID_INDEX,
+                                AIR_COMM_ACK_RESULT_ERROR,
+                                AIR_COMM_STATUS_ERROR);
+        menu_air_restore_all_confirmed();
+        menu_air_sync_reset(MENU_AIR_SYNC_MODE_FAIL);
+        menu_air_mark_catalog_stale();
+        menu_show_error("Air Param Invalid");
+        return;
+    }
+
     air_comm_car_clear_last_ack();
     if(menu_air_send_set_param(active_index,
                                *(s_air_params[active_index].variable)) == 0U)
@@ -1471,7 +1935,6 @@ void menu_air_update_100HZ(void)
         s_air_sync_status.last_result = AIR_COMM_ACK_RESULT_NONE;
         s_air_sync_status.last_status = AIR_COMM_STATUS_ERROR;
         s_air_sync_status.send_count++;
-        s_air_sync_next_index++;
     }
     else
     {
@@ -1552,7 +2015,10 @@ uint8 menu_save_air_slot(uint8 slot)
     uint32 page;
     uint32 offset;
     uint32 data_words;
+    uint32 total_words;
+    uint32 page_words;
     uint16 index;
+    uint8 page_index;
     menu_air_slot_header_t *header;
     menu_air_slot_param_t *slot_params;
 
@@ -1586,8 +2052,8 @@ uint8 menu_save_air_slot(uint8 slot)
         return 1U;
     }
 
-    flash_buffer_clear();
-    header = (menu_air_slot_header_t *)flash_union_buffer;
+    memset(s_air_slot_words, 0xFF, sizeof(s_air_slot_words));
+    header = (menu_air_slot_header_t *)s_air_slot_words;
     header->magic = MENU_AIR_MAGIC_NUMBER;
     header->version = MENU_AIR_VERSION;
     header->slot_id = slot;
@@ -1596,13 +2062,14 @@ uint8 menu_save_air_slot(uint8 slot)
     offset = (uint32)((sizeof(menu_air_slot_header_t) + 3U) / 4U);
     data_words = (uint32)s_air_param_count *
                  (uint32)(sizeof(menu_air_slot_param_t) / sizeof(uint32));
-    if((offset + data_words) > FLASH_PAGE_LENGTH)
+    total_words = offset + data_words;
+    if(total_words > (MENU_AIR_SLOT_SIZE * FLASH_PAGE_LENGTH))
     {
         menu_show_error("Air Data Full");
         return 1U;
     }
 
-    slot_params = (menu_air_slot_param_t *)&flash_union_buffer[offset];
+    slot_params = (menu_air_slot_param_t *)&s_air_slot_words[offset];
     for(index = 0U; index < s_air_param_count; index++)
     {
         slot_params[index].name_hash = menu_air_name_hash(s_air_params[index].name);
@@ -1610,8 +2077,25 @@ uint8 menu_save_air_slot(uint8 slot)
     }
     header->checksum = menu_air_calc_buffer_checksum((uint16)data_words, offset);
 
-    flash_erase_page(0U, page);
-    (void)flash_write_page_from_buffer(0U, page, offset + data_words);
+    for(page_index = 0U; page_index < MENU_AIR_SLOT_SIZE; page_index++)
+    {
+        uint32 written_words = (uint32)page_index * FLASH_PAGE_LENGTH;
+
+        flash_erase_page(0U, page + page_index);
+        if(written_words >= total_words)
+        {
+            continue;
+        }
+        page_words = total_words - written_words;
+        if(page_words > FLASH_PAGE_LENGTH)
+        {
+            page_words = FLASH_PAGE_LENGTH;
+        }
+        flash_write_page(0U,
+                         page + page_index,
+                         &s_air_slot_words[written_words],
+                         page_words);
+    }
 
     if(menu_air_slot_valid(slot, NULL) == 0U)
     {

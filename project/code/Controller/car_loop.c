@@ -58,7 +58,9 @@ volatile float g_air_car_plan_dist_px = 0.0f;
 volatile float g_air_beacon_lost_flag = 0.0f;
 
 #define AIR_RUN_DATA_CRITICAL_COUNT (15U) /* 飞行期间关键数据包的float数量 */
-#define AIR_RUN_DATA_DIAGNOSTIC_COUNT (45U) /* 常态完整诊断包的float数量 */
+#define AIR_RUN_DATA_DIAGNOSTIC_LEGACY_COUNT (45U) /* 兼容旧版常态诊断包的float数量 */
+#define AIR_RUN_DATA_DIAGNOSTIC_V1_COUNT (48U) /* 兼容首版SPI诊断包的float数量 */
+#define AIR_RUN_DATA_DIAGNOSTIC_COUNT (52U) /* 常态完整诊断包的float数量 */
 #define AIR_RUN_CRITICAL_STATE (0U) /* 飞机运行状态 */
 #define AIR_RUN_CRITICAL_CRSF_CH0 (1U) /* CRSF标准化通道0 */
 #define AIR_RUN_CRITICAL_CRSF_CH1 (2U) /* CRSF标准化通道1 */
@@ -142,7 +144,7 @@ static void car_loop_update_air_runtime_state(float air_state)
 /**
  * @brief 按数据数量解析飞机下发的关键运行包或完整诊断包。
  * @param data 飞机下发的float数据数组。
- * @param count 数组中的float数量，合法值为15或45。
+ * @param count 数组中的float数量，合法值为15、45、48或52。
  * @return 无。
  */
 static void on_air_data(const float *data, uint8 count)
@@ -167,7 +169,9 @@ static void on_air_data(const float *data, uint8 count)
         return;
     }
 
-    if (count != AIR_RUN_DATA_DIAGNOSTIC_COUNT)
+    if ((count != AIR_RUN_DATA_DIAGNOSTIC_LEGACY_COUNT) &&
+        (count != AIR_RUN_DATA_DIAGNOSTIC_V1_COUNT) &&
+        (count != AIR_RUN_DATA_DIAGNOSTIC_COUNT))
     {
         return;
     }
@@ -217,6 +221,24 @@ static void on_air_data(const float *data, uint8 count)
     g_air_diag_telemetry.imu_filtered_acc[0] = data[42];
     g_air_diag_telemetry.imu_filtered_acc[1] = data[43];
     g_air_diag_telemetry.imu_filtered_acc[2] = data[44];
+    if(count >= AIR_RUN_DATA_DIAGNOSTIC_V1_COUNT)
+    {
+        uint8 camera_status0 = (uint8)data[45];
+        uint8 camera_status1 = (uint8)data[46];
+
+        g_air_diag_telemetry.camera_spi_online[0] = (float)(camera_status0 & 0x01U);
+        g_air_diag_telemetry.camera_spi_online[1] = (float)(camera_status1 & 0x01U);
+        g_air_diag_telemetry.camera_spi_ready[0] = (float)((camera_status0 >> 1) & 0x01U);
+        g_air_diag_telemetry.camera_spi_ready[1] = (float)((camera_status1 >> 1) & 0x01U);
+        g_air_diag_telemetry.camera_spi_error_code = data[47];
+    }
+    if(count >= AIR_RUN_DATA_DIAGNOSTIC_COUNT)
+    {
+        g_air_diag_telemetry.camera_spi_rx_head[0][0] = data[48];
+        g_air_diag_telemetry.camera_spi_rx_head[0][1] = data[49];
+        g_air_diag_telemetry.camera_spi_rx_head[1][0] = data[50];
+        g_air_diag_telemetry.camera_spi_rx_head[1][1] = data[51];
+    }
 }
 
 static void car_loop_runtime_reset(void)

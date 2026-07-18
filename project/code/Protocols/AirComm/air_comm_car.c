@@ -1110,7 +1110,7 @@ uint8 air_comm_car_set_param(const char *name, float value)
     return air_comm_car_set_param_with_timeout(name, value, COMM_ACK_TIMEOUT_MS);
 }
 
-uint8 air_comm_car_get_param(const char *name)
+uint8 air_comm_car_get_param_with_timeout(const char *name, uint32 timeout_ms)
 {
     uint8 payload[1U + AIR_COMM_PARAM_NAME_MAX];
     uint16 name_len;
@@ -1135,7 +1135,12 @@ uint8 air_comm_car_get_param(const char *name)
                           payload,
                           pos,
                           1U,
-                          COMM_ACK_TIMEOUT_MS) != 0U) ? 0U : 1U;
+                          timeout_ms) != 0U) ? 0U : 1U;
+}
+
+uint8 air_comm_car_get_param(const char *name)
+{
+    return air_comm_car_get_param_with_timeout(name, COMM_ACK_TIMEOUT_MS);
 }
 
 /**

@@ -25,7 +25,7 @@ static param_config_t param_configs[MENU_MAX_PARAMS];  // 参数配置表
 static uint8_t param_count = 0;                        // 已注册参数数量（会在注册时递增）
 static uint8_t current_slot = 0;                       // 当前存档号
 static uint8_t air_edit_active = 0U;
-static uint8_t air_edit_index = 0U;
+static uint16_t air_edit_index = 0U;
 static float air_edit_value = 0.0f;
 
 // 显示控制变量
@@ -175,9 +175,10 @@ static void menu_air_edit_reset(void)
     air_edit_value = 0.0f;
 }
 
-static uint8_t menu_air_edit_begin(uint8_t index)
+static uint8_t menu_air_edit_begin(uint16_t index)
 {
-    if(index >= menu_get_air_param_count())
+    if((index >= menu_get_air_param_count()) ||
+       (menu_air_param_is_available(index) == 0U))
     {
         menu_air_edit_reset();
         return 1U;
@@ -189,7 +190,7 @@ static uint8_t menu_air_edit_begin(uint8_t index)
     return 0U;
 }
 
-static uint8_t menu_air_get_display_value(uint8_t index, float *value)
+static uint8_t menu_air_get_display_value(uint16_t index, float *value)
 {
     if((value == NULL) || (index >= menu_get_air_param_count()))
     {
@@ -266,6 +267,20 @@ static uint8_t menu_air_edit_commit(const menu_item_t *item)
     return result;
 }
 
+/* 指定Air参数按Back时取消本地编辑，避免未确认值被下发。 */
+static uint8_t menu_air_edit_requires_enter(const menu_item_t *item)
+{
+    const menu_air_param_config_t *config;
+
+    if((item == NULL) || (item->type != MENU_TYPE_AIR_PARAMETER))
+    {
+        return 0U;
+    }
+
+    config = menu_get_air_param_config(item->param_index);
+    return ((config != NULL) && (config->enter_confirm_only != 0U)) ? 1U : 0U;
+}
+
 /* 获取菜单项对应的参数值（统一处理本地/Air参数） */
 static uint8_t menu_get_item_param_value(const menu_item_t *item, float *value)
 {
@@ -300,26 +315,43 @@ static uint8_t menu_get_item_param_value(const menu_item_t *item, float *value)
     return 0U;
 }
 
-/* Air枚举参数使用文字显示，普通参数继续使用原有浮点格式。 */
+/* Air或外部枚举参数使用文字显示，普通参数继续使用原有浮点格式。 */
 static const char *menu_get_air_enum_label(const menu_item_t *item, float value)
 {
     int32_t enum_index;
     float delta;
+    const char * const *enum_labels = NULL;
+    uint8_t enum_count = 0U;
     const menu_air_param_config_t *config;
 
-    if((item == NULL) || (item->type != MENU_TYPE_AIR_PARAMETER))
+    if(item == NULL)
     {
         return NULL;
     }
 
-    config = menu_get_air_param_config(item->param_index);
-    if((config == NULL) || (config->enum_labels == NULL) || (config->enum_count == 0U))
+    if(item->type == MENU_TYPE_AIR_PARAMETER)
+    {
+        config = menu_get_air_param_config(item->param_index);
+        if(config != NULL)
+        {
+            enum_labels = config->enum_labels;
+            enum_count = config->enum_count;
+        }
+    }
+    else if((item->type == MENU_TYPE_EXTERNAL_PARAMETER) &&
+            (item->external_param != NULL))
+    {
+        enum_labels = item->external_param->enum_labels;
+        enum_count = item->external_param->enum_count;
+    }
+
+    if((enum_labels == NULL) || (enum_count == 0U))
     {
         return NULL;
     }
 
     enum_index = (int32_t)(value + ((value >= 0.0f) ? 0.5f : -0.5f));
-    if((enum_index < 0) || (enum_index >= (int32_t)config->enum_count))
+    if((enum_index < 0) || (enum_index >= (int32_t)enum_count))
     {
         return NULL;
     }
@@ -329,12 +361,12 @@ static const char *menu_get_air_enum_label(const menu_item_t *item, float value)
     {
         delta = -delta;
     }
-    if((delta > 0.001f) || (config->enum_labels[enum_index] == NULL))
+    if((delta > 0.001f) || (enum_labels[enum_index] == NULL))
     {
         return NULL;
     }
 
-    return config->enum_labels[enum_index];
+    return enum_labels[enum_index];
 }
 
 /* 获取菜单项对应的编辑步进值 */
@@ -1422,7 +1454,15 @@ void menu_key_handler(menu_key_t key)
                         if(current_menu[current_index].type == MENU_TYPE_AIR_PARAMETER)
                         {
                             menu_state = MENU_STATE_NORMAL;
-                            (void)menu_air_edit_commit(&current_menu[current_index]);
+                            if(menu_air_edit_requires_enter(&current_menu[current_index]) != 0U)
+                            {
+                                menu_air_edit_reset();
+                                menu_request_refresh(REFRESH_VALUE);
+                            }
+                            else
+                            {
+                                (void)menu_air_edit_commit(&current_menu[current_index]);
+                            }
                             break;
                         }
                         // 返回键：保存参数并退出编辑模式（与确认键相同）
@@ -1690,6 +1730,20 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
 
     if(menu_is_param_item(item) != 0U)
     {
+        if((item->type == MENU_TYPE_AIR_PARAMETER) &&
+           (menu_air_param_is_available(item->param_index) == 0U))
+        {
+            name_length = strlen(item->name);
+            if(name_length > 18U)
+            {
+                name_length = 18U;
+            }
+            memcpy(&display_text[1], item->name, name_length);
+            memcpy(&display_text[MENU_DISPLAY_COLUMNS - 3U], "N/A", 3U);
+            menu_show_text_line(line, display_text, color);
+            return;
+        }
+
         if(menu_get_item_param_value(item, &value) == 0U) return;
 
         name_length = strlen(item->name);
@@ -1713,7 +1767,9 @@ void menu_render_item(uint8_t line, menu_item_t* item, uint8_t selected, uint8_t
             snprintf(value_text, sizeof(value_text), "%.3f", (double)value);
         }
         value_length = strlen(value_text);
-        if(value_length > 11U)
+        if((value_length > 11U) &&
+           ((enum_label == NULL) ||
+            ((name_length + value_length + 2U) > MENU_DISPLAY_COLUMNS)))
         {
             value_length = 11U;
         }

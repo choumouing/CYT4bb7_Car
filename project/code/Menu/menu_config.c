@@ -136,6 +136,7 @@ static void diag_air_flow_function(void);
 static void diag_air_imu_function(void);
 static void diag_air_attitude_function(void);
 static void diag_air_rc_function(void);
+static void diag_2bl3_status_function(void);
 
 //====================================================菜单树定义====================================================
 // 轮速PID子菜单（增量式）
@@ -272,6 +273,65 @@ static menu_item_t s_curve_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
+static menu_item_t core1_image_param_menu[] = {
+    {"Camera", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Beacon", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Car Lamp", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Near Lamp", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Tracking", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+static const char * const s_core1_param_group_names[] = {
+    "Core1 Camera",
+    "Core1 Beacon",
+    "Core1 Car Lamp",
+    "Core1 Near Lamp",
+    "Core1 Tracking"
+};
+
+typedef char core1_param_group_count_must_match[
+    ((sizeof(s_core1_param_group_names) /
+      sizeof(s_core1_param_group_names[0])) == 5U) ? 1 : -1];
+
+/* 2BL3图像参数二级分类菜单。 */
+static menu_item_t bl3_image_param_menu[] = {
+    {"Stream", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Threshold", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Beacon Area", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Car Lamp", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Reflection", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Weak Center", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Shape Filter", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Vertical Top", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Saturated Top", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Background", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Near Lamp", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Tracking", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"Calibration", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"", MENU_TYPE_SUBMENU, .submenu = NULL}
+};
+
+/* 二级菜单显示名与Air参数定义中的分组名映射。 */
+static const char * const s_bl3_param_group_names[] = {
+    "2BL3 Stream",
+    "2BL3 Threshold",
+    "2BL3 Beacon Area",
+    "2BL3 Car Lamp",
+    "2BL3 Reflection",
+    "2BL3 Weak Center",
+    "2BL3 Shape Filter",
+    "2BL3 Vertical Top",
+    "2BL3 Saturated Top",
+    "2BL3 Background",
+    "2BL3 Near Lamp",
+    "2BL3 Tracking",
+    "2BL3 Calibration"
+};
+
+typedef char bl3_param_group_count_must_match[
+    ((sizeof(s_bl3_param_group_names) / sizeof(s_bl3_param_group_names[0])) == 13U) ? 1 : -1];
+
 static menu_item_t air_param_menu[] = {
     {"Basic", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Gyro PID", MENU_TYPE_SUBMENU, .submenu = NULL},
@@ -298,12 +358,19 @@ static menu_item_t air_param_menu[] = {
 enum
 {
     AIR_PARAM_MENU_COUNT = (sizeof(air_param_menu) / sizeof(air_param_menu[0])) - 1U,
-    AIR_PARAM_MENU_STORAGE_COUNT = MENU_AIR_EXPECTED_PARAM_COUNT + AIR_PARAM_MENU_COUNT
+    CORE1_PARAM_MENU_COUNT = (sizeof(core1_image_param_menu) /
+                              sizeof(core1_image_param_menu[0])) - 1U,
+    BL3_PARAM_MENU_COUNT = (sizeof(bl3_image_param_menu) / sizeof(bl3_image_param_menu[0])) - 1U,
+    AIR_PARAM_MENU_STORAGE_COUNT = MENU_AIR_MAX_PARAMS + AIR_PARAM_MENU_COUNT +
+                                   CORE1_PARAM_MENU_COUNT +
+                                   BL3_PARAM_MENU_COUNT + 1U
 };
 
 static menu_item_t s_air_param_menu_storage[AIR_PARAM_MENU_STORAGE_COUNT];
 static menu_item_t *s_air_group_menus[AIR_PARAM_MENU_COUNT];
-static menu_item_t air_command_menu[2U];
+static menu_item_t *s_core1_group_menus[CORE1_PARAM_MENU_COUNT];
+/* 2BL3二级分组菜单在统一存储区中的起始指针。 */
+static menu_item_t *s_bl3_group_menus[BL3_PARAM_MENU_COUNT];
 
 static menu_item_t load_air_slot_menu[] = {
     {"Load Air0", MENU_TYPE_FUNCTION, .function = load_air_slot_0_function},
@@ -344,6 +411,7 @@ static menu_item_t car_diag_menu[] = {
 
 static menu_item_t air_diag_menu[] = {
     {"A_State", MENU_TYPE_DIAG_VIEW, .function = diag_air_state_function},
+    {"2BL3 Status", MENU_TYPE_DIAG_VIEW, .function = diag_2bl3_status_function},
     {"A_ToF", MENU_TYPE_DIAG_VIEW, .function = diag_air_tof_function},
     {"A_Flow", MENU_TYPE_DIAG_VIEW, .function = diag_air_flow_function},
     {"A_IMU", MENU_TYPE_DIAG_VIEW, .function = diag_air_imu_function},
@@ -363,7 +431,6 @@ static menu_item_t car_menu[] = {
 
 static menu_item_t air_menu[] = {
     {"A_params", MENU_TYPE_SUBMENU, .submenu = air_param_menu},
-    {"A_Command", MENU_TYPE_SUBMENU, .submenu = air_command_menu},
     {"A_Diag", MENU_TYPE_SUBMENU, .submenu = air_diag_menu},
     {"Sync Air", MENU_TYPE_FUNCTION, .function = sync_air_function},
     {"A_Load", MENU_TYPE_SUBMENU, .submenu = load_air_slot_menu},
@@ -382,19 +449,24 @@ static uint8 menu_build_air_param_menus(void)
     uint16 cursor = 0U;
     uint8 group;
     uint8 other_group;
+    uint8 core1_top_found = 0U;
+    uint8 bl3_top_found = 0U;
     uint16 index;
     uint16 other_index;
     uint8 group_count;
     const menu_air_param_config_t *config;
     const menu_air_param_config_t *other_config;
+    const char *item_name;
     menu_item_t *item;
 
     memset(s_air_param_menu_storage, 0, sizeof(s_air_param_menu_storage));
     memset(s_air_group_menus, 0, sizeof(s_air_group_menus));
+    memset(s_core1_group_menus, 0, sizeof(s_core1_group_menus));
+    memset(s_bl3_group_menus, 0, sizeof(s_bl3_group_menus));
 
     for(index = 0U; index < menu_get_air_param_count(); index++)
     {
-        config = menu_get_air_param_config((uint8)index);
+        config = menu_get_air_param_config(index);
         if(config == NULL)
         {
             return 1U;
@@ -404,7 +476,7 @@ static uint8 menu_build_air_param_menus(void)
             other_index < menu_get_air_param_count();
             other_index++)
         {
-            other_config = menu_get_air_param_config((uint8)other_index);
+            other_config = menu_get_air_param_config(other_index);
             if((other_config == NULL) || (strcmp(config->name, other_config->name) == 0))
             {
                 return 1U;
@@ -427,12 +499,25 @@ static uint8 menu_build_air_param_menus(void)
 
     for(group = 0U; group < AIR_PARAM_MENU_COUNT; group++)
     {
+        if(strcmp(air_param_menu[group].name, "Core1 Img") == 0)
+        {
+            s_air_group_menus[group] = core1_image_param_menu;
+            core1_top_found = 1U;
+            continue;
+        }
+        if(strcmp(air_param_menu[group].name, "2BL3 Img") == 0)
+        {
+            s_air_group_menus[group] = bl3_image_param_menu;
+            bl3_top_found = 1U;
+            continue;
+        }
+
         s_air_group_menus[group] = &s_air_param_menu_storage[cursor];
         group_count = 0U;
 
         for(index = 0U; index < menu_get_air_param_count(); index++)
         {
-            config = menu_get_air_param_config((uint8)index);
+            config = menu_get_air_param_config(index);
             if((config == NULL) || (config->menu_name == NULL) ||
                (config->visible == 0U) ||
                (strcmp(config->menu_name, air_param_menu[group].name) != 0))
@@ -450,7 +535,7 @@ static uint8 menu_build_air_param_menus(void)
             strncpy(item->name, config->name, sizeof(item->name) - 1U);
             item->name[sizeof(item->name) - 1U] = '\0';
             item->type = MENU_TYPE_AIR_PARAMETER;
-            item->param_index = (uint8)index;
+            item->param_index = index;
             group_count++;
         }
 
@@ -464,19 +549,96 @@ static uint8 menu_build_air_param_menus(void)
         item->submenu = NULL;
     }
 
-    if(menu_air_command_get_count() != 1U)
+    if((core1_top_found == 0U) || (bl3_top_found == 0U))
     {
         return 1U;
     }
 
-    memset(air_command_menu, 0, sizeof(air_command_menu));
-    strncpy(air_command_menu[0].name,
-            menu_air_command_get_name(0U),
-            sizeof(air_command_menu[0].name) - 1U);
-    air_command_menu[0].type = MENU_TYPE_AIR_COMMAND;
-    air_command_menu[0].param_index = 0U;
-    air_command_menu[1].type = MENU_TYPE_SUBMENU;
-    air_command_menu[1].submenu = NULL;
+    for(group = 0U; group < CORE1_PARAM_MENU_COUNT; group++)
+    {
+        s_core1_group_menus[group] = &s_air_param_menu_storage[cursor];
+        group_count = 0U;
+
+        for(index = 0U; index < menu_get_air_param_count(); index++)
+        {
+            config = menu_get_air_param_config(index);
+            if((config == NULL) || (config->menu_name == NULL) ||
+               (config->visible == 0U) ||
+               (strcmp(config->menu_name,
+                       s_core1_param_group_names[group]) != 0))
+            {
+                continue;
+            }
+
+            if((group_count >= MENU_MAX_ITEMS) ||
+               (cursor >= AIR_PARAM_MENU_STORAGE_COUNT))
+            {
+                return 1U;
+            }
+
+            item = &s_air_param_menu_storage[cursor++];
+            strncpy(item->name, config->name, sizeof(item->name) - 1U);
+            item->name[sizeof(item->name) - 1U] = '\0';
+            item->type = MENU_TYPE_AIR_PARAMETER;
+            item->param_index = index;
+            group_count++;
+        }
+
+        if(cursor >= AIR_PARAM_MENU_STORAGE_COUNT)
+        {
+            return 1U;
+        }
+        item = &s_air_param_menu_storage[cursor++];
+        item->name[0] = '\0';
+        item->type = MENU_TYPE_SUBMENU;
+        item->submenu = NULL;
+        core1_image_param_menu[group].submenu = s_core1_group_menus[group];
+    }
+
+    for(group = 0U; group < BL3_PARAM_MENU_COUNT; group++)
+    {
+        s_bl3_group_menus[group] = &s_air_param_menu_storage[cursor];
+        group_count = 0U;
+
+        for(index = 0U; index < menu_get_air_param_count(); index++)
+        {
+            config = menu_get_air_param_config(index);
+            if((config == NULL) || (config->menu_name == NULL) ||
+               (config->visible == 0U) ||
+               (strcmp(config->menu_name, s_bl3_param_group_names[group]) != 0))
+            {
+                continue;
+            }
+
+            if((group_count >= MENU_MAX_ITEMS) ||
+               (cursor >= AIR_PARAM_MENU_STORAGE_COUNT))
+            {
+                return 1U;
+            }
+
+            item = &s_air_param_menu_storage[cursor++];
+            item_name = config->name;
+            if(strcmp(config->name, "bl3_stream_mode") == 0)
+            {
+                item_name = "ImageMode";
+            }
+            strncpy(item->name, item_name, sizeof(item->name) - 1U);
+            item->name[sizeof(item->name) - 1U] = '\0';
+            item->type = MENU_TYPE_AIR_PARAMETER;
+            item->param_index = index;
+            group_count++;
+        }
+
+        if(cursor >= AIR_PARAM_MENU_STORAGE_COUNT)
+        {
+            return 1U;
+        }
+        item = &s_air_param_menu_storage[cursor++];
+        item->name[0] = '\0';
+        item->type = MENU_TYPE_SUBMENU;
+        item->submenu = NULL;
+        bl3_image_param_menu[group].submenu = s_bl3_group_menus[group];
+    }
 
     for(group = 0U; group < AIR_PARAM_MENU_COUNT; group++)
     {
@@ -805,6 +967,124 @@ static void diag_air_state_function(void)
     sprintf(text, "Sync:%7.0fms", (double)g_air_sync_time_ms);
     diag_show_line(3U, text);
     diag_clear_lines(4U, 6U);
+    diag_show_line(7U, "Back/Enter Exit");
+}
+
+/**
+ * @brief 按名称读取一个已确认可用的Air菜单参数。
+ * @param name 参数名称。
+ * @param value 输出参数值。
+ * @return 1表示找到且远端可用，0表示不存在或当前固件不支持。
+ */
+static uint8 diag_get_air_param_value(const char *name, float *value)
+{
+    uint16 index;
+    const menu_air_param_config_t *config;
+
+    if((name == NULL) || (value == NULL))
+    {
+        return 0U;
+    }
+
+    for(index = 0U; index < menu_get_air_param_count(); index++)
+    {
+        config = menu_get_air_param_config(index);
+        if((config != NULL) && (strcmp(config->name, name) == 0) &&
+           (menu_air_param_is_available(index) != 0U))
+        {
+            *value = menu_get_air_param_by_index(index);
+            return 1U;
+        }
+    }
+
+    return 0U;
+}
+
+/**
+ * @brief 显示仅由现有RUN_DATA和菜单同步状态组成的2BL3诊断页。
+ * @return 无；不增加任何无线遥测字段或发送频率。
+ */
+static void diag_2bl3_status_function(void)
+{
+    uint16 index;
+    uint16 available_count = 0U;
+    uint16 spi_error_code;
+    uint8 spi_error0;
+    uint8 spi_error1;
+    float beacon_threshold = 0.0f;
+    float edge_threshold = 0.0f;
+    char beacon_threshold_text[8] = "N/A";
+    char edge_threshold_text[8] = "N/A";
+    char text[32];
+    const char *failed_name = "--";
+    const menu_air_param_config_t *config;
+    menu_air_sync_status_t sync_status;
+
+    menu_get_air_sync_status(&sync_status);
+    spi_error_code = (uint16)g_air_diag_telemetry.camera_spi_error_code;
+    spi_error0 = (uint8)(spi_error_code >> 8);
+    spi_error1 = (uint8)(spi_error_code & 0xFFU);
+    for(index = 0U; index < menu_get_air_param_count(); index++)
+    {
+        if(menu_air_param_is_available(index) != 0U)
+        {
+            available_count++;
+        }
+    }
+    if(sync_status.last_failed_index < menu_get_air_param_count())
+    {
+        config = menu_get_air_param_config(sync_status.last_failed_index);
+        if(config != NULL)
+        {
+            failed_name = config->name;
+        }
+    }
+
+    if(diag_get_air_param_value("bl3_beacon_thr", &beacon_threshold) != 0U)
+    {
+        snprintf(beacon_threshold_text, sizeof(beacon_threshold_text),
+                 "%3.0f", (double)beacon_threshold);
+    }
+    if(diag_get_air_param_value("bl3_edge_thr", &edge_threshold) != 0U)
+    {
+        snprintf(edge_threshold_text, sizeof(edge_threshold_text),
+                 "%3.0f", (double)edge_threshold);
+    }
+    diag_begin();
+    diag_show_line(0U, "2BL3 Status");
+    snprintf(text, sizeof(text), "On:%u Fr:%u Cam:%u",
+             (unsigned int)air_comm_car_is_online(),
+             (unsigned int)air_comm_car_is_run_data_fresh(),
+             (unsigned int)(uint8)g_air_car_plan_camera);
+    diag_show_line(1U, text);
+    snprintf(text, sizeof(text), "S:%u%u R:%u%u E:%u/%u",
+             (unsigned int)(uint8)g_air_diag_telemetry.camera_spi_online[0],
+             (unsigned int)(uint8)g_air_diag_telemetry.camera_spi_online[1],
+             (unsigned int)(uint8)g_air_diag_telemetry.camera_spi_ready[0],
+             (unsigned int)(uint8)g_air_diag_telemetry.camera_spi_ready[1],
+             (unsigned int)spi_error0,
+             (unsigned int)spi_error1);
+    diag_show_line(2U, text);
+    snprintf(text, sizeof(text), "H:%02X%02X/%02X%02X",
+             (unsigned int)(uint8)g_air_diag_telemetry.camera_spi_rx_head[0][0],
+             (unsigned int)(uint8)g_air_diag_telemetry.camera_spi_rx_head[0][1],
+             (unsigned int)(uint8)g_air_diag_telemetry.camera_spi_rx_head[1][0],
+             (unsigned int)(uint8)g_air_diag_telemetry.camera_spi_rx_head[1][1]);
+    diag_show_line(3U, text);
+    snprintf(text, sizeof(text), "Sync:%u/%u D:%u",
+             (unsigned int)available_count,
+             (unsigned int)menu_get_air_param_count(),
+             (unsigned int)sync_status.dirty_count);
+    diag_show_line(4U, text);
+    snprintf(text, sizeof(text), "Ack:%u/%u F:%.11s",
+             (unsigned int)sync_status.last_failed_result,
+             (unsigned int)sync_status.last_failed_status,
+             failed_name);
+    diag_show_line(5U, text);
+    snprintf(text, sizeof(text), "Thr:%s Edge:%s",
+             beacon_threshold_text,
+             edge_threshold_text);
+    diag_show_line(6U, text);
     diag_show_line(7U, "Back/Enter Exit");
 }
 

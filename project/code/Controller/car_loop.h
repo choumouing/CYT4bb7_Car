@@ -55,6 +55,10 @@ typedef struct
     float imu_raw_acc[3];
     float imu_filtered_gyro[3];
     float imu_filtered_acc[3];
+    float camera_spi_online[2];
+    float camera_spi_ready[2];
+    float camera_spi_error_code;
+    float camera_spi_rx_head[2][2];
 } air_diag_telemetry_t;
 
 extern volatile air_diag_telemetry_t g_air_diag_telemetry;
