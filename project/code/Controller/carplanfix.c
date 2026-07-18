@@ -23,6 +23,7 @@ static const carplanfix_route_t s_routes[] =
 
 carplanfix_state_t g_carplanfix_state = {0};
 static const carplanfix_route_t *s_active_route;
+static uint8 s_mode3_was_active;
 
 static const carplanfix_route_t *carplanfix_find_route(uint8 sequence_id,
                                                        uint8 last_beacon_id)
@@ -73,6 +74,7 @@ static void carplanfix_disable(carplanfix_disable_reason_e reason)
     g_carplanfix_state.correction_valid = 0U;
     g_carplanfix_state.target_event_pending = 0U;
     g_carplanfix_state.target_exit_confirm_count = 0U;
+    g_carplanfix_state.mode3_beacon1_pending = 0U;
     s_active_route = NULL;
 }
 
@@ -93,6 +95,34 @@ static void carplanfix_advance_route(void)
 
     g_carplanfix_state.target_beacon_id =
         s_active_route->points[g_carplanfix_state.route_index];
+}
+
+static void carplanfix_apply_target_direction(float dx,
+                                              float dy,
+                                              float distance,
+                                              float plan_speed,
+                                              float *forward_mps,
+                                              float *strafe_mps)
+{
+    float heading;
+    float cos_heading;
+    float sin_heading;
+    float global_velocity_x;
+    float global_velocity_y;
+
+    global_velocity_x = dx * plan_speed / distance;
+    global_velocity_y = dy * plan_speed / distance;
+    heading = odometer_get_heading_rad();
+    cos_heading = cosf(heading);
+    sin_heading = sinf(heading);
+    g_carplanfix_state.corrected_strafe_mps =
+        (cos_heading * global_velocity_x) + (sin_heading * global_velocity_y);
+    g_carplanfix_state.corrected_forward_mps =
+        (-sin_heading * global_velocity_x) + (cos_heading * global_velocity_y);
+
+    *forward_mps = g_carplanfix_state.corrected_forward_mps;
+    *strafe_mps = g_carplanfix_state.corrected_strafe_mps;
+    g_carplanfix_state.correction_valid = 1U;
 }
 
 static void carplanfix_update_route(const struct light_sequence_result *result)
@@ -169,9 +199,11 @@ void carplanfix_reset(void)
     g_carplanfix_state = (carplanfix_state_t){0};
     g_carplanfix_state.status = CARPLANFIX_STATUS_WAIT_SEQUENCE;
     s_active_route = NULL;
+    s_mode3_was_active = 0U;
 }
 
 uint8 carplanfix_resolve(const struct light_sequence_result *light_sequence_result,
+                         uint8 mode3_active,
                          uint8 air_plan_valid,
                          float air_forward_mps,
                          float air_strafe_mps,
@@ -181,14 +213,9 @@ uint8 carplanfix_resolve(const struct light_sequence_result *light_sequence_resu
     beacon_config_data_t map_data;
     beacon_config_point_t target;
     float plan_speed;
-    float heading;
-    float cos_heading;
-    float sin_heading;
     float dx;
     float dy;
     float distance;
-    float global_velocity_x;
-    float global_velocity_y;
 
     if((light_sequence_result == NULL) ||
        (forward_mps == NULL) ||
@@ -206,6 +233,59 @@ uint8 carplanfix_resolve(const struct light_sequence_result *light_sequence_resu
     g_carplanfix_state.target_speed_mps = plan_speed;
 
     carplanfix_update_route(light_sequence_result);
+
+    mode3_active = (mode3_active != 0U) ? 1U : 0U;
+    if((mode3_active != 0U) && (s_mode3_was_active == 0U))
+    {
+        g_carplanfix_state.mode3_beacon1_pending = 1U;
+    }
+    else if(mode3_active == 0U)
+    {
+        g_carplanfix_state.mode3_beacon1_pending = 0U;
+    }
+    s_mode3_was_active = mode3_active;
+
+    if(g_carplanfix_state.status == CARPLANFIX_STATUS_DISABLED)
+    {
+        g_carplanfix_state.mode3_beacon1_pending = 0U;
+        return 0U;
+    }
+
+    if(g_carplanfix_state.mode3_beacon1_pending != 0U)
+    {
+        beacon_config_get_predata(&map_data);
+        target = map_data.beacons[0];
+        dx = target.x - g_odometer.position[x];
+        dy = target.y - g_odometer.position[y];
+        distance = sqrtf((dx * dx) + (dy * dy));
+        g_carplanfix_state.target_distance_m = distance;
+        g_carplanfix_state.target_position[x] = target.x;
+        g_carplanfix_state.target_position[y] = target.y;
+        g_carplanfix_state.near_beacon =
+            (distance <= CARPLANFIX_TARGET_RADIUS_M) ? 1U : 0U;
+
+        if(distance <= CARPLANFIX_TARGET_RADIUS_M)
+        {
+            g_carplanfix_state.mode3_beacon1_pending = 0U;
+        }
+        else
+        {
+            if((air_plan_valid != 0U) &&
+               (plan_speed >=
+                CARPLANFIX_MODE3_BEACON1_MIN_PLAN_SPEED_MPS))
+            {
+                carplanfix_apply_target_direction(dx,
+                                                  dy,
+                                                  distance,
+                                                  plan_speed,
+                                                  forward_mps,
+                                                  strafe_mps);
+                return 1U;
+            }
+            return 0U;
+        }
+    }
+
     if(g_carplanfix_state.status != CARPLANFIX_STATUS_TRACKING)
     {
         return 0U;
@@ -246,7 +326,7 @@ uint8 carplanfix_resolve(const struct light_sequence_result *light_sequence_resu
 
     if(g_carplanfix_state.target_zone_entered != 0U)
     {
-        if(distance > CARPLANFIX_TARGET_RADIUS_M)
+        if(distance > CARPLANFIX_TARGET_NO_EVENT_EXIT_RADIUS_M)
         {
             carplanfix_disable(CARPLANFIX_DISABLE_LEFT_TARGET_WITHOUT_EVENT);
         }
@@ -265,19 +345,12 @@ uint8 carplanfix_resolve(const struct light_sequence_result *light_sequence_resu
         return 0U;
     }
 
-    global_velocity_x = dx * plan_speed / distance;
-    global_velocity_y = dy * plan_speed / distance;
-    heading = odometer_get_heading_rad();
-    cos_heading = cosf(heading);
-    sin_heading = sinf(heading);
-    g_carplanfix_state.corrected_strafe_mps =
-        (cos_heading * global_velocity_x) + (sin_heading * global_velocity_y);
-    g_carplanfix_state.corrected_forward_mps =
-        (-sin_heading * global_velocity_x) + (cos_heading * global_velocity_y);
-
-    *forward_mps = g_carplanfix_state.corrected_forward_mps;
-    *strafe_mps = g_carplanfix_state.corrected_strafe_mps;
-    g_carplanfix_state.correction_valid = 1U;
+    carplanfix_apply_target_direction(dx,
+                                      dy,
+                                      distance,
+                                      plan_speed,
+                                      forward_mps,
+                                      strafe_mps);
 
     return 1U;
 }
