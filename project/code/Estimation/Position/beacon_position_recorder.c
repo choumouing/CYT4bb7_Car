@@ -46,7 +46,6 @@ static uint8 s_menu_built;
 
 static beacon_position_recorder_flash_data_t s_map_data;
 static uint8 s_map_data_valid;
-static beacon_config_source_e s_map_source;
 static int32 s_map_origin_x;
 static int32 s_map_origin_y;
 static float s_map_min_x;
@@ -59,12 +58,11 @@ static menu_external_param_config_t s_edit_param_config[BEACON_POSITION_RECORDER
 static beacon_config_data_t s_predata_edit;
 static menu_external_param_config_t
     s_predata_param_config[BEACON_CONFIG_BEACON_COUNT + 1U][BEACON_POSITION_RECORDER_AXIS_NUM];
-static menu_item_t s_beacon_menu[6U];
+static menu_item_t s_beacon_menu[5U];
 static menu_item_t s_edit_menu[BEACON_POSITION_RECORDER_MAX_POINTS + 2U];
 static menu_item_t s_point_menu[BEACON_POSITION_RECORDER_MAX_POINTS][4U];
 static menu_item_t s_predata_edit_menu[BEACON_CONFIG_BEACON_COUNT + 3U];
 static menu_item_t s_predata_point_menu[BEACON_CONFIG_BEACON_COUNT + 1U][3U];
-static menu_item_t s_source_menu[3U];
 
 static void beacon_position_recorder_menu_record(void);
 static void beacon_position_recorder_menu_map(void);
@@ -72,9 +70,6 @@ static void beacon_position_recorder_menu_edit(void);
 static void beacon_position_recorder_menu_save(void);
 static void beacon_position_recorder_menu_edit_predata(void);
 static void beacon_position_recorder_menu_save_predata(void);
-static void beacon_position_recorder_menu_switch(void);
-static void beacon_position_recorder_menu_use_recdata(void);
-static void beacon_position_recorder_menu_use_predata(void);
 static void beacon_position_recorder_render_record(void);
 static void beacon_position_recorder_render_map(void);
 
@@ -309,10 +304,6 @@ static uint8 beacon_position_recorder_save_current(void)
     }
 
     beacon_position_recorder_apply_flash_data(&data);
-    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_RECDATA)
-    {
-        beacon_position_recorder_reset_coordinate_consumers();
-    }
     return 1U;
 }
 
@@ -411,7 +402,6 @@ static void beacon_position_recorder_build_menu(void)
     memset(s_predata_edit_menu, 0, sizeof(s_predata_edit_menu));
     memset(s_predata_point_menu, 0, sizeof(s_predata_point_menu));
     memset(s_predata_param_config, 0, sizeof(s_predata_param_config));
-    memset(s_source_menu, 0, sizeof(s_source_menu));
 
     strcpy(s_beacon_menu[0].name, "C_BeaconRec");
     s_beacon_menu[0].type = MENU_TYPE_FUNCTION;
@@ -425,9 +415,6 @@ static void beacon_position_recorder_build_menu(void)
     strcpy(s_beacon_menu[3].name, "Edit Predata");
     s_beacon_menu[3].type = MENU_TYPE_FUNCTION;
     s_beacon_menu[3].function = beacon_position_recorder_menu_edit_predata;
-    strcpy(s_beacon_menu[4].name, "Switchbeacon");
-    s_beacon_menu[4].type = MENU_TYPE_FUNCTION;
-    s_beacon_menu[4].function = beacon_position_recorder_menu_switch;
 
     for(index = 0U; index < BEACON_POSITION_RECORDER_MAX_POINTS; index++)
     {
@@ -512,12 +499,6 @@ static void beacon_position_recorder_build_menu(void)
     s_predata_edit_menu[predata_save_index].function =
         beacon_position_recorder_menu_save_predata;
 
-    strcpy(s_source_menu[0].name, "Use Recdata");
-    s_source_menu[0].type = MENU_TYPE_FUNCTION;
-    s_source_menu[0].function = beacon_position_recorder_menu_use_recdata;
-    strcpy(s_source_menu[1].name, "Use Predata");
-    s_source_menu[1].type = MENU_TYPE_FUNCTION;
-    s_source_menu[1].function = beacon_position_recorder_menu_use_predata;
     s_menu_built = 1U;
 }
 
@@ -528,27 +509,14 @@ static int32 beacon_position_recorder_round_to_pixel(float value)
     return (scaled >= 0.0f) ? (int32)(scaled + 0.5f) : (int32)(scaled - 0.5f);
 }
 
-static void beacon_position_recorder_configure_map(beacon_config_source_e source)
+static void beacon_position_recorder_configure_map(void)
 {
-    s_map_source = source;
-    if(source == BEACON_CONFIG_SOURCE_RECDATA)
-    {
-        s_map_origin_x = BEACON_MAP_START_X + (4 * BEACON_MAP_CELL_PIXELS);
-        s_map_origin_y = BEACON_MAP_BOTTOM_Y;
-        s_map_min_x = -4.0f;
-        s_map_max_x = 4.0f;
-        s_map_min_y = 0.0f;
-        s_map_max_y = 8.0f;
-    }
-    else
-    {
-        s_map_origin_x = BEACON_MAP_START_X + BEACON_MAP_CELL_PIXELS;
-        s_map_origin_y = BEACON_MAP_BOTTOM_Y - BEACON_MAP_CELL_PIXELS;
-        s_map_min_x = -1.0f;
-        s_map_max_x = 7.0f;
-        s_map_min_y = -1.0f;
-        s_map_max_y = 7.0f;
-    }
+    s_map_origin_x = BEACON_MAP_START_X + BEACON_MAP_CELL_PIXELS;
+    s_map_origin_y = BEACON_MAP_BOTTOM_Y - BEACON_MAP_CELL_PIXELS;
+    s_map_min_x = -1.0f;
+    s_map_max_x = 7.0f;
+    s_map_min_y = -1.0f;
+    s_map_max_y = 7.0f;
 }
 
 static uint8 beacon_position_recorder_map_point_visible(float point_x, float point_y)
@@ -682,11 +650,7 @@ static void beacon_position_recorder_render_map(void)
 
     ips114_set_color(UI_COLOR_NORMAL, UI_COLOR_BG);
     ips114_show_string(132, 8, "Beacon Map");
-    ips114_show_string(132,
-                       24,
-                       (s_map_source == BEACON_CONFIG_SOURCE_RECDATA)
-                           ? "Recdata"
-                           : "Predata");
+    ips114_show_string(132, 24, "Config");
     sprintf(text,
             "Count:%u",
             (unsigned int)((s_map_data_valid != 0U) ? s_map_data.point_count : 0U));
@@ -735,7 +699,7 @@ static void beacon_position_recorder_menu_map(void)
 
     memset(&s_map_data, 0, sizeof(s_map_data));
     beacon_position_recorder_fill_invalid(s_map_data.points);
-    beacon_position_recorder_configure_map(beacon_config_get_source());
+    beacon_position_recorder_configure_map();
     beacon_config_get_initial_position(s_map_data.position);
     count = beacon_config_get_count();
     if(count > BEACON_POSITION_RECORDER_MAX_POINTS)
@@ -784,10 +748,6 @@ static void beacon_position_recorder_menu_save(void)
 
     memcpy(s_edit_points, data.points, sizeof(s_edit_points));
     beacon_position_recorder_apply_flash_data(&data);
-    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_RECDATA)
-    {
-        beacon_position_recorder_reset_coordinate_consumers();
-    }
     menu_show_success("Beacon Save OK");
 }
 
@@ -805,60 +765,8 @@ static void beacon_position_recorder_menu_save_predata(void)
         return;
     }
 
-    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_PREDATA)
-    {
-        beacon_position_recorder_reset_coordinate_consumers();
-    }
+    beacon_position_recorder_reset_coordinate_consumers();
     menu_show_success("Predata Save OK");
-}
-
-static void beacon_position_recorder_menu_switch(void)
-{
-    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_RECDATA)
-    {
-        strcpy(s_source_menu[0].name, "Recdata Active");
-        strcpy(s_source_menu[1].name, "Use Predata");
-    }
-    else
-    {
-        strcpy(s_source_menu[0].name, "Use Recdata");
-        strcpy(s_source_menu[1].name, "Predata Active");
-    }
-    menu_enter_submenu(s_source_menu);
-}
-
-static void beacon_position_recorder_menu_use_recdata(void)
-{
-    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_RECDATA)
-    {
-        menu_show_success("Recdata Active");
-        return;
-    }
-    if(beacon_config_set_source(BEACON_CONFIG_SOURCE_RECDATA) == 0U)
-    {
-        menu_show_error("Source Save Fail");
-        return;
-    }
-
-    beacon_position_recorder_reset_coordinate_consumers();
-    menu_show_success("Use Recdata OK");
-}
-
-static void beacon_position_recorder_menu_use_predata(void)
-{
-    if(beacon_config_get_source() == BEACON_CONFIG_SOURCE_PREDATA)
-    {
-        menu_show_success("Predata Active");
-        return;
-    }
-    if(beacon_config_set_source(BEACON_CONFIG_SOURCE_PREDATA) == 0U)
-    {
-        menu_show_error("Source Save Fail");
-        return;
-    }
-
-    beacon_position_recorder_reset_coordinate_consumers();
-    menu_show_success("Use Predata OK");
 }
 
 void beacon_position_recorder_init(void)

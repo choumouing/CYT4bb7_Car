@@ -346,7 +346,7 @@ static void car_loop_100HZ(void)
     /* 新一轮起飞统一清除上一轮定位、检测和灯序识别状态。 */
     if(s_air_takeoff_reset_pending != 0U)
     {
-        odometer_reset_to_predata_start();
+        odometer_reset();
         beacon_detection_reset();
         fixator_reset();
         LightSequence_Reset();

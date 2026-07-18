@@ -134,14 +134,6 @@ static void odometer_reset_state(const float initial_position[ODOMETER_AXIS_NUM]
 
 void odometer_reset(void)
 {
-    float initial_position[ODOMETER_AXIS_NUM];
-
-    beacon_config_get_initial_position(initial_position);
-    odometer_reset_state(initial_position);
-}
-
-void odometer_reset_to_predata_start(void)
-{
     beacon_config_data_t map_data;
 
     beacon_config_get_predata(&map_data);
