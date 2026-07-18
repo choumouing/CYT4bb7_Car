@@ -1286,6 +1286,12 @@
                 <name>$PROJ_DIR$\..\..\code\Controller\control.h</name>
             </file>
             <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\carplanfix.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\Controller\carplanfix.h</name>
+            </file>
+            <file>
                 <name>$PROJ_DIR$\..\..\code\Controller\car_loop.c</name>
             </file>
             <file>

@@ -49,6 +49,11 @@ static float odometer_yaw_delta_rad(void)
     return odometer_normalize_angle(s_yaw_zero_rad - yaw_now_rad);
 }
 
+float odometer_get_heading_rad(void)
+{
+    return odometer_yaw_delta_rad();
+}
+
 static void odometer_body_to_horizontal(const float body[ODOMETER_AXIS_NUM],
                                         float horizontal[ODOMETER_AXIS_NUM])
 {

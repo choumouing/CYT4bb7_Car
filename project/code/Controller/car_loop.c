@@ -320,6 +320,8 @@ static void car_loop_100HZ(void)
     float odometer_raw_position[2];
     float odometer_fixed_position[2];
     float beacon_detected_flag;
+    float carplanfix_forward_mps;
+    float carplanfix_strafe_mps;
     light_sequence_result_t light_sequence_result;
     uint8 menu_runtime_locked;
 
@@ -456,6 +458,22 @@ static void car_loop_100HZ(void)
     car_data[10] = (float)s_system_time_ms;
     air_comm_send_run_data(car_data, 11);
 
+    if((g_air_car_plan_valid > 0.5f) &&
+       ((car_mode_get() == CAR_MODE_2) ||
+        (car_mode_get() == CAR_MODE_3) ||
+        (car_mode_get() == CAR_MODE_5)))
+    {
+        (void)carplanfix_resolve(g_air_car_plan_forward_mps,
+                                 g_air_car_plan_strafe_mps,
+                                 g_air_yaw_angle_target_deg,
+                                 &carplanfix_forward_mps,
+                                 &carplanfix_strafe_mps);
+    }
+    else
+    {
+        carplanfix_reset();
+    }
+
     // wifi_justfloat((float)car_mode_get(),
     //                g_air_euler_yaw,
     //                g_air_yaw_angle_target_deg,
@@ -470,7 +488,7 @@ static void car_loop_100HZ(void)
     //                g_car_mode8_state.strafe_target,
     //                (float)g_car_mode8_state.output_valid);
 
-    wifi_justfloat(g_air_tof_fused_height_mm,
+/*     wifi_justfloat(g_air_tof_fused_height_mm,
                  g_air_euler_roll,
                  g_air_euler_pitch,
                  g_air_euler_yaw,
@@ -485,7 +503,40 @@ static void car_loop_100HZ(void)
                  g_air_crsf_std_ch5,
                  g_air_crsf_std_ch6,
                  g_air_crsf_std_ch7,
-                 g_air_crsf_std_ch8);
+                 g_air_crsf_std_ch8); */
+                 wifi_justfloat(g_imufilter_1000hz.gyrox,                       /* I1 */
+                       g_imufilter_1000hz.gyroy,                       /* I2 */
+                       g_imufilter_1000hz.gyroz,                       /* I3 */
+                       g_imufilter_1000hz.accx,                        /* I4 */
+                       g_imufilter_1000hz.accy,                        /* I5 */
+                       g_imufilter_1000hz.accz,                        /* I6 */
+                       g_euler.pitch,                                  /* I7 */
+                       g_euler.roll,                                   /* I8 */
+                       g_euler.yaw,                                    /* I9 */
+                       encoder_get_left_front_filtered_count(),         /* I10 */
+                       encoder_get_right_front_filtered_count(),        /* I11 */
+                       encoder_get_left_rear_filtered_count(),          /* I12 */
+                       encoder_get_right_rear_filtered_count(),         /* I13 */
+                       g_odometer.body_vel[x],                         /* I14 */
+                       g_odometer.body_vel[y],                         /* I15 */
+                       g_odometer.vel[x],                              /* I16 */
+                       g_odometer.vel[y],                              /* I17 */
+                       odometer_raw_position[x],                       /* I18 */
+                       odometer_raw_position[y],                       /* I19 */                           /* I20 */
+                       odometer_fixed_position[x],                     /* I21 */
+                       odometer_fixed_position[y],                     /* I22 */
+                        g_air_car_plan_strafe_mps,                      /* I23: Air target velocity X */
+                        g_air_car_plan_forward_mps,                     /* I24: Air target velocity Y */
+                        g_air_beacon_lost_flag,
+                        beacon_detected_flag,
+                        (g_carplanfix_state.matched != 0U)
+                            ? (float)(g_carplanfix_state.beacon_index + 1U)
+                            : 0.0f,                                    /* 猜测灯序号，失败为0 */
+                        (float)g_carplanfix_state.correction_valid,     /* 修正规划有效，当前仅观测 */
+                        g_carplanfix_state.corrected_strafe_mps,        /* 修正速度X，右正，m/s */
+                        g_carplanfix_state.corrected_forward_mps,       /* 修正速度Y，前正，m/s */
+                        g_air_yaw_angle_target_deg);                    /* Air目标yaw，deg */
+
 }
 
 static void car_loop_25HZ(void)
