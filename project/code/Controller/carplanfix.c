@@ -24,7 +24,7 @@ static const carplanfix_route_t s_routes[] =
 
 carplanfix_state_t g_carplanfix_state = {0};
 static const carplanfix_route_t *s_active_route;
-static uint8 s_mode3_was_active;
+static uint8 s_carplanfix_was_active;
 
 static const carplanfix_route_t *carplanfix_find_route(uint8 sequence_id,
                                                        uint8 last_beacon_id,
@@ -204,11 +204,11 @@ void carplanfix_reset(void)
     g_carplanfix_state = (carplanfix_state_t){0};
     g_carplanfix_state.status = CARPLANFIX_STATUS_WAIT_SEQUENCE;
     s_active_route = NULL;
-    s_mode3_was_active = 0U;
+    s_carplanfix_was_active = 0U;
 }
 
 uint8 carplanfix_resolve(const struct light_sequence_result *light_sequence_result,
-                         uint8 mode3_active,
+                         uint8 carplanfix_active,
                          uint8 air_plan_valid,
                          float air_forward_mps,
                          float air_strafe_mps,
@@ -237,18 +237,23 @@ uint8 carplanfix_resolve(const struct light_sequence_result *light_sequence_resu
                        (air_strafe_mps * air_strafe_mps));
     g_carplanfix_state.target_speed_mps = plan_speed;
 
-    carplanfix_update_route(light_sequence_result);
-
-    mode3_active = (mode3_active != 0U) ? 1U : 0U;
-    if((mode3_active != 0U) && (s_mode3_was_active == 0U))
+    carplanfix_active = (carplanfix_active != 0U) ? 1U : 0U;
+    if((carplanfix_active != 0U) && (s_carplanfix_was_active == 0U))
     {
         g_carplanfix_state.mode3_beacon1_pending = 1U;
     }
-    else if(mode3_active == 0U)
+    else if(carplanfix_active == 0U)
     {
         g_carplanfix_state.mode3_beacon1_pending = 0U;
     }
-    s_mode3_was_active = mode3_active;
+    s_carplanfix_was_active = carplanfix_active;
+
+    if(carplanfix_active == 0U)
+    {
+        return 0U;
+    }
+
+    carplanfix_update_route(light_sequence_result);
 
     if(g_carplanfix_state.status == CARPLANFIX_STATUS_DISABLED)
     {

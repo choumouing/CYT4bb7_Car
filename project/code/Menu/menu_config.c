@@ -9,7 +9,8 @@
 #define MENU_CAR_S_CURVE_MAX_ITER_INDEX  (55U)
 #define MENU_CAR_S_CURVE_CONV_TOL_INDEX  (56U)
 #define MENU_CAR_S_CURVE_MIN_DIST_INDEX  (57U)
-#define MENU_CAR_EXPECTED_PARAM_COUNT     (78U)
+#define MENU_CAR_CARPLANFIX_ENABLE_INDEX  (78U)
+#define MENU_CAR_EXPECTED_PARAM_COUNT     (79U)
 
 #if (MENU_CAR_EXPECTED_PARAM_COUNT > MENU_MAX_PARAMS)
 #error "Car menu parameter count exceeds MENU_MAX_PARAMS"
@@ -113,6 +114,7 @@ float mode3_velocity_forward_kd = 20.0f;
 float s_curve_max_iter = 50.0f;
 float s_curve_conv_tol = 0.001f;
 float s_curve_min_dist = 5.0f;
+float carplanfix_enable = 1.0f;
 
 static void load_slot_0_function(void);
 static void load_slot_1_function(void);
@@ -357,6 +359,7 @@ static menu_item_t car_menu[] = {
     {"C_Load", MENU_TYPE_SUBMENU, .submenu = load_slot_menu},
     {"C_Save", MENU_TYPE_SUBMENU, .submenu = save_slot_menu},
     {"C_Beacon", MENU_TYPE_SUBMENU, .submenu = NULL},
+    {"PlanFix", MENU_TYPE_PARAMETER, .param_index = MENU_CAR_CARPLANFIX_ENABLE_INDEX},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
@@ -576,6 +579,7 @@ void menu_config_init(void)
     menu_register_param(&mode3_velocity_forward_kp, 1.0f, 0.0f, 500.0f);
     menu_register_param(&mode3_velocity_forward_ki, 0.01f, 0.0f, 500.0f);
     menu_register_param(&mode3_velocity_forward_kd, 1.0f, 0.0f, 500.0f);
+    menu_register_param(&carplanfix_enable, 1.0f, 0.0f, 1.0f);
 
     if(menu_get_param_count() != MENU_CAR_EXPECTED_PARAM_COUNT)
     {

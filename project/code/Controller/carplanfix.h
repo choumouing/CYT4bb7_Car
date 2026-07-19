@@ -7,7 +7,7 @@
 #define CARPLANFIX_MODE3_BEACON1_MIN_PLAN_SPEED_MPS (1.0f)
 #define CARPLANFIX_TARGET_RADIUS_M           (0.50f)
 #define CARPLANFIX_TARGET_NO_EVENT_EXIT_RADIUS_M (0.6f)
-#define CARPLANFIX_TARGET_EXIT_CONFIRM_CYCLES (3U)
+#define CARPLANFIX_TARGET_EXIT_CONFIRM_CYCLES (10U)
 
 struct light_sequence_result;
 
@@ -58,7 +58,7 @@ void carplanfix_reset(void);
 
 /* 根据已识别灯序的预设路径修正速度方向；不修正时原样返回Air速度。 */
 uint8 carplanfix_resolve(const struct light_sequence_result *light_sequence_result,
-                         uint8 mode3_active,
+                         uint8 carplanfix_active,
                          uint8 air_plan_valid,
                          float air_forward_mps,
                          float air_strafe_mps,
