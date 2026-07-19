@@ -6,19 +6,20 @@ typedef struct
 {
     uint8 sequence_id;
     uint8 identified_last_beacon_id;
+    uint32 identified_event_count;
     uint8 point_count;
     uint8 points[CARPLANFIX_ROUTE_MAX_POINTS];
 } carplanfix_route_t;
 
-/* {灯序号, 识别完成时最后灯号, 路径长度, 后续目标灯路径}。 */
+/* 事件数为0时不参与匹配，用于无需区分识别过程的灯序。 */
 static const carplanfix_route_t s_routes[] =
 {
-    {1U, 2U, 9U,  {4U, 3U, 6U, 5U, 4U, 1U, 2U, 4U, 6U}},
-    {1U, 4U, 8U,  {3U, 6U, 5U, 4U, 1U, 2U, 4U, 6U}},
-    {2U, 2U, 10U, {3U, 4U, 5U, 6U, 4U, 1U, 2U, 3U, 4U, 5U}},
-    {3U, 4U, 8U,  {2U, 3U, 4U, 1U, 5U, 6U, 4U, 2U}},
-    {3U, 6U, 9U,  {4U, 3U, 2U, 1U, 4U, 6U, 5U, 4U, 2U}},
-    {4U, 4U, 10U, {3U, 2U, 4U, 6U, 5U, 1U, 4U, 3U, 2U, 1U}}
+    {1U, 2U, 3U, 9U, {4U, 6U, 3U, 4U, 5U, 1U, 2U, 4U, 6U}},
+    {1U, 2U, 4U, 8U, {3U, 6U, 5U, 4U, 2U, 1U, 4U, 6U}},
+    {2U, 2U, 0U, 10U, {3U, 4U, 5U, 6U, 4U, 1U, 2U, 3U, 4U, 5U}},
+    {3U, 6U, 4U, 8U, {3U, 2U, 1U, 4U, 6U, 5U, 4U, 2U}},
+    {3U, 6U, 3U, 9U, {4U, 2U, 3U, 4U, 1U, 5U, 6U, 4U, 2U}},
+    {4U, 4U, 0U, 10U, {3U, 2U, 4U, 6U, 5U, 1U, 4U, 3U, 2U, 1U}}
 };
 
 carplanfix_state_t g_carplanfix_state = {0};
@@ -26,7 +27,8 @@ static const carplanfix_route_t *s_active_route;
 static uint8 s_mode3_was_active;
 
 static const carplanfix_route_t *carplanfix_find_route(uint8 sequence_id,
-                                                       uint8 last_beacon_id)
+                                                       uint8 last_beacon_id,
+                                                       uint32 event_count)
 {
     uint8 route_index;
 
@@ -35,7 +37,9 @@ static const carplanfix_route_t *carplanfix_find_route(uint8 sequence_id,
         route_index++)
     {
         if((s_routes[route_index].sequence_id == sequence_id) &&
-           (s_routes[route_index].identified_last_beacon_id == last_beacon_id))
+           (s_routes[route_index].identified_last_beacon_id == last_beacon_id) &&
+           ((s_routes[route_index].identified_event_count == 0U) ||
+            (s_routes[route_index].identified_event_count == event_count)))
         {
             return &s_routes[route_index];
         }
@@ -142,7 +146,8 @@ static void carplanfix_update_route(const struct light_sequence_result *result)
         }
 
         s_active_route = carplanfix_find_route(result->sequence_id,
-                                                result->last_beacon_id);
+                                                result->last_beacon_id,
+                                                result->accepted_event_count);
         if(s_active_route == NULL)
         {
             carplanfix_disable(CARPLANFIX_DISABLE_ROUTE_NOT_FOUND);
@@ -271,8 +276,7 @@ uint8 carplanfix_resolve(const struct light_sequence_result *light_sequence_resu
         else
         {
             if((air_plan_valid != 0U) &&
-               (plan_speed >=
-                CARPLANFIX_MODE3_BEACON1_MIN_PLAN_SPEED_MPS))
+               (plan_speed >= CARPLANFIX_MIN_PLAN_SPEED_MPS))
             {
                 carplanfix_apply_target_direction(dx,
                                                   dy,
