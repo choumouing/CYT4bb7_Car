@@ -1,5 +1,7 @@
 #include "control.h"
 
+#include <math.h>
+
 #define CONTROL_DEG_TO_RAD (0.017453292519943295f)
 #define CONTROL_PI         (3.14159265358979323846f)
 #define CONTROL_TWO_PI     (6.28318530717958647692f)
@@ -71,8 +73,21 @@ static float control_wheel_ff(float target, float feedback, float ks, float kv, 
 
 static float control_wrap_pi(float angle)
 {
-    while(angle > CONTROL_PI) angle -= CONTROL_TWO_PI;
-    while(angle < -CONTROL_PI) angle += CONTROL_TWO_PI;
+    if(!isfinite(angle))
+    {
+        return 0.0f;
+    }
+
+    angle = fmodf(angle, CONTROL_TWO_PI);
+    if(angle > CONTROL_PI)
+    {
+        angle -= CONTROL_TWO_PI;
+    }
+    else if(angle < -CONTROL_PI)
+    {
+        angle += CONTROL_TWO_PI;
+    }
+
     return angle;
 }
 

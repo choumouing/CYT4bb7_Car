@@ -112,5 +112,7 @@ extern float mode3_velocity_forward_kd;
 extern float s_curve_max_iter;
 extern float s_curve_conv_tol;
 extern float s_curve_min_dist;
+extern float carplanfix_enable;
+extern float carplanfix_mode3_beacon1_enable;
 
 #endif

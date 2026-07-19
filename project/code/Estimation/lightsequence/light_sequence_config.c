@@ -14,7 +14,7 @@ const light_sequence_preset_t g_light_sequence_presets[LIGHT_SEQUENCE_PRESET_COU
     {6U, {12U, 34U, 56U, 14U, 23U, 45U}},
 
     /* 序列3 */
-    {6U, {15U, 34U, 56U, 14U, 23U, 45U}},
+    {6U, {15U, 46U, 23U, 14U, 56U, 24U}},
 
     /* 序列4 */
     {6U, {14U, 23U, 46U, 15U, 43U, 21U}},

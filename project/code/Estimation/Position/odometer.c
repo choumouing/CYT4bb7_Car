@@ -1,6 +1,8 @@
 #include "odometer.h"
 #include "Estimation/Attitude/Accel_Calibration.h"
 
+#include <math.h>
+
 #define ODOMETER_DEG_TO_RAD (0.017453292519943295f)
 #define ODOMETER_PI (3.14159265358979323846f)
 #define ODOMETER_TWO_PI (6.28318530717958647692f)
@@ -18,12 +20,17 @@ static uint8 s_slip_hold_ticks;
 
 static float odometer_normalize_angle(float angle)
 {
-    while (angle > ODOMETER_PI)
+    if (!isfinite(angle))
+    {
+        return 0.0f;
+    }
+
+    angle = fmodf(angle, ODOMETER_TWO_PI);
+    if (angle > ODOMETER_PI)
     {
         angle -= ODOMETER_TWO_PI;
     }
-
-    while (angle < -ODOMETER_PI)
+    else if (angle < -ODOMETER_PI)
     {
         angle += ODOMETER_TWO_PI;
     }
