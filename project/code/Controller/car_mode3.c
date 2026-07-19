@@ -6,7 +6,7 @@
 #include "car_mode.h"
 #include "car_loop.h"
 
-#define MODE3_MAX_VELOCITY_MPS       (1.5f)
+#define MODE3_MAX_VELOCITY_MPS       (3.0f)
 #define MODE3_MIN_OUTPUT_LIMIT       (0.0f)
 
 car_mode3_state_t g_car_mode3_state = {0};
@@ -114,16 +114,8 @@ void car_mode3_update_100HZ(uint32 now_ms)
         g_car_mode3_state.raw_strafe_mps = 0.0f;
     }
 
-    g_car_mode3_state.velocity_forward_target_mps =
-        car_filter_lpf1_apply(g_car_mode3_state.velocity_forward_target_mps,
-                              g_car_mode3_state.raw_forward_mps,
-                              ODOMETER_UPDATE_DT_S,
-                              mode3_velocity_smooth_tau_s);
-    g_car_mode3_state.velocity_strafe_target_mps =
-        car_filter_lpf1_apply(g_car_mode3_state.velocity_strafe_target_mps,
-                              g_car_mode3_state.raw_strafe_mps,
-                              ODOMETER_UPDATE_DT_S,
-                              mode3_velocity_smooth_tau_s);
+    g_car_mode3_state.velocity_forward_target_mps = g_car_mode3_state.raw_forward_mps;
+    g_car_mode3_state.velocity_strafe_target_mps = g_car_mode3_state.raw_strafe_mps;
 
     g_car_mode3_state.velocity_forward_feedback_mps = g_odometer.body_vel[y];
     g_car_mode3_state.velocity_strafe_feedback_mps = g_odometer.body_vel[x];
