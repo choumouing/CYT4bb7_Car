@@ -150,6 +150,7 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(roll_mech_trim_deg, 0.5f,  0.01f,  -30.0f,   30.0f,    "Basic"),
     MENU_AIR_PARAM(pitch_mech_trim_deg, 1.5f, 0.01f,  -30.0f,   30.0f,    "Basic"),
     MENU_AIR_PARAM(angle_target_max, 30.0f, 5.0f, 10.0f, 30.0f, "Basic"),
+    MENU_AIR_PARAM(g_fc_target_height_m, 1.1f, 0.05f, 1.0f, 1.5f, "Basic"),
 
     MENU_AIR_PARAM(roll_gyro_kp, 5.4f,      0.1f,  0.0f, 3000.0f, "Gyro PID"),
     MENU_AIR_PARAM(roll_gyro_ki, 0.18f,      0.01f, 0.0f, 3000.0f, "Gyro PID"),
