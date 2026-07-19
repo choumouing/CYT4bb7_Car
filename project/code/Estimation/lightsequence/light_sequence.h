@@ -20,13 +20,14 @@ typedef enum
 /**
  * @brief 信标灯序列识别结果快照。
  */
-typedef struct
+typedef struct light_sequence_result
 {
     uint8 status;          /* light_sequence_status_e识别状态 */
     uint8 last_beacon_id;  /* 最近一次熄灯上升沿匹配的灯号，1至6，0表示未匹配 */
     uint8 sequence_id;     /* 唯一确定的序列编号，1至4，0表示未确定 */
     uint8 candidate_count; /* 当前剩余候选序列数量 */
     uint16 candidate_mask; /* bit0至bit3分别对应序列1至4 */
+    uint32 accepted_event_count; /* 被至少一个候选正式接受的灭灯事件累计数量 */
 } light_sequence_result_t;
 
 /**

@@ -339,6 +339,7 @@ void LightSequence_Update(uint8 beacon_lost_flag,
         s_last_accepted_time_ms[beacon_index] = current_time_ms;
         s_accepted_time_valid_mask =
             (uint8)(s_accepted_time_valid_mask | beacon_bit);
+        s_result.accepted_event_count++;
     }
 
     LightSequence_RefreshResult();
