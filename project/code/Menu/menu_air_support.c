@@ -891,7 +891,7 @@ static uint8 menu_air_load_slot_param_value(uint8 slot, const char *name, float 
     }
 
     offset = (uint32)((sizeof(menu_air_slot_header_t) + 3U) / 4U);
-    slot_params = (menu_air_slot_param_t *)&flash_union_buffer[offset];
+    slot_params = (menu_air_slot_param_t *)&s_air_slot_words[offset];
     name_hash = menu_air_name_hash(name);
 
     for(saved_index = 0U; saved_index < header.param_count; saved_index++)
