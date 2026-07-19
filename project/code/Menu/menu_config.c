@@ -971,38 +971,8 @@ static void diag_air_state_function(void)
 }
 
 /**
- * @brief 按名称读取一个已确认可用的Air菜单参数。
- * @param name 参数名称。
- * @param value 输出参数值。
- * @return 1表示找到且远端可用，0表示不存在或当前固件不支持。
- */
-static uint8 diag_get_air_param_value(const char *name, float *value)
-{
-    uint16 index;
-    const menu_air_param_config_t *config;
-
-    if((name == NULL) || (value == NULL))
-    {
-        return 0U;
-    }
-
-    for(index = 0U; index < menu_get_air_param_count(); index++)
-    {
-        config = menu_get_air_param_config(index);
-        if((config != NULL) && (strcmp(config->name, name) == 0) &&
-           (menu_air_param_is_available(index) != 0U))
-        {
-            *value = menu_get_air_param_by_index(index);
-            return 1U;
-        }
-    }
-
-    return 0U;
-}
-
-/**
- * @brief 显示仅由现有RUN_DATA和菜单同步状态组成的2BL3诊断页。
- * @return 无；不增加任何无线遥测字段或发送频率。
+ * @brief 显示2BL3链路和菜单同步状态。
+ * @return 无。
  */
 static void diag_2bl3_status_function(void)
 {
@@ -1011,10 +981,6 @@ static void diag_2bl3_status_function(void)
     uint16 spi_error_code;
     uint8 spi_error0;
     uint8 spi_error1;
-    float beacon_threshold = 0.0f;
-    float edge_threshold = 0.0f;
-    char beacon_threshold_text[8] = "N/A";
-    char edge_threshold_text[8] = "N/A";
     char text[32];
     const char *failed_name = "--";
     const menu_air_param_config_t *config;
@@ -1040,16 +1006,6 @@ static void diag_2bl3_status_function(void)
         }
     }
 
-    if(diag_get_air_param_value("bl3_beacon_thr", &beacon_threshold) != 0U)
-    {
-        snprintf(beacon_threshold_text, sizeof(beacon_threshold_text),
-                 "%3.0f", (double)beacon_threshold);
-    }
-    if(diag_get_air_param_value("bl3_edge_thr", &edge_threshold) != 0U)
-    {
-        snprintf(edge_threshold_text, sizeof(edge_threshold_text),
-                 "%3.0f", (double)edge_threshold);
-    }
     diag_begin();
     diag_show_line(0U, "2BL3 Status");
     snprintf(text, sizeof(text), "On:%u Fr:%u Cam:%u",
@@ -1081,10 +1037,7 @@ static void diag_2bl3_status_function(void)
              (unsigned int)sync_status.last_failed_status,
              failed_name);
     diag_show_line(5U, text);
-    snprintf(text, sizeof(text), "Thr:%s Edge:%s",
-             beacon_threshold_text,
-             edge_threshold_text);
-    diag_show_line(6U, text);
+    diag_clear_lines(6U, 6U);
     diag_show_line(7U, "Back/Enter Exit");
 }
 
