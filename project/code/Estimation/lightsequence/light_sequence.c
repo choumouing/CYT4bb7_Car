@@ -265,6 +265,7 @@ void LightSequence_Update(uint8 beacon_lost_flag,
         return;
     }
     s_result.last_beacon_id = beacon_id;
+    s_result.matched_event_count++;
 
     if(s_result.status == LIGHT_SEQUENCE_STATUS_CONFIG_ERROR)
     {

@@ -27,6 +27,7 @@ typedef struct light_sequence_result
     uint8 sequence_id;     /* 唯一确定的序列编号，1至4，0表示未确定 */
     uint8 candidate_count; /* 当前剩余候选序列数量 */
     uint16 candidate_mask; /* bit0至bit3分别对应序列1至4 */
+    uint32 matched_event_count;  /* 灭灯上升沿并匹配到地图信标的累计数量 */
     uint32 accepted_event_count; /* 被至少一个候选正式接受的灭灯事件累计数量 */
 } light_sequence_result_t;
 

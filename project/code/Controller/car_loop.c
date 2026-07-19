@@ -448,6 +448,9 @@ static void car_loop_100HZ(void)
     s_menu_runtime_was_locked = menu_runtime_locked;
 
     (void)carplanfix_resolve(&light_sequence_result,
+                             s_system_time_ms,
+                             (car_mode_get() == CAR_MODE_3) ? 1U : 0U,
+                             (carplanfix_mode3_beacon1_enable > 0.5f) ? 1U : 0U,
                              ((car_mode_get() == CAR_MODE_3) &&
                               (carplanfix_enable > 0.5f)) ? 1U : 0U,
                              (g_air_car_plan_valid > 0.5f) ? 1U : 0U,
