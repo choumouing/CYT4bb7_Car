@@ -39,7 +39,7 @@ encoder_data_t encoder_left_rear = {
     .count_raw = 0,
     .count_filtered = 0.0f,
     .count_total = 0,
-    .invert = 1
+    .invert = 0
 };
 
 encoder_data_t encoder_right_rear = {
