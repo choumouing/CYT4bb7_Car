@@ -385,6 +385,7 @@ static const menu_air_param_definition_t s_air_param_definitions[] =
     MENU_AIR_PARAM(mode2_vel_y_d_lpf, 10.0f, 0.5f, 0.0f, 30.0f, "Mode2 Vel"),
     MENU_AIR_PARAM(Car_Speed, 1.5f, 0.1f, 0.0f, 3.0f, "Car Plan"),
     MENU_AIR_PARAM(Car_Speed_Fast, 1.8f, 0.1f, 0.0f, 4.0f, "Car Plan"),
+    MENU_AIR_PARAM(Car_Plan_Mode, 2.0f, 1.0f, 1.0f, 2.0f, "Car Plan"),
 
     MENU_AIR_PARAM(mode4_img_x_kp, 2.4f,      0.1f, 0.0f, 10.0f, "Mode4 Img"),
     MENU_AIR_PARAM(mode4_img_x_kp2, 0.1f,     0.1f, 0.0f, 6.0f, "Mode4 Img"),
