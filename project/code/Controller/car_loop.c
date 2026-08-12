@@ -7,6 +7,7 @@
 #include "car_loop.h"
 
 volatile uint8_t timer_100HZ_flag = 0U;
+volatile uint8_t timer_200HZ_flag = 0U;
 volatile uint8_t timer_25HZ_flag = 0U;
 volatile uint16 g_tick_1000HZ = 0U;
 volatile uint32 tick_1000us_cnt = 0U;
@@ -247,6 +248,7 @@ static void on_air_data(const float *data, uint8 count)
 static void car_loop_runtime_reset(void)
 {
     timer_100HZ_flag = 0U;
+    timer_200HZ_flag = 0U;
     timer_25HZ_flag = 0U;
     g_tick_1000HZ = 0U;
     tick_1000us_cnt = 0U;
@@ -355,9 +357,26 @@ static void car_loop_1000HZ(void)
     beacon_detection_update_1000HZ();
 }
 
-static void car_loop_100HZ(void)
+static void car_loop_send_run_data_200HZ(void)
 {
     float car_data[11];
+
+    car_data[0] = g_odometer.body_vel[x];
+    car_data[1] = g_odometer.body_vel[y];
+    car_data[2] = (g_beacon_detection.on_beacon != 0U) ? 1.0f : 0.0f;
+    car_data[3] = g_euler.yaw;
+    car_data[4] = s_car_yaw_rate_lpf_dps;
+    car_data[5] = 0.0f;
+    car_data[6] = 0.0f;
+    car_data[7] = 0.0f;
+    car_data[8] = 0.0f;
+    car_data[9] = 0.0f;
+    car_data[10] = (float)tick_1000us_cnt;
+    (void)air_comm_send_run_data(car_data, 11U);
+}
+
+static void car_loop_100HZ(void)
+{
     float odometer_raw_position[2];
     float odometer_fixed_position[2];
     float beacon_detected_flag;
@@ -427,8 +446,6 @@ static void car_loop_100HZ(void)
             menu_discard_key_events();
         }
     }
-
-    air_comm_car_update_100HZ();
 
     if(menu_runtime_locked == 0U)
     {
@@ -504,19 +521,6 @@ static void car_loop_100HZ(void)
     {
         Control_Stop();
     }
-
-    car_data[0] = g_odometer.body_vel[x]; /* 实际横向速度，右正，m/s */
-    car_data[1] = g_odometer.body_vel[y]; /* 实际前向速度，前正，m/s */
-    car_data[2] = (g_beacon_detection.on_beacon != 0U) ? 1.0f : 0.0f;
-    car_data[3] = g_euler.yaw;
-    car_data[4] = s_car_yaw_rate_lpf_dps;
-    car_data[5] = 0.0f;
-    car_data[6] = 0.0f;
-    car_data[7] = 0.0f;
-    car_data[8] = 0.0f;
-    car_data[9] = 0.0f;
-    car_data[10] = (float)s_system_time_ms;
-    air_comm_send_run_data(car_data, 11);
 
     // wifi_justfloat((float)car_mode_get(),
     //                g_air_euler_yaw,
@@ -631,6 +635,13 @@ void car_loop_poll(void)
     {
         timer_100HZ_flag = 0U;
         car_loop_100HZ();
+    }
+
+    if (timer_200HZ_flag)
+    {
+        timer_200HZ_flag = 0U;
+        air_comm_car_update_200HZ();
+        car_loop_send_run_data_200HZ();
     }
 
     wifi_core_Poll();

@@ -38,7 +38,7 @@
  *   1. air_comm_car_init() 初始化
  *   2. UART 中断中调 air_comm_car_rx_byte() 喂字节
  *   3. 主循环调 air_comm_car_poll() 解析帧 + 检查 ACK 超时
- *   4. 100Hz 调 air_comm_car_update_100HZ() 发心跳
+ *   4. 200Hz 调 air_comm_car_update_200HZ() 维护心跳
  *   5. 上层通过 air_comm_car_is_online() 判断连接状态
  */
 
@@ -94,6 +94,8 @@ typedef struct
     uint32 crc_error_count;         /* CRC 校验失败次数 */
     uint32 rx_oversize_count;       /* payload 超限次数 */
     uint32 rx_queue_overflow_count; /* 接收队列溢出次数 */
+    uint32 tx_run_data_replace_count; /* RUN_DATA被新数据替换次数 */
+    uint32 tx_run_data_drop_count;  /* RUN_DATA无可替换槽时丢弃次数 */
     uint32 ack_ok_count;            /* ACK 成功次数 */
     uint32 ack_timeout_count;       /* ACK 超时次数 */
     uint32 ack_retry_count;         /* ACK 重试总次数 */
@@ -132,11 +134,13 @@ void air_comm_car_tick_1MS(void);
 void air_comm_car_poll(void);
 
 /**
- * @brief 100Hz 更新
- * 调用频率：100Hz（每 10ms）
+ * @brief 200Hz 更新
+ * 调用频率：200Hz（每 5ms）
  * 内部：检查是否需要发心跳（每 200ms），检查 ACK 超时
  */
-void air_comm_car_update_100HZ(void);
+void air_comm_car_update_200HZ(void);
+/* UART3发送中断入口，仅写入硬件FIFO，不等待物理发送完成。 */
+void air_comm_car_uart_tx_isr(void);
 
 /**
  * @brief UART 接收中断回调，喂入一个字节

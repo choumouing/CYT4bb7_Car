@@ -3,6 +3,7 @@
 #include "zf_common_headfile.h"
 
 static uint8_t pit_ch0_100HZ_count = 0;
+static uint8_t pit_ch0_200HZ_count = 0;
 static uint8_t pit_ch0_25HZ_count = 0;
 
 void pit0_ch0_isr()
@@ -15,6 +16,13 @@ void pit0_ch0_isr()
         g_tick_1000HZ++;
     }
     tick_1000us_cnt++;
+
+    pit_ch0_200HZ_count++;
+    if(pit_ch0_200HZ_count >= 5)
+    {
+        pit_ch0_200HZ_count = 0;
+        timer_200HZ_flag = 1U;
+    }
 
     pit_ch0_100HZ_count++;
     if(pit_ch0_100HZ_count >= 10)
@@ -168,18 +176,15 @@ void uart3_isr (void)
 {
     uint8 dat;
 
-    if(uart_isr_mask(UART_3))
+    if(Cy_SCB_GetRxInterruptStatusMasked(SCB3) != 0U)
     {
+        (void)uart_isr_mask(UART_3);
         while(uart_query_byte(UART_3, &dat))
         {
             air_comm_car_rx_byte(dat);
         }
-
     }
-    else
-    {
-
-    }
+    air_comm_car_uart_tx_isr();
 }
 
 void uart4_isr (void)

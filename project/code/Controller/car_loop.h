@@ -18,6 +18,8 @@
 
 /* 100Hz 周期任务标志，PIT 中断置 1，poll 中清 0 */
 extern volatile uint8_t timer_100HZ_flag;
+/* 200Hz非阻塞空地数据发送任务标志 */
+extern volatile uint8_t timer_200HZ_flag;
 /* 25Hz 周期任务标志 */
 extern volatile uint8_t timer_25HZ_flag;
 /* 1000Hz 节拍计数，用于超时判断和在线状态老化 */

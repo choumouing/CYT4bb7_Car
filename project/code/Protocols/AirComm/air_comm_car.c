@@ -34,6 +34,9 @@
 
 /* ===== 接收队列 ===== */
 #define AIR_COMM_RX_QUEUE_SIZE             (512U)  /* 环形接收缓冲区大小 */
+#define AIR_COMM_TX_QUEUE_SIZE             (4U)    /* 异步发送帧槽数量 */
+#define AIR_COMM_TX_RUN_DATA_LIMIT         (3U)    /* RUN_DATA最多占用槽数量 */
+#define AIR_COMM_TX_FIFO_LEVEL             (32U)   /* SCB3发送FIFO触发水位 */
 
 /* ===== 消息类型 ===== */
 #define AIR_COMM_MSG_SET_PARAM             (0x01U) /* 下发参数（需 ACK） */
@@ -100,10 +103,22 @@ typedef struct
     volatile uint16 tail;               /* 读取位置（主循环修改） */
 } air_comm_rx_queue_t;
 
+typedef struct
+{
+    uint8 data[AIR_COMM_TX_QUEUE_SIZE][AIR_COMM_MAX_FRAME];
+    uint16 len[AIR_COMM_TX_QUEUE_SIZE];
+    uint8 type[AIR_COMM_TX_QUEUE_SIZE];
+    volatile uint8 head;
+    volatile uint8 tail;
+    volatile uint8 count;
+    uint16 offset;
+} air_comm_tx_queue_t;
+
 /* ===== 静态状态 ===== */
 static air_comm_rx_state_t s_air_comm_rx;
 static air_comm_ack_state_t s_air_comm_ack;
 static air_comm_rx_queue_t s_air_comm_rx_queue;
+static air_comm_tx_queue_t s_air_comm_tx_queue;
 static air_comm_stats_t s_air_comm_stats;
 static air_comm_run_data_fn s_air_comm_run_data_callback;
 static float s_air_comm_last_run_data[AIR_COMM_RUN_DATA_MAX_FLOATS];
@@ -202,15 +217,118 @@ static void air_comm_write_u32(uint8 *buffer, uint32 value)
  * @param len 数据长度
  * @return 1=成功，0=失败
  */
-static uint8 air_comm_send_uart(const uint8 *data, uint16 len)
+static uint8 air_comm_send_uart(const uint8 *data, uint16 len, uint8 type)
 {
+    uint8 index;
+    uint8 scan_count = 0U;
+    uint8 run_data_count = 0U;
+    uint8 replace_index = AIR_COMM_TX_QUEUE_SIZE;
+    uint8 tail;
+    uint8 pending;
+    uint32 interrupt_state;
+
     if((data == NULL) || (len == 0U))
     {
         return 0U;
     }
 
-    uart_write_buffer(UART_3, data, len);
+    interrupt_state = Cy_SysLib_EnterCriticalSection();
+    pending = s_air_comm_tx_queue.count;
+    if(type == AIR_COMM_MSG_RUN_DATA)
+    {
+        index = s_air_comm_tx_queue.head;
+        while(scan_count < pending)
+        {
+            if(s_air_comm_tx_queue.type[index] == AIR_COMM_MSG_RUN_DATA)
+            {
+                run_data_count++;
+                if(!((index == s_air_comm_tx_queue.head) &&
+                     (s_air_comm_tx_queue.offset > 0U)) &&
+                   (replace_index >= AIR_COMM_TX_QUEUE_SIZE))
+                {
+                    replace_index = index;
+                }
+            }
+            index = (uint8)((index + 1U) % AIR_COMM_TX_QUEUE_SIZE);
+            scan_count++;
+        }
+        if((pending >= AIR_COMM_TX_QUEUE_SIZE) ||
+           (run_data_count >= AIR_COMM_TX_RUN_DATA_LIMIT))
+        {
+            if(replace_index < AIR_COMM_TX_QUEUE_SIZE)
+            {
+                memcpy(s_air_comm_tx_queue.data[replace_index], data, len);
+                s_air_comm_tx_queue.len[replace_index] = len;
+                s_air_comm_stats.tx_run_data_replace_count++;
+                Cy_SysLib_ExitCriticalSection(interrupt_state);
+                return 1U;
+            }
+            s_air_comm_stats.tx_run_data_drop_count++;
+            Cy_SysLib_ExitCriticalSection(interrupt_state);
+            return 0U;
+        }
+    }
+    else if(pending >= AIR_COMM_TX_QUEUE_SIZE)
+    {
+        Cy_SysLib_ExitCriticalSection(interrupt_state);
+        return 0U;
+    }
+
+    tail = s_air_comm_tx_queue.tail;
+    memcpy(s_air_comm_tx_queue.data[tail], data, len);
+    s_air_comm_tx_queue.len[tail] = len;
+    s_air_comm_tx_queue.type[tail] = type;
+    s_air_comm_tx_queue.tail = (uint8)((tail + 1U) % AIR_COMM_TX_QUEUE_SIZE);
+    s_air_comm_tx_queue.count = (uint8)(pending + 1U);
+    Cy_SCB_SetTxInterruptMask(SCB3,
+        Cy_SCB_GetTxInterruptMask(SCB3) | CY_SCB_UART_TX_TRIGGER);
+    Cy_SysLib_ExitCriticalSection(interrupt_state);
     return 1U;
+}
+
+void air_comm_car_uart_tx_isr(void)
+{
+    uint8 head;
+    uint16 remaining;
+    uint32 copied;
+
+    if((Cy_SCB_GetTxInterruptStatusMasked(SCB3) & CY_SCB_UART_TX_TRIGGER) == 0U)
+    {
+        return;
+    }
+
+    while(s_air_comm_tx_queue.count > 0U)
+    {
+        head = s_air_comm_tx_queue.head;
+        remaining = (uint16)(s_air_comm_tx_queue.len[head] - s_air_comm_tx_queue.offset);
+        if(remaining == 0U)
+        {
+            s_air_comm_tx_queue.head = (uint8)((head + 1U) % AIR_COMM_TX_QUEUE_SIZE);
+            s_air_comm_tx_queue.count--;
+            s_air_comm_tx_queue.offset = 0U;
+            continue;
+        }
+
+        copied = Cy_SCB_UART_PutArray(SCB3,
+                                      &s_air_comm_tx_queue.data[head][s_air_comm_tx_queue.offset],
+                                      remaining);
+        s_air_comm_tx_queue.offset = (uint16)(s_air_comm_tx_queue.offset + copied);
+        if(s_air_comm_tx_queue.offset < s_air_comm_tx_queue.len[head])
+        {
+            break;
+        }
+
+        s_air_comm_tx_queue.head = (uint8)((head + 1U) % AIR_COMM_TX_QUEUE_SIZE);
+        s_air_comm_tx_queue.count--;
+        s_air_comm_tx_queue.offset = 0U;
+    }
+
+    if(s_air_comm_tx_queue.count == 0U)
+    {
+        Cy_SCB_SetTxInterruptMask(SCB3,
+            Cy_SCB_GetTxInterruptMask(SCB3) & ~CY_SCB_UART_TX_TRIGGER);
+    }
+    Cy_SCB_ClearTxInterrupt(SCB3, CY_SCB_UART_TX_TRIGGER);
 }
 
 /**
@@ -409,7 +527,7 @@ static uint8 air_comm_send_frame(uint8 type,
     frame[pos++] = (uint8)(crc & 0xFFU);
     frame[pos++] = (uint8)((crc >> 8) & 0xFFU);
 
-    if(air_comm_send_uart(frame, pos) == 0U)
+    if(air_comm_send_uart(frame, pos, type) == 0U)
     {
         return 0U;
     }
@@ -922,7 +1040,8 @@ static void air_comm_task_ack_and_online(void)
         else if((s_air_comm_tick_ms - s_air_comm_ack.send_time) >= COMM_ACK_RETRY_INTERVAL_MS)
         {
             /* 在总等待窗口内按固定间隔重发相同序号的原帧。 */
-            if(air_comm_send_uart(s_air_comm_ack.frame, s_air_comm_ack.frame_len) != 0U)
+            if(air_comm_send_uart(s_air_comm_ack.frame, s_air_comm_ack.frame_len,
+                                  s_air_comm_ack.type) != 0U)
             {
                 s_air_comm_ack.send_time = s_air_comm_tick_ms;
                 s_air_comm_stats.ack_retry_count++;
@@ -950,6 +1069,7 @@ void air_comm_car_init(void)
     memset(&s_air_comm_rx, 0, sizeof(s_air_comm_rx));
     memset(&s_air_comm_ack, 0, sizeof(s_air_comm_ack));
     memset(&s_air_comm_rx_queue, 0, sizeof(s_air_comm_rx_queue));
+    memset(&s_air_comm_tx_queue, 0, sizeof(s_air_comm_tx_queue));
     memset(&s_air_comm_stats, 0, sizeof(s_air_comm_stats));
     memset(s_air_comm_last_run_data, 0, sizeof(s_air_comm_last_run_data));
     s_air_comm_run_data_callback = NULL;
@@ -966,6 +1086,10 @@ void air_comm_car_init(void)
     memset(s_air_comm_last_command_ack_text, 0, sizeof(s_air_comm_last_command_ack_text));
 
     uart_init(UART_3, AIR_COMM_BAUDRATE, UART3_TX_P17_2, UART3_RX_P17_1);
+    Cy_SCB_SetTxFifoLevel(SCB3, AIR_COMM_TX_FIFO_LEVEL);
+    Cy_SCB_ClearTxInterrupt(SCB3, CY_SCB_UART_TX_TRIGGER);
+    Cy_SCB_SetTxInterruptMask(SCB3,
+        Cy_SCB_GetTxInterruptMask(SCB3) & ~CY_SCB_UART_TX_TRIGGER);
     uart_rx_interrupt(UART_3, 1U);
 }
 
@@ -999,11 +1123,11 @@ void air_comm_car_poll(void)
 }
 
 /**
- * @brief 100Hz 更新入口
+ * @brief 200Hz 更新入口
  * 检查是否需要发心跳（每 200ms 一次）
  * 同时检查 ACK 超时（冗余检查，确保及时）
  */
-void air_comm_car_update_100HZ(void)
+void air_comm_car_update_200HZ(void)
 {
     if(s_air_comm_initialized == 0U)
     {
