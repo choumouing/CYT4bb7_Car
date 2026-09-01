@@ -299,7 +299,6 @@ CYT4bb7_Car/project/code/Estimation/Position/analysis
 analysis/output/position_fix_summary.csv
 analysis/output/position_fix_events.csv
 analysis/output/position_fix_rejections.csv
-analysis/output/position_fix_report.md
 ```
 
 禁止修改或覆盖原始 CSV 日志。
