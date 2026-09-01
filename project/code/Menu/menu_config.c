@@ -1,7 +1,7 @@
 /*********************************************************************************************************************
-* èœå•ç”¨æˆ·é…ç½®å®ç°æ–‡ä»¶ - å‚æ•°é›†ä¸­ç®¡ç†
+* ²Ëµ¥ÓÃ»§ÅäÖÃÊµÏÖÎÄ¼ş - ²ÎÊı¼¯ÖĞ¹ÜÀí
 *
-* åŠŸèƒ½ï¼šæ³¨å†Œå››ç”µæœºé€Ÿåº¦ç¯å‚æ•°ï¼Œå¹¶ä¿ç•™Flashå­˜æ¡£è¯»å–/ä¿å­˜å…¥å£
+* ¹¦ÄÜ£º×¢²áËÄµç»úËÙ¶È»·²ÎÊı£¬²¢±£ÁôFlash´æµµ¶ÁÈ¡/±£´æÈë¿Ú
 ********************************************************************************************************************/
 
 #include "menu_config.h"
@@ -25,15 +25,15 @@
 #error "Car boot Flash load slot exceeds menu slot count"
 #endif
 
-//====================================================å‚æ•°å˜é‡åŒº====================================================
-// è½®é€ŸPIDå‚æ•°ï¼ˆå››ä¸ªç”µæœºå…±ç”¨ï¼‰
-float wheel_kp = 2.3f;                  // æ¯”ä¾‹ç³»æ•°
-float wheel_ki = 0.08f;                  // ç§¯åˆ†ç³»æ•°
-float wheel_kd = 0.0f;                  // å¾®åˆ†ç³»æ•°
-float wheel_output_limit = 5000.0f;     // è¾“å‡ºé™å¹… (PWM)
-float wheel_i_limit = 2500.0f;          // ç§¯åˆ†é™å¹…
+//====================================================²ÎÊı±äÁ¿Çø====================================================
+// ÂÖËÙPID²ÎÊı£¨ËÄ¸öµç»ú¹²ÓÃ£©
+float wheel_kp = 2.3f;                  // ±ÈÀıÏµÊı
+float wheel_ki = 0.08f;                  // »ı·ÖÏµÊı
+float wheel_kd = 0.0f;                  // Î¢·ÖÏµÊı
+float wheel_output_limit = 5000.0f;     // Êä³öÏŞ·ù (PWM)
+float wheel_i_limit = 2500.0f;          // »ı·ÖÏŞ·ù
 
-//====================================================ç”¨æˆ·å‡½æ•°å£°æ˜====================================================
+//====================================================ÓÃ»§º¯ÊıÉùÃ÷====================================================
 float yaw_angle_kp = 3.8f;
 float yaw_angle_ki = 0.0f;
 float yaw_angle_kd = 1.0f;
@@ -142,8 +142,8 @@ static void diag_air_attitude_function(void);
 static void diag_air_rc_function(void);
 static void diag_2bl3_status_function(void);
 
-//====================================================èœå•æ ‘å®šä¹‰====================================================
-// è½®é€ŸPIDå­èœå•ï¼ˆå¢é‡å¼ï¼‰
+//====================================================²Ëµ¥Ê÷¶¨Òå====================================================
+// ÂÖËÙPID×Ó²Ëµ¥£¨ÔöÁ¿Ê½£©
 static menu_item_t wheel_pid_menu[] = {
     {"Kp", MENU_TYPE_PARAMETER, .param_index = 0},
     {"Ki", MENU_TYPE_PARAMETER, .param_index = 1},
@@ -162,21 +162,21 @@ static menu_item_t yaw_rate_pid_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-// åŠ è½½å­˜æ¡£å­èœå•
+// ¼ÓÔØ´æµµ×Ó²Ëµ¥
 static menu_item_t load_slot_menu[] = {
     {"Load Car0", MENU_TYPE_FUNCTION, .function = load_slot_0_function},
     {"Load Car1", MENU_TYPE_FUNCTION, .function = load_slot_1_function},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-// ä¿å­˜å­˜æ¡£å­èœå•
+// ±£´æ´æµµ×Ó²Ëµ¥
 static menu_item_t save_slot_menu[] = {
     {"Save Car0", MENU_TYPE_FUNCTION, .function = save_slot_0_function},
     {"Save Car1", MENU_TYPE_FUNCTION, .function = save_slot_1_function},
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-// ä¸»èœå•
+// Ö÷²Ëµ¥
 static menu_item_t yaw_angle_pid_menu[] = {
     {"Kp", MENU_TYPE_PARAMETER, .param_index = 10},
     {"Ki", MENU_TYPE_PARAMETER, .param_index = 11},
@@ -298,7 +298,7 @@ typedef char core1_param_group_count_must_match[
     ((sizeof(s_core1_param_group_names) /
       sizeof(s_core1_param_group_names[0])) == 5U) ? 1 : -1];
 
-/* 2BL3å›¾åƒå‚æ•°äºŒçº§åˆ†ç±»èœå•ã€‚ */
+/* 2BL3Í¼Ïñ²ÎÊı¶ş¼¶·ÖÀà²Ëµ¥¡£ */
 static menu_item_t bl3_image_param_menu[] = {
     {"Stream", MENU_TYPE_SUBMENU, .submenu = NULL},
     {"Threshold", MENU_TYPE_SUBMENU, .submenu = NULL},
@@ -316,7 +316,7 @@ static menu_item_t bl3_image_param_menu[] = {
     {"", MENU_TYPE_SUBMENU, .submenu = NULL}
 };
 
-/* äºŒçº§èœå•æ˜¾ç¤ºåä¸Airå‚æ•°å®šä¹‰ä¸­çš„åˆ†ç»„åæ˜ å°„ã€‚ */
+/* ¶ş¼¶²Ëµ¥ÏÔÊ¾ÃûÓëAir²ÎÊı¶¨ÒåÖĞµÄ·Ö×éÃûÓ³Éä¡£ */
 static const char * const s_bl3_param_group_names[] = {
     "2BL3 Stream",
     "2BL3 Threshold",
@@ -373,7 +373,7 @@ enum
 static menu_item_t s_air_param_menu_storage[AIR_PARAM_MENU_STORAGE_COUNT];
 static menu_item_t *s_air_group_menus[AIR_PARAM_MENU_COUNT];
 static menu_item_t *s_core1_group_menus[CORE1_PARAM_MENU_COUNT];
-/* 2BL3äºŒçº§åˆ†ç»„èœå•åœ¨ç»Ÿä¸€å­˜å‚¨åŒºä¸­çš„èµ·å§‹æŒ‡é’ˆã€‚ */
+/* 2BL3¶ş¼¶·Ö×é²Ëµ¥ÔÚÍ³Ò»´æ´¢ÇøÖĞµÄÆğÊ¼Ö¸Õë¡£ */
 static menu_item_t *s_bl3_group_menus[BL3_PARAM_MENU_COUNT];
 
 static menu_item_t load_air_slot_menu[] = {
@@ -659,15 +659,15 @@ static uint8 menu_build_air_param_menus(void)
     return 0U;
 }
 
-//====================================================ç”¨æˆ·é…ç½®åˆå§‹åŒ–====================================================
+//====================================================ÓÃ»§ÅäÖÃ³õÊ¼»¯====================================================
 void menu_config_init(void)
 {
-    // æ³¨å†Œè½®é€ŸPIDå‚æ•°ï¼ˆå››ä¸ªç”µæœºå…±ç”¨ï¼‰
-    menu_register_param(&wheel_kp, 0.1f, 0.0f, 100.0f);                    // å‚æ•°0
-    menu_register_param(&wheel_ki, 0.1f, 0.0f, 100.0f);                    // å‚æ•°1
-    menu_register_param(&wheel_kd, 0.1f, 0.0f, 100.0f);                    // å‚æ•°2
-    menu_register_param(&wheel_output_limit, 100.0f, 1000.0f, 10000.0f);   // å‚æ•°3
-    menu_register_param(&wheel_i_limit, 100.0f, 0.0f, 10000.0f);           // å‚æ•°4 ç§¯åˆ†é™å¹…
+    // ×¢²áÂÖËÙPID²ÎÊı£¨ËÄ¸öµç»ú¹²ÓÃ£©
+    menu_register_param(&wheel_kp, 0.1f, 0.0f, 100.0f);                    // ²ÎÊı0
+    menu_register_param(&wheel_ki, 0.1f, 0.0f, 100.0f);                    // ²ÎÊı1
+    menu_register_param(&wheel_kd, 0.1f, 0.0f, 100.0f);                    // ²ÎÊı2
+    menu_register_param(&wheel_output_limit, 100.0f, 1000.0f, 10000.0f);   // ²ÎÊı3
+    menu_register_param(&wheel_i_limit, 100.0f, 0.0f, 10000.0f);           // ²ÎÊı4 »ı·ÖÏŞ·ù
 
     menu_register_param(&yaw_rate_kp, 0.1f, 0.0f, 500.0f);
     menu_register_param(&yaw_rate_ki, 0.01f, 0.0f, 500.0f);
@@ -780,7 +780,7 @@ void menu_config_init(void)
     menu_set_root(main_menu);
 }
 
-//====================================================ç”¨æˆ·å‡½æ•°å®ç°====================================================
+//====================================================ÓÃ»§º¯ÊıÊµÏÖ====================================================
 static void load_slot_0_function(void)
 {
     menu_load_slot(0);
@@ -873,7 +873,7 @@ static void sync_air_function(void)
     }
 }
 
-/* æ˜¾ç¤ºä¸€è¡Œè¯Šæ–­æ–‡æœ¬ï¼ˆline 0-7ï¼Œæ¯è¡Œ16åƒç´ é«˜ï¼‰ */
+/* ÏÔÊ¾Ò»ĞĞÕï¶ÏÎÄ±¾£¨line 0-7£¬Ã¿ĞĞ16ÏñËØ¸ß£© */
 static void diag_show_line(uint8 line, const char *text)
 {
     if(line >= MENU_MAX_VISIBLE_LINES)
@@ -894,14 +894,14 @@ static void diag_clear_lines(uint8 first, uint8 last)
     }
 }
 
-/* è¯Šæ–­é¡µåˆå§‹åŒ–ï¼šä¿ç•™å±å¹•å†…å®¹ï¼Œç”±è¡Œç¼“å­˜ä»…æ›´æ–°å˜åŒ–éƒ¨åˆ†ã€‚ */
+/* Õï¶ÏÒ³³õÊ¼»¯£º±£ÁôÆÁÄ»ÄÚÈİ£¬ÓÉĞĞ»º´æ½ö¸üĞÂ±ä»¯²¿·Ö¡£ */
 static void diag_begin(void)
 {
     ips114_set_color(UI_COLOR_NORMAL, UI_COLOR_BG);
     ips114_set_font(UI_FONT_NORMAL);
 }
 
-/* è¯Šæ–­é¡µï¼šIMUæ•°æ®ï¼ˆæ¬§æ‹‰è§’ + é™€èºä»ª + åŠ é€Ÿåº¦è®¡ï¼‰ */
+/* Õï¶ÏÒ³£ºIMUÊı¾İ£¨Å·À­½Ç + ÍÓÂİÒÇ + ¼ÓËÙ¶È¼Æ£© */
 static void diag_imu_function(void)
 {
     char text[32];
@@ -924,7 +924,7 @@ static void diag_imu_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
-/* è¯Šæ–­é¡µï¼šå››è½®ç¼–ç å™¨ï¼ˆæ»¤æ³¢å€¼ + åŸå§‹å€¼ï¼‰ */
+/* Õï¶ÏÒ³£ºËÄÂÖ±àÂëÆ÷£¨ÂË²¨Öµ + Ô­Ê¼Öµ£© */
 static void diag_encoder_function(void)
 {
     char text[32];
@@ -946,7 +946,7 @@ static void diag_encoder_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
-/* è¯Šæ–­é¡µï¼šé‡Œç¨‹è®¡ä½ç½®ä¸å…¨å±€é€Ÿåº¦ã€‚ */
+/* Õï¶ÏÒ³£ºÀï³Ì¼ÆÎ»ÖÃÓëÈ«¾ÖËÙ¶È¡£ */
 static void diag_position_function(void)
 {
     char text[32];
@@ -964,7 +964,7 @@ static void diag_position_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
-/* Airè¯Šæ–­é¡µï¼šé€šä¿¡åœ¨çº¿çŠ¶æ€ã€é£è¡ŒçŠ¶æ€å’ŒAiræ—¶é—´æˆ³ã€‚ */
+/* AirÕï¶ÏÒ³£ºÍ¨ĞÅÔÚÏß×´Ì¬¡¢·ÉĞĞ×´Ì¬ºÍAirÊ±¼ä´Á¡£ */
 static void diag_air_state_function(void)
 {
     char text[32];
@@ -984,8 +984,8 @@ static void diag_air_state_function(void)
 }
 
 /**
- * @brief æ˜¾ç¤º2BL3é“¾è·¯å’Œèœå•åŒæ­¥çŠ¶æ€ã€‚
- * @return æ— ã€‚
+ * @brief ÏÔÊ¾2BL3Á´Â·ºÍ²Ëµ¥Í¬²½×´Ì¬¡£
+ * @return ÎŞ¡£
  */
 static void diag_2bl3_status_function(void)
 {
@@ -1054,7 +1054,7 @@ static void diag_2bl3_status_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
-/* Airè¯Šæ–­é¡µï¼šå››è·¯TOFé«˜åº¦ä¸èåˆé«˜åº¦ã€‚ */
+/* AirÕï¶ÏÒ³£ºËÄÂ·TOF¸ß¶ÈÓëÈÚºÏ¸ß¶È¡£ */
 static void diag_air_tof_function(void)
 {
     char text[32];
@@ -1126,7 +1126,7 @@ static void diag_air_imu_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
-/* Airè¯Šæ–­é¡µï¼šå§¿æ€è§’ã€TOFé«˜åº¦å’Œä½ç½®ä¼°è®¡é€Ÿåº¦ã€‚ */
+/* AirÕï¶ÏÒ³£º×ËÌ¬½Ç¡¢TOF¸ß¶ÈºÍÎ»ÖÃ¹À¼ÆËÙ¶È¡£ */
 static void diag_air_attitude_function(void)
 {
     char text[32];
@@ -1148,7 +1148,7 @@ static void diag_air_attitude_function(void)
     diag_show_line(7U, "Back/Enter Exit");
 }
 
-/* Airè¯Šæ–­é¡µï¼šCRSFæ ‡å‡†åŒ–é€šé“0-8 */
+/* AirÕï¶ÏÒ³£ºCRSF±ê×¼»¯Í¨µÀ0-8 */
 static void diag_air_rc_function(void)
 {
     char text[32];

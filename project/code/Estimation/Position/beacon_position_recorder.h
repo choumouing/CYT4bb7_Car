@@ -6,7 +6,7 @@
 #define BEACON_POSITION_RECORDER_AXIS_NUM       (2U)
 #define BEACON_POSITION_RECORDER_MAX_POINTS     (10U)
 #define BEACON_POSITION_RECORDER_INVALID_COORD  (-99.0f)
-#define BEACON_POSITION_RECORDER_FLASH_PAGE     (71U) /* Work Flash ç¬¬71é¡µï¼Œç‹¬å 2KB */
+#define BEACON_POSITION_RECORDER_FLASH_PAGE     (71U) /* Work Flash µÚ71Ò³£¬¶ÀÕ¼2KB */
 
 typedef struct
 {
@@ -21,28 +21,28 @@ struct menu_item;
 
 extern beacon_position_recorder_t g_beacon_position_recorder;
 
-/* ä¸Šç”µåˆå§‹åŒ–ï¼Œæ¢å¤ Flash ä¸­æœ€è¿‘ä¸€æ¬¡æœ‰æ•ˆç»“æœã€‚ */
+/* ÉÏµç³õÊ¼»¯£¬»Ö¸´ Flash ÖĞ×î½üÒ»´ÎÓĞĞ§½á¹û¡£ */
 void beacon_position_recorder_init(void);
 
-/* è¿›å…¥è®°å½•æ¨¡å¼ï¼šæ¸…ç©ºä¸Šä¸€è½®ç»“æœï¼Œå¹¶æŠŠå½“å‰ä½ç½®å®šä¹‰ä¸ºå…¨å±€åæ ‡ (0, 0)ã€‚ */
+/* ½øÈë¼ÇÂ¼Ä£Ê½£ºÇå¿ÕÉÏÒ»ÂÖ½á¹û£¬²¢°Ñµ±Ç°Î»ÖÃ¶¨ÒåÎªÈ«¾Ö×ø±ê (0, 0)¡£ */
 void beacon_position_recorder_enter(void);
 
-/* é€€å‡ºè®°å½•æ¨¡å¼å¹¶è‡ªåŠ¨ä¿å­˜ï¼›è¿è¡Œé”å®šæ—¶å»¶è¿Ÿåˆ°åœè½¦åä¿å­˜ã€‚ */
+/* ÍË³ö¼ÇÂ¼Ä£Ê½²¢×Ô¶¯±£´æ£»ÔËĞĞËø¶¨Ê±ÑÓ³Ùµ½Í£³µºó±£´æ¡£ */
 void beacon_position_recorder_exit(void);
 
-/* 100Hz æ›´æ–°ï¼šæŒ‰ odometer å…¨å±€é€Ÿåº¦ç§¯åˆ†ï¼Œå¹¶åœ¨ Air CRSF CH8 ä¸Šå‡æ²¿è®°å½•åæ ‡ã€‚ */
+/* 100Hz ¸üĞÂ£º°´ odometer È«¾ÖËÙ¶È»ı·Ö£¬²¢ÔÚ Air CRSF CH8 ÉÏÉıÑØ¼ÇÂ¼×ø±ê¡£ */
 void beacon_position_recorder_update_100HZ(void);
 
-/* è¿”å›è®°å½•æ¨¡å¼æ˜¯å¦æ­£åœ¨è¿è¡Œã€‚ */
+/* ·µ»Ø¼ÇÂ¼Ä£Ê½ÊÇ·ñÕıÔÚÔËĞĞ¡£ */
 uint8 beacon_position_recorder_is_active(void);
 
-/* è¿”å›è®°å½•æ•°æ®ä¸­çš„æœ‰æ•ˆä¿¡æ ‡æ•°é‡ã€‚ */
+/* ·µ»Ø¼ÇÂ¼Êı¾İÖĞµÄÓĞĞ§ĞÅ±êÊıÁ¿¡£ */
 uint16 beacon_position_recorder_get_count(void);
 
-/* æŒ‰æœ‰æ•ˆè®°å½•é¡ºåºè¯»å–ä¿¡æ ‡åæ ‡ï¼Œè‡ªåŠ¨è·³è¿‡æ— æ•ˆæ§½ä½ã€‚ */
+/* °´ÓĞĞ§¼ÇÂ¼Ë³Ğò¶ÁÈ¡ĞÅ±ê×ø±ê£¬×Ô¶¯Ìø¹ıÎŞĞ§²ÛÎ»¡£ */
 uint8 beacon_position_recorder_get_point(uint16 index, float point[2]);
 
-/* è¿”å› C_Beacon å­èœå•æ ¹èŠ‚ç‚¹ã€‚ */
+/* ·µ»Ø C_Beacon ×Ó²Ëµ¥¸ù½Úµã¡£ */
 struct menu_item *beacon_position_recorder_get_menu(void);
 
 #endif

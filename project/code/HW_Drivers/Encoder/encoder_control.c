@@ -1,15 +1,15 @@
 /*********************************************************************************************************************
-* CYT4BB ç¼–ç å™¨æ§åˆ¶æ¨¡å— - å®ç°æ–‡ä»¶
+* CYT4BB ±àÂëÆ÷¿ØÖÆÄ£¿é - ÊµÏÖÎÄ¼ş
 *
-* æ–‡ä»¶åŠŸèƒ½ï¼šå°è£…å››è·¯æ­£äº¤ç¼–ç å™¨çš„åˆå§‹åŒ–ã€å‘¨æœŸè¯»å–ã€ä¸€é˜¶ä½é€šæ»¤æ³¢
-* è½®å­åˆ°ç¼–ç å™¨æ˜ å°„ï¼šå·¦å‰->M3, å³å‰->M4, å·¦å->M2, å³å->M1
+* ÎÄ¼ş¹¦ÄÜ£º·â×°ËÄÂ·Õı½»±àÂëÆ÷µÄ³õÊ¼»¯¡¢ÖÜÆÚ¶ÁÈ¡¡¢Ò»½×µÍÍ¨ÂË²¨
+* ÂÖ×Óµ½±àÂëÆ÷Ó³Éä£º×óÇ°->M3, ÓÒÇ°->M4, ×óºó->M2, ÓÒºó->M1
 ********************************************************************************************************************/
 
 #include "encoder_control.h"
 
-// ========================== å…¨å±€å˜é‡å®šä¹‰ ==========================
+// ========================== È«¾Ö±äÁ¿¶¨Òå ==========================
 
-/* è½®å­åˆ°ç¼–ç å™¨é€šé“æ˜ å°„ï¼ˆæ ¹æ®åº•ç›˜æ¥çº¿ç¡®å®šï¼‰ï¼šå·¦å‰->M3, å³å‰->M4, å·¦å->M2, å³å->M1 */
+/* ÂÖ×Óµ½±àÂëÆ÷Í¨µÀÓ³Éä£¨¸ù¾İµ×ÅÌ½ÓÏßÈ·¶¨£©£º×óÇ°->M3, ÓÒÇ°->M4, ×óºó->M2, ÓÒºó->M1 */
 encoder_data_t encoder_left_front = {
     .index = ENCODER_M3_INDEX,
     .ch1_pin = ENCODER_M3_A,
@@ -17,7 +17,7 @@ encoder_data_t encoder_left_front = {
     .count_raw = 0,
     .count_filtered = 0.0f,
     .count_total = 0,
-    .invert = 1                     //æ˜¯å¦åè½¬ç¼–ç å™¨æ­£è´Ÿ
+    .invert = 1                     //ÊÇ·ñ·´×ª±àÂëÆ÷Õı¸º
 };
 
 
@@ -54,9 +54,9 @@ encoder_data_t encoder_right_rear = {
 
 
 /*
- * ä¸€é˜¶ä½é€šæ»¤æ³¢
- * è¾“å…¥ï¼šåŸå§‹è„‰å†²è®¡æ•°ï¼ˆfloatï¼‰
- * è¾“å‡ºï¼šå¹³æ»‘åçš„ä¼°è®¡å€¼ï¼ŒåŒæ—¶æ›´æ–° encoder->count_filtered
+ * Ò»½×µÍÍ¨ÂË²¨
+ * ÊäÈë£ºÔ­Ê¼Âö³å¼ÆÊı£¨float£©
+ * Êä³ö£ºÆ½»¬ºóµÄ¹À¼ÆÖµ£¬Í¬Ê±¸üĞÂ encoder->count_filtered
  */
 static float encoder_lowpass_filter(encoder_data_t *encoder, float measurement)
 {
@@ -67,8 +67,8 @@ static float encoder_lowpass_filter(encoder_data_t *encoder, float measurement)
 
 
 /*
- * æ›´æ–°å•ä¸ªç¼–ç å™¨ï¼šè¯»å–ç¡¬ä»¶è®¡æ•° -> æ¸…é›¶ -> invert å–å -> ä¸€é˜¶ä½é€šæ»¤æ³¢ -> ç´¯åŠ é‡Œç¨‹
- * æ¯ä¸ªç¼–ç å™¨åœ¨ 100Hz ä¸­æ–­ä¸­è¢«è°ƒç”¨ä¸€æ¬¡
+ * ¸üĞÂµ¥¸ö±àÂëÆ÷£º¶ÁÈ¡Ó²¼ş¼ÆÊı -> ÇåÁã -> invert È¡·´ -> Ò»½×µÍÍ¨ÂË²¨ -> ÀÛ¼ÓÀï³Ì
+ * Ã¿¸ö±àÂëÆ÷ÔÚ 100Hz ÖĞ¶ÏÖĞ±»µ÷ÓÃÒ»´Î
  */
 static void encoder_update_single(encoder_data_t *encoder)
 {
@@ -76,15 +76,15 @@ static void encoder_update_single(encoder_data_t *encoder)
     encoder_clear_count(encoder->index);
 
     if (encoder->invert)
-        count = -count;             // æ¥çº¿åäº†ï¼Ÿinvert=1 è‡ªåŠ¨å–å
+        count = -count;             // ½ÓÏß·´ÁË£¿invert=1 ×Ô¶¯È¡·´
 
     encoder->count_raw = count;
     encoder_lowpass_filter(encoder, (float)encoder->count_raw);
-    encoder->count_total += encoder->count_raw;     // é‡Œç¨‹ç´¯è®¡
+    encoder->count_total += encoder->count_raw;     // Àï³ÌÀÛ¼Æ
 }
 
 
-/* åˆå§‹åŒ–å››è·¯ TC æ­£äº¤ç¼–ç å™¨ç¡¬ä»¶ */
+/* ³õÊ¼»¯ËÄÂ· TC Õı½»±àÂëÆ÷Ó²¼ş */
 void encoder_control_init(void)
 {
     encoder_quad_init(encoder_left_front.index, encoder_left_front.ch1_pin, encoder_left_front.ch2_pin);
@@ -92,15 +92,15 @@ void encoder_control_init(void)
     encoder_quad_init(encoder_left_rear.index, encoder_left_rear.ch1_pin, encoder_left_rear.ch2_pin);
     encoder_quad_init(encoder_right_rear.index, encoder_right_rear.ch1_pin, encoder_right_rear.ch2_pin);
 }
-/* 100Hz ä¸­æ–­å…¥å£ï¼šæ›´æ–°å››è·¯ç¼–ç å™¨é€Ÿåº¦ã€æ»¤æ³¢å’Œé‡Œç¨‹ */
+/* 100Hz ÖĞ¶ÏÈë¿Ú£º¸üĞÂËÄÂ·±àÂëÆ÷ËÙ¶È¡¢ÂË²¨ºÍÀï³Ì */
 void encoder_update_100HZ(void)
 {
-    encoder_update_single(&encoder_left_front); 
+    encoder_update_single(&encoder_left_front);
     encoder_update_single(&encoder_right_front);
     encoder_update_single(&encoder_left_rear);
     encoder_update_single(&encoder_right_rear);
 }
-/* å„è½®åŸå§‹é€Ÿåº¦è¯»å–ï¼ˆè„‰å†²/å‘¨æœŸï¼‰ */
+/* ¸÷ÂÖÔ­Ê¼ËÙ¶È¶ÁÈ¡£¨Âö³å/ÖÜÆÚ£© */
 int16_t encoder_get_left_front_count(void)
 {
     return encoder_left_front.count_raw;
@@ -118,7 +118,7 @@ int16_t encoder_get_right_rear_count(void)
     return encoder_right_rear.count_raw;
 }
 
-/* å„è½®ä¸€é˜¶ä½é€šæ»¤æ³¢åé€Ÿåº¦ */
+/* ¸÷ÂÖÒ»½×µÍÍ¨ÂË²¨ºóËÙ¶È */
 float encoder_get_left_front_filtered_count(void)
 {
     return encoder_left_front.count_filtered;
@@ -136,7 +136,7 @@ float encoder_get_right_rear_filtered_count(void)
     return encoder_right_rear.count_filtered;
 }
 
-/* å„è½®ç´¯è®¡é‡Œç¨‹ï¼ˆè„‰å†²æ•°ï¼‰ */
+/* ¸÷ÂÖÀÛ¼ÆÀï³Ì£¨Âö³åÊı£© */
 int32_t encoder_get_left_front_total(void)
 {
     return encoder_left_front.count_total;
@@ -154,7 +154,7 @@ int32_t encoder_get_right_rear_total(void)
     return encoder_right_rear.count_total;
 }
 
-/* æ¸…é›¶ç´¯è®¡é‡Œç¨‹ */
+/* ÇåÁãÀÛ¼ÆÀï³Ì */
 void encoder_clear_left_front_total(void)
 {
     encoder_left_front.count_total = 0;

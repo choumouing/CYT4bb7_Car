@@ -63,7 +63,7 @@ extern carplanfix_state_t g_carplanfix_state;
 
 void carplanfix_reset(void);
 
-/* æ ¹æ®å·²è¯†åˆ«ç¯åºçš„é¢„è®¾è·¯å¾„ä¿®æ­£é€Ÿåº¦æ–¹å‘ï¼›ä¸ä¿®æ­£æ—¶åŸæ ·è¿”å›Airé€Ÿåº¦ã€‚ */
+/* ¸ù¾İÒÑÊ¶±ğµÆĞòµÄÔ¤ÉèÂ·¾¶ĞŞÕıËÙ¶È·½Ïò£»²»ĞŞÕıÊ±Ô­Ñù·µ»ØAirËÙ¶È¡£ */
 uint8 carplanfix_resolve(const struct light_sequence_result *light_sequence_result,
                          uint32 now_ms,
                          uint8 mode3_active,

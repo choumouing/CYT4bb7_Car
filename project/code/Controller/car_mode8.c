@@ -7,7 +7,7 @@
 #include "car_mode.h"
 #include "car_loop.h"
 
-#define MODE8_FIXED_VELOCITY_MPS     (1.5f)   /* Mode8 é¥æ§éé›¶æ¡£å›ºå®šåˆé€Ÿåº¦ï¼Œå•ä½ m/s */
+#define MODE8_FIXED_VELOCITY_MPS     (1.5f)   /* Mode8 Ò£¿Ø·ÇÁãµµ¹Ì¶¨ºÏËÙ¶È£¬µ¥Î» m/s */
 #define MODE8_STICK_MAX              (1000.0f)
 #define MODE8_STICK_ZONE_WIDTH       (200.0f)
 #define MODE8_MIN_OUTPUT_LIMIT       (0.0f)

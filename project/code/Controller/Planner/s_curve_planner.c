@@ -1,48 +1,48 @@
 /*********************************************************************************************************************
-* CYT4BB éº¦å…‹çº³å§†è½®æƒ¯æ€§å¯¼èˆªç³»ç»Ÿ - 7æ®µSæ›²çº¿é€Ÿåº¦è§„åˆ’æ¨¡å— (å®ç°æ–‡ä»¶)
+* CYT4BB Âó¿ËÄÉÄ·ÂÖ¹ßĞÔµ¼º½ÏµÍ³ - 7¶ÎSÇúÏßËÙ¶È¹æ»®Ä£¿é (ÊµÏÖÎÄ¼ş)
 *
 * @file    s_curve_planner.c
-* @brief   åŸºäºJerkå—é™çš„7æ®µSæ›²çº¿è½¨è¿¹è§„åˆ’çš„å®Œæ•´å®ç°
+* @brief   »ùÓÚJerkÊÜÏŞµÄ7¶ÎSÇúÏß¹ì¼£¹æ»®µÄÍêÕûÊµÏÖ
 *
 * @details
-* ç®—æ³•åŸºäºBiagiotti & Melchiorriã€ŠTrajectory Planning for Automatic Machines and Robotsã€‹
-* ç¬¬3ç« å’Œ2023å¹´å…¨å›½å¤§å­¦ç”Ÿæ™ºèƒ½æ±½è½¦ç«èµ›ä¸€ç­‰å¥–ä»£ç 
+* Ëã·¨»ùÓÚBiagiotti & Melchiorri¡¶Trajectory Planning for Automatic Machines and Robots¡·
+* µÚ3ÕÂºÍ2023ÄêÈ«¹ú´óÑ§ÉúÖÇÄÜÆû³µ¾ºÈüÒ»µÈ½±´úÂë
 *
-* @author  Claude Code (åŸºäºèŒƒæ€»å›½èµ›ä»£ç é‡æ„)
+* @author  Claude Code (»ùÓÚ·¶×Ü¹úÈü´úÂëÖØ¹¹)
 * @date    2025-12-10
 ********************************************************************************************************************/
 
 #include "s_curve_planner.h"
 
-// ========================== ç‰©ç†çº¦æŸä¸Šé™ (å®‰å…¨ä¿æŠ¤) ==========================
+// ========================== ÎïÀíÔ¼ÊøÉÏÏŞ (°²È«±£»¤) ==========================
 #define MAX_VELOCITY 5000.0f             // 5 m/s
-#define MAX_ACCELERATION 10000.0f        // 10 m/sÂ²
-#define MAX_JERK 100000.0f               // 100 m/sÂ³
+#define MAX_ACCELERATION 10000.0f        // 10 m/s^2
+#define MAX_JERK 100000.0f               // 100 m/s^3
 
-// ========================== å†…éƒ¨è¾…åŠ©å‡½æ•° ==========================
+// ========================== ÄÚ²¿¸¨Öúº¯Êı ==========================
 
 /**
- * @brief å–è¾ƒå¤§å€¼
+ * @brief È¡½Ï´óÖµ
  */
 /**
- * @brief gammaè¿­ä»£æ±‚è§£vlim (å½“vmaxä¸èƒ½è¾¾åˆ°æ—¶)
+ * @brief gammaµü´úÇó½âvlim (µ±vmax²»ÄÜ´ïµ½Ê±)
  *
  * @details
- * ä½¿ç”¨äºŒåˆ†æ³•æ±‚è§£ä»¥ä¸‹æ–¹ç¨‹:
+ * Ê¹ÓÃ¶ş·Ö·¨Çó½âÒÔÏÂ·½³Ì:
  *   s_total = Ta*(v0+vlim)/2 + Td*(vlim+v1)/2 = distance
  *
- * å…¶ä¸­:
- *   Ta, Td æ˜¯ vlim çš„å‡½æ•°
+ * ÆäÖĞ:
+ *   Ta, Td ÊÇ vlim µÄº¯Êı
  *
- * @param planner  è§„åˆ’å™¨å®ä¾‹
- * @param q0       èµ·å§‹ä½ç½® (å½’ä¸€åŒ–ä¸º0)
- * @param q1       ç»“æŸä½ç½® (å·²å½’ä¸€åŒ–ä¸ºæ­£å€¼)
- * @param v0       èµ·å§‹é€Ÿåº¦
- * @param v1       ç»“æŸé€Ÿåº¦
- * @param v_max    æœ€å¤§é€Ÿåº¦çº¦æŸ
- * @param a_max    æœ€å¤§åŠ é€Ÿåº¦çº¦æŸ
- * @param j_max    æœ€å¤§Jerkçº¦æŸ
- * @return         å®é™…æœ€å¤§é€Ÿåº¦vlim
+ * @param planner  ¹æ»®Æ÷ÊµÀı
+ * @param q0       ÆğÊ¼Î»ÖÃ (¹éÒ»»¯Îª0)
+ * @param q1       ½áÊøÎ»ÖÃ (ÒÑ¹éÒ»»¯ÎªÕıÖµ)
+ * @param v0       ÆğÊ¼ËÙ¶È
+ * @param v1       ½áÊøËÙ¶È
+ * @param v_max    ×î´óËÙ¶ÈÔ¼Êø
+ * @param a_max    ×î´ó¼ÓËÙ¶ÈÔ¼Êø
+ * @param j_max    ×î´óJerkÔ¼Êø
+ * @return         Êµ¼Ê×î´óËÙ¶Èvlim
  */
 static float solve_vlim_iterative(s_curve_planner_t *planner,
                                     float q0, float q1,
@@ -58,7 +58,7 @@ static float solve_vlim_iterative(s_curve_planner_t *planner,
 
     int max_iter = (int)s_curve_max_iter;
     for (int iter = 0; iter < max_iter; iter++) {
-        // è®¡ç®—åŠ é€Ÿæ®µå‚æ•°
+        // ¼ÆËã¼ÓËÙ¶Î²ÎÊı
         if ((vlim - v0) * j_max < a_max * a_max) {
             Tj1_temp = sqrtf((vlim - v0) / j_max);
             alim_a_temp = j_max * Tj1_temp;
@@ -69,7 +69,7 @@ static float solve_vlim_iterative(s_curve_planner_t *planner,
             Ta_temp = Tj1_temp + (vlim - v0) / a_max;
         }
 
-        // è®¡ç®—å‡é€Ÿæ®µå‚æ•°
+        // ¼ÆËã¼õËÙ¶Î²ÎÊı
         if ((vlim - v1) * j_max < a_max * a_max) {
             Tj2_temp = sqrtf((vlim - v1) / j_max);
             alim_d_temp = j_max * Tj2_temp;
@@ -80,12 +80,12 @@ static float solve_vlim_iterative(s_curve_planner_t *planner,
             Td_temp = Tj2_temp + (vlim - v1) / a_max;
         }
 
-        // è®¡ç®—æ€»ä½ç§»
+        // ¼ÆËã×ÜÎ»ÒÆ
         float s_accel = Ta_temp * (v0 + vlim) * 0.5f;
         float s_decel = Td_temp * (vlim + v1) * 0.5f;
         float s_calc = s_accel + s_decel;
 
-        // æ£€æŸ¥æ”¶æ•›
+        // ¼ì²éÊÕÁ²
         if (fabsf(s_calc - q1) < s_curve_conv_tol) {
             planner->Tj1 = Tj1_temp;
             planner->Tj2 = Tj2_temp;
@@ -96,7 +96,7 @@ static float solve_vlim_iterative(s_curve_planner_t *planner,
             return vlim;
         }
 
-        // äºŒåˆ†è¿­ä»£
+        // ¶ş·Öµü´ú
         if (s_calc > q1) {
             vlim_max = vlim;
         } else {
@@ -106,7 +106,7 @@ static float solve_vlim_iterative(s_curve_planner_t *planner,
         vlim = (vlim_min + vlim_max) * 0.5f;
     }
 
-    // è¶…è¿‡æœ€å¤§è¿­ä»£æ¬¡æ•°ï¼Œä¿å­˜æœ€åä¸€æ¬¡è®¡ç®—ç»“æœ
+    // ³¬¹ı×î´óµü´ú´ÎÊı£¬±£´æ×îºóÒ»´Î¼ÆËã½á¹û
     planner->Tj1 = Tj1_temp;
     planner->Tj2 = Tj2_temp;
     planner->Ta = Ta_temp;
@@ -117,26 +117,26 @@ static float solve_vlim_iterative(s_curve_planner_t *planner,
 }
 
 /**
- * @brief è®¡ç®—tæ—¶åˆ»çš„ç›®æ ‡é€Ÿåº¦ (å†…éƒ¨å‡½æ•°)
+ * @brief ¼ÆËãtÊ±¿ÌµÄÄ¿±êËÙ¶È (ÄÚ²¿º¯Êı)
  *
  * @details
- * 7æ®µé€Ÿåº¦å…¬å¼:
- *   Phase 1 [0, Tj1]:           v = v0 + jmax*tÂ²/2
+ * 7¶ÎËÙ¶È¹«Ê½:
+ *   Phase 1 [0, Tj1]:           v = v0 + jmax*t^2/2
  *   Phase 2 [Tj1, Ta-Tj1]:      v = v0 + alim_a*(t - Tj1/2)
- *   Phase 3 [Ta-Tj1, Ta]:       v = vlim - jmax*(Ta-t)Â²/2
+ *   Phase 3 [Ta-Tj1, Ta]:       v = vlim - jmax*(Ta-t)^2/2
  *   Phase 4 [Ta, Ta+Tv]:        v = vlim
- *   Phase 5 [Ta+Tv, Ta+Tv+Tj2]: v = vlim - jmax*(t-Ta-Tv)Â²/2
+ *   Phase 5 [Ta+Tv, Ta+Tv+Tj2]: v = vlim - jmax*(t-Ta-Tv)^2/2
  *   Phase 6 [Ta+Tv+Tj2, T-Tj2]: v = vlim + alim_d*(Tj2/2 + (t-Ta-Tv-Tj2))
- *   Phase 7 [T-Tj2, T]:         v = v1 + jmax*(T-t)Â²/2
+ *   Phase 7 [T-Tj2, T]:         v = v1 + jmax*(T-t)^2/2
  *
- * @param planner è§„åˆ’å™¨å®ä¾‹
- * @param t       å½“å‰æ—¶é—´ (s)
- * @param v_out   è¾“å‡ºé€Ÿåº¦ (mm/s, å·²åŒ…å«sigma)
- * @return        å½“å‰é˜¶æ®µ (1-7), 0è¡¨ç¤ºç»“æŸ
+ * @param planner ¹æ»®Æ÷ÊµÀı
+ * @param t       µ±Ç°Ê±¼ä (s)
+ * @param v_out   Êä³öËÙ¶È (mm/s, ÒÑ°üº¬sigma)
+ * @return        µ±Ç°½×¶Î (1-7), 0±íÊ¾½áÊø
  */
 static uint8_t s_curve_get_velocity(s_curve_planner_t *planner, float t, float *v_out)
 {
-    // è¾¹ç•Œæ£€æŸ¥
+    // ±ß½ç¼ì²é
     if (t < 0.0f) {
         *v_out = planner->v0 * planner->sigma;
         return 0;
@@ -149,68 +149,68 @@ static uint8_t s_curve_get_velocity(s_curve_planner_t *planner, float t, float *
     float v = 0.0f;
     uint8_t phase = 0;
 
-    // åˆ¤æ–­å½“å‰é˜¶æ®µå¹¶è®¡ç®—é€Ÿåº¦
+    // ÅĞ¶Ïµ±Ç°½×¶Î²¢¼ÆËãËÙ¶È
     if (t >= 0.0f && t < planner->Tj1) {
-        // Phase 1: JerkåŠ é€Ÿ (a: 0 â†’ amax)
+        // Phase 1: Jerk¼ÓËÙ (a: 0 ¡ú amax)
         phase = 1;
         v = planner->v0 + planner->j_max * t * t * 0.5f;
 
     } else if (t >= planner->Tj1 && t < planner->Ta - planner->Tj1) {
-        // Phase 2: åŒ€åŠ é€Ÿ (a: amax)
+        // Phase 2: ÔÈ¼ÓËÙ (a: amax)
         phase = 2;
         float dt = t - planner->Tj1;
         float v_at_Tj1 = planner->v0 + planner->j_max * planner->Tj1 * planner->Tj1 * 0.5f;
         v = v_at_Tj1 + planner->alim_accel * dt;
 
     } else if (t >= planner->Ta - planner->Tj1 && t < planner->Ta) {
-        // Phase 3: Jerkå‡é€Ÿ (a: amax â†’ 0)
+        // Phase 3: Jerk¼õËÙ (a: amax ¡ú 0)
         phase = 3;
         float dt_from_end = planner->Ta - t;
         v = planner->vlim - planner->j_max * dt_from_end * dt_from_end * 0.5f;
 
     } else if (t >= planner->Ta && t < planner->Ta + planner->Tv) {
-        // Phase 4: åŒ€é€Ÿ (v: vlim)
+        // Phase 4: ÔÈËÙ (v: vlim)
         phase = 4;
         v = planner->vlim;
 
     } else if (t >= planner->Ta + planner->Tv &&
                t < planner->Ta + planner->Tv + planner->Tj2) {
-        // Phase 5: Jerkå‡é€Ÿ (a: 0 â†’ -amax)
+        // Phase 5: Jerk¼õËÙ (a: 0 ¡ú -amax)
         phase = 5;
         float dt = t - planner->Ta - planner->Tv;
         v = planner->vlim - planner->j_max * dt * dt * 0.5f;
 
     } else if (t >= planner->Ta + planner->Tv + planner->Tj2 &&
                t < planner->T - planner->Tj2) {
-        // Phase 6: åŒ€å‡é€Ÿ (a: -amax)
+        // Phase 6: ÔÈ¼õËÙ (a: -amax)
         phase = 6;
         float dt = t - planner->Ta - planner->Tv - planner->Tj2;
         float v_at_phase5_end = planner->vlim - planner->j_max * planner->Tj2 * planner->Tj2 * 0.5f;
-        v = v_at_phase5_end + planner->alim_decel * dt;  // alim_decelä¸ºè´Ÿ
+        v = v_at_phase5_end + planner->alim_decel * dt;  // alim_decelÎª¸º
 
     } else if (t >= planner->T - planner->Tj2 && t < planner->T) {
-        // Phase 7: Jerkå›é›¶ (a: -amax â†’ 0)
+        // Phase 7: Jerk»ØÁã (a: -amax ¡ú 0)
         phase = 7;
         float dt_from_end = planner->T - t;
         v = planner->v1 + planner->j_max * dt_from_end * dt_from_end * 0.5f;
     } else {
-        // è¶…å‡ºèŒƒå›´,è¿”å›ç»“æŸé€Ÿåº¦
+        // ³¬³ö·¶Î§,·µ»Ø½áÊøËÙ¶È
         v = planner->v1;
         phase = 0;
     }
 
-    // åº”ç”¨sigmaæ–¹å‘
+    // Ó¦ÓÃsigma·½Ïò
     *v_out = v * planner->sigma;
 
     return phase;
 }
 
-// ========================== å¯¹å¤–æ¥å£å‡½æ•° ==========================
+// ========================== ¶ÔÍâ½Ó¿Úº¯Êı ==========================
 
 /**
- * @brief åˆå§‹åŒ–7æ®µSæ›²çº¿é€Ÿåº¦è§„åˆ’å™¨
+ * @brief ³õÊ¼»¯7¶ÎSÇúÏßËÙ¶È¹æ»®Æ÷
  *
- * @see å‡½æ•°åŸå‹åœ¨å¤´æ–‡ä»¶ä¸­æœ‰è¯¦ç»†è¯´æ˜
+ * @see º¯ÊıÔ­ĞÍÔÚÍ·ÎÄ¼şÖĞÓĞÏêÏ¸ËµÃ÷
  */
 int s_curve_planner_init(s_curve_planner_t *planner,
                           float distance,
@@ -218,7 +218,7 @@ int s_curve_planner_init(s_curve_planner_t *planner,
                           float a_max,
                           float j_max)
 {
-    // ========== [1] å‚æ•°éªŒè¯ ==========
+    // ========== [1] ²ÎÊıÑéÖ¤ ==========
     if (planner == NULL) {
         return -1;
     }
@@ -226,41 +226,41 @@ int s_curve_planner_init(s_curve_planner_t *planner,
         return -1;
     }
 
-    // å‚æ•°é™å¹… (å®‰å…¨ä¿æŠ¤)
+    // ²ÎÊıÏŞ·ù (°²È«±£»¤)
     if (v_max > MAX_VELOCITY) v_max = MAX_VELOCITY;
     if (a_max > MAX_ACCELERATION) a_max = MAX_ACCELERATION;
     if (j_max > MAX_JERK) j_max = MAX_JERK;
 
-    // ä¿å­˜è¾“å…¥å‚æ•°
+    // ±£´æÊäÈë²ÎÊı
     planner->v_max = v_max;
     planner->a_max = a_max;
     planner->j_max = j_max;
 
-    // è®¾ç½®é»˜è®¤è¾¹ç•Œæ¡ä»¶
-    if (planner->v0 != planner->v0) planner->v0 = 0.0f;  // NaNæ£€æŸ¥
+    // ÉèÖÃÄ¬ÈÏ±ß½çÌõ¼ş
+    if (planner->v0 != planner->v0) planner->v0 = 0.0f;  // NaN¼ì²é
     if (planner->v1 != planner->v1) planner->v1 = 0.0f;
 
-    // ========== [2] sigmaå½’ä¸€åŒ–å¤„ç†åŒå‘è¿åŠ¨ ==========
+    // ========== [2] sigma¹éÒ»»¯´¦ÀíË«ÏòÔË¶¯ ==========
     if (distance >= 0.0f) {
         planner->sigma = 1.0f;
     } else {
         planner->sigma = -1.0f;
-        distance = -distance;  // å–ç»å¯¹å€¼
+        distance = -distance;  // È¡¾ø¶ÔÖµ
     }
 
-    // ========== [3] æŠ•å½±v0/v1åˆ°è¿åŠ¨æ–¹å‘ (ä¿®å¤åŒå‘è¿åŠ¨bug) ==========
-    // v0/v1ä»ç‰©ç†åæ ‡ç³»æŠ•å½±åˆ°å½’ä¸€åŒ–åæ ‡ç³»ï¼Œç¡®ä¿åç»­è®¡ç®—æ­£ç¡®
+    // ========== [3] Í¶Ó°v0/v1µ½ÔË¶¯·½Ïò (ĞŞ¸´Ë«ÏòÔË¶¯bug) ==========
+    // v0/v1´ÓÎïÀí×ø±êÏµÍ¶Ó°µ½¹éÒ»»¯×ø±êÏµ£¬È·±£ºóĞø¼ÆËãÕıÈ·
     planner->v0 = planner->v0 * planner->sigma;
     planner->v1 = planner->v1 * planner->sigma;
 
     float q0 = 0.0f;
     float q1 = distance;
-    float v0 = planner->v0;  // å·²æŠ•å½±åˆ°è¿åŠ¨æ–¹å‘
+    float v0 = planner->v0;  // ÒÑÍ¶Ó°µ½ÔË¶¯·½Ïò
     float v1 = planner->v1;
 
-    // ========== [4] æœ€å°ä½ç§»æ£€æŸ¥ ==========
+    // ========== [4] ×îĞ¡Î»ÒÆ¼ì²é ==========
     if (q1 < s_curve_min_dist) {
-        // ä½ç§»è¿‡çŸ­,æ ‡è®°ä¸ºç«‹å³å®Œæˆ
+        // Î»ÒÆ¹ı¶Ì,±ê¼ÇÎªÁ¢¼´Íê³É
         planner->flag = 1;
         planner->is_running = 0;
         planner->is_finished = 1;
@@ -274,50 +274,50 @@ int s_curve_planner_init(s_curve_planner_t *planner,
         planner->Tj2 = 0.0f;
         planner->time_current = 0.0f;
         planner->phase = 0;
-        return 0;  // æˆåŠŸåˆå§‹åŒ–ä½†ä¸è¿è¡Œ
+        return 0;  // ³É¹¦³õÊ¼»¯µ«²»ÔËĞĞ
     }
 
-    // ========== [5] åˆ¤æ–­amaxèƒ½å¦è¾¾åˆ° (åŠ é€Ÿæ®µ) ==========
+    // ========== [5] ÅĞ¶ÏamaxÄÜ·ñ´ïµ½ (¼ÓËÙ¶Î) ==========
     float Tj1, Ta, alim_accel;
 
     if ((v_max - v0) * j_max < a_max * a_max) {
-        // amaxä¸èƒ½è¾¾åˆ° (Jerkå—é™)
+        // amax²»ÄÜ´ïµ½ (JerkÊÜÏŞ)
         Tj1 = sqrtf((v_max - v0) / j_max);
         Ta = 2.0f * Tj1;
         alim_accel = j_max * Tj1;
     } else {
-        // amaxèƒ½è¾¾åˆ°
+        // amaxÄÜ´ïµ½
         Tj1 = a_max / j_max;
         Ta = Tj1 + (v_max - v0) / a_max;
         alim_accel = a_max;
     }
 
-    // ========== [6] åˆ¤æ–­amaxèƒ½å¦è¾¾åˆ° (å‡é€Ÿæ®µ) ==========
+    // ========== [6] ÅĞ¶ÏamaxÄÜ·ñ´ïµ½ (¼õËÙ¶Î) ==========
     float Tj2, Td, alim_decel;
 
     if ((v_max - v1) * j_max < a_max * a_max) {
-        // amaxä¸èƒ½è¾¾åˆ° (Jerkå—é™)
+        // amax²»ÄÜ´ïµ½ (JerkÊÜÏŞ)
         Tj2 = sqrtf((v_max - v1) / j_max);
         Td = 2.0f * Tj2;
         alim_decel = j_max * Tj2;
     } else {
-        // amaxèƒ½è¾¾åˆ°
+        // amaxÄÜ´ïµ½
         Tj2 = a_max / j_max;
         Td = Tj2 + (v_max - v1) / a_max;
         alim_decel = a_max;
     }
 
-    // ========== [7] åˆ¤æ–­vmaxèƒ½å¦è¾¾åˆ° ==========
+    // ========== [7] ÅĞ¶ÏvmaxÄÜ·ñ´ïµ½ ==========
     float s_accel = Ta * (v0 + v_max) * 0.5f;
     float s_decel = Td * (v_max + v1) * 0.5f;
     float Tv, vlim;
 
     if (s_accel + s_decel <= q1) {
-        // Case 1: vmaxèƒ½è¾¾åˆ°
+        // Case 1: vmaxÄÜ´ïµ½
         vlim = v_max;
         Tv = (q1 - s_accel - s_decel) / v_max;
 
-        // ä¿å­˜ç»“æœ
+        // ±£´æ½á¹û
         planner->Tj1 = Tj1;
         planner->Tj2 = Tj2;
         planner->Ta = Ta;
@@ -325,11 +325,11 @@ int s_curve_planner_init(s_curve_planner_t *planner,
         planner->Tv = Tv;
         planner->vlim = vlim;
         planner->alim_accel = alim_accel;
-        planner->alim_decel = -alim_decel;  // å‡é€Ÿä¸ºè´Ÿ
+        planner->alim_decel = -alim_decel;  // ¼õËÙÎª¸º
         planner->T = Ta + Tv + Td;
 
     } else {
-        // Case 2: vmaxä¸èƒ½è¾¾åˆ°,gammaè¿­ä»£æ±‚è§£
+        // Case 2: vmax²»ÄÜ´ïµ½,gammaµü´úÇó½â
         vlim = solve_vlim_iterative(planner, q0, q1, v0, v1, v_max, a_max, j_max);
         Tv = 0.0f;
 
@@ -338,9 +338,9 @@ int s_curve_planner_init(s_curve_planner_t *planner,
         planner->T = planner->Ta + planner->Td;
     }
 
-    // ========== [8] è¾¹ç•Œæ£€æŸ¥ ==========
+    // ========== [8] ±ß½ç¼ì²é ==========
     if (planner->Ta <= 0.0f || planner->Td <= 0.0f || planner->T <= 0.0f) {
-        // å¼‚å¸¸æƒ…å†µ,æ ‡è®°ä¸ºé™çº§å¤„ç†
+        // Òì³£Çé¿ö,±ê¼ÇÎª½µ¼¶´¦Àí
         planner->flag = 1;
         planner->is_running = 0;
         planner->is_finished = 1;
@@ -348,7 +348,7 @@ int s_curve_planner_init(s_curve_planner_t *planner,
         return 0;
     }
 
-    // ========== [9] åˆå§‹åŒ–çŠ¶æ€ ==========
+    // ========== [9] ³õÊ¼»¯×´Ì¬ ==========
     planner->time_current = 0.0f;
     planner->phase = 0;
     planner->v_target = v0 * planner->sigma;
@@ -356,13 +356,13 @@ int s_curve_planner_init(s_curve_planner_t *planner,
     planner->is_finished = 0;
     planner->flag = 0;
 
-    return 0;  // æˆåŠŸ
+    return 0;  // ³É¹¦
 }
 
 /**
- * @brief æ›´æ–°7æ®µSæ›²çº¿é€Ÿåº¦è§„åˆ’å™¨
+ * @brief ¸üĞÂ7¶ÎSÇúÏßËÙ¶È¹æ»®Æ÷
  *
- * @see å‡½æ•°åŸå‹åœ¨å¤´æ–‡ä»¶ä¸­æœ‰è¯¦ç»†è¯´æ˜
+ * @see º¯ÊıÔ­ĞÍÔÚÍ·ÎÄ¼şÖĞÓĞÏêÏ¸ËµÃ÷
  */
 void s_curve_planner_step(s_curve_planner_t *planner, float dt)
 {
@@ -370,13 +370,13 @@ void s_curve_planner_step(s_curve_planner_t *planner, float dt)
         return;
     }
 
-    // æ—¶é—´æ¨è¿›
+    // Ê±¼äÍÆ½ø
     planner->time_current += dt;
 
-    // è®¡ç®—å½“å‰é€Ÿåº¦
+    // ¼ÆËãµ±Ç°ËÙ¶È
     planner->phase = s_curve_get_velocity(planner, planner->time_current, &planner->v_target);
 
-    // æ£€æŸ¥æ˜¯å¦å®Œæˆ
+    // ¼ì²éÊÇ·ñÍê³É
     if (planner->time_current >= planner->T - 0.001f || planner->phase == 0) {
         planner->is_finished = 1;
         planner->is_running = 0;

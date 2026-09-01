@@ -1,24 +1,24 @@
-/* ä¸²çº§PIDæ§åˆ¶æ¨¡å—
+/* ´®¼¶PID¿ØÖÆÄ£¿é
  *
- * æ¶æ„ï¼š
- *   100Hz -> yawè§’åº¦ç¯(ç›®æ ‡0) + yawè§’é€Ÿåº¦ç¯ + å››è½®é€Ÿåº¦ç¯
+ * ¼Ü¹¹£º
+ *   100Hz -> yaw½Ç¶È»·(Ä¿±ê0) + yaw½ÇËÙ¶È»· + ËÄÂÖËÙ¶È»·
  */
 
 #include "zf_common_headfile.h"
 #ifndef __CONTROL_H__
 #define __CONTROL_H__
 
-/* å››è½®ä½ç½®å¼PID */
+/* ËÄÂÖÎ»ÖÃÊ½PID */
 extern PositionalPID wheel_left_front_pid;
 extern PositionalPID wheel_right_front_pid;
 extern PositionalPID wheel_left_rear_pid;
 extern PositionalPID wheel_right_rear_pid;
 
-/* èˆªå‘PID */
+/* º½ÏòPID */
 extern PositionalPID yaw_angle_pid;
 extern PositionalPID yaw_rate_pid;
 
-/* è°ƒè¯•ä¸­é—´å˜é‡ */
+/* µ÷ÊÔÖĞ¼ä±äÁ¿ */
 extern float control_yaw_angle_current;
 extern float control_yaw_angle_output;
 extern float control_yaw_rate_target;
@@ -28,7 +28,7 @@ extern float control_yaw_rate_output;
 void  Control_Init(void);
 void  Control_Reset(void);
 void  Control_Stop(void);
-/* strafe æ˜¯åº•å±‚éº¦è½®è§£ç®—å‘½ä»¤ç¬¦å·ï¼ŒMode1 ä¼šä»å³æ­£é€Ÿåº¦ç›®æ ‡è½¬æ¢åˆ°è¯¥ç¬¦å·ã€‚ */
+/* strafe ÊÇµ×²ãÂóÂÖ½âËãÃüÁî·ûºÅ£¬Mode1 »á´ÓÓÒÕıËÙ¶ÈÄ¿±ê×ª»»µ½¸Ã·ûºÅ¡£ */
 void  Control_100Hz(float forward, float strafe, float yaw_target_rad);
 float Control_GetYawAngle(void);
 

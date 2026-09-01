@@ -1,7 +1,7 @@
-/* Mode6ï¼šé£æœºé¥æ§å™¨ç›´æ§æ¨¡å¼
- * æ•°æ®æµï¼šé£æœºä¸²å£ â†’ g_air_crsf_std_ch â†’ car_forward/strafe_target
- * ch0(Roll) â†’ å·¦å³å¹³ç§», ch1(Pitch) â†’ å‰åï¼Œyawç”±æ§åˆ¶å±‚é”0
- * ch4ä¸ºæ€»å¼€å…³ï¼š1=è¿è¡Œ, 0=ä¸è¿è¡Œ
+/* Mode6£º·É»úÒ£¿ØÆ÷Ö±¿ØÄ£Ê½
+ * Êı¾İÁ÷£º·É»ú´®¿Ú ¡ú g_air_crsf_std_ch ¡ú car_forward/strafe_target
+ * ch0(Roll) ¡ú ×óÓÒÆ½ÒÆ, ch1(Pitch) ¡ú Ç°ºó£¬yawÓÉ¿ØÖÆ²ãËø0
+ * ch4Îª×Ü¿ª¹Ø£º1=ÔËĞĞ, 0=²»ÔËĞĞ
  */
 #include "car_mode.h"
 #include "car_loop.h"

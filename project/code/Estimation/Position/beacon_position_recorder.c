@@ -539,7 +539,7 @@ static void beacon_position_recorder_render_record(void)
     float last_point[BEACON_POSITION_RECORDER_AXIS_NUM];
     uint16 valid_count = beacon_position_recorder_get_count();
 
-    /* è¡Œé©¶æ—¶ç¦æ­¢å±å¹•åˆ·æ–°ï¼Œé¿å… SPI æ˜¾ç¤ºæ“ä½œå ç”¨æ§åˆ¶å‘¨æœŸã€‚ */
+    /* ĞĞÊ»Ê±½ûÖ¹ÆÁÄ»Ë¢ĞÂ£¬±ÜÃâ SPI ÏÔÊ¾²Ù×÷Õ¼ÓÃ¿ØÖÆÖÜÆÚ¡£ */
     if((car_control_enabled != 0U) && (car_emergency_stop_active == 0U))
     {
         return;

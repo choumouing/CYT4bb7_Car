@@ -148,9 +148,9 @@ void odometer_reset(void)
 }
 
 /**
- * @brief ç«‹å³åº”ç”¨fixatorç”Ÿæˆçš„å¾…ä¿®æ­£ä½ç½®ã€‚
- * @param æ— ã€‚
- * @return æ— ã€‚
+ * @brief Á¢¼´Ó¦ÓÃfixatorÉú³ÉµÄ´ıĞŞÕıÎ»ÖÃ¡£
+ * @param ÎŞ¡£
+ * @return ÎŞ¡£
  */
 void odometer_apply_pending_fix(void)
 {

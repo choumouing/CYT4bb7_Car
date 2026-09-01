@@ -4,12 +4,12 @@
 #include "zf_common_headfile.h"
 
 #define BEACON_CONFIG_BEACON_COUNT (6U)
-#define BEACON_CONFIG_FLASH_PAGE   (70U) /* Work Flash ç¬¬70é¡µï¼Œä¿å­˜åœ°å›¾é…ç½® */
+#define BEACON_CONFIG_FLASH_PAGE   (70U) /* Work Flash µÚ70Ò³£¬±£´æµØÍ¼ÅäÖÃ */
 
 typedef struct
 {
-    float x;                        /* å…¨å±€ X åæ ‡ [m]ï¼Œæ­£=å³ä¾§ */
-    float y;                        /* å…¨å±€ Y åæ ‡ [m]ï¼Œæ­£=å‰æ–¹ */
+    float x;                        /* È«¾Ö X ×ø±ê [m]£¬Õı=ÓÒ²à */
+    float y;                        /* È«¾Ö Y ×ø±ê [m]£¬Õı=Ç°·½ */
 } beacon_config_point_t;
 
 typedef struct
@@ -24,7 +24,7 @@ uint16 beacon_config_get_count(void);
 uint8 beacon_config_get_beacon(uint16 index, beacon_config_point_t *beacon);
 void beacon_config_get_initial_position(float position[2]);
 void beacon_config_get_predata(beacon_config_data_t *data);
-/* ä¿å­˜å¯ç¼–è¾‘åœ°å›¾é…ç½®ã€‚ */
+/* ±£´æ¿É±à¼­µØÍ¼ÅäÖÃ¡£ */
 uint8 beacon_config_save_predata(const beacon_config_data_t *data);
 
 #endif

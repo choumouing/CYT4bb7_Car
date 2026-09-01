@@ -4,7 +4,7 @@
 
 #include "light_sequence_config.h"
 
-#define LIGHT_SEQUENCE_MAX_LIGHTS_PER_ROUND (3U)    /* æ¯è½®å…è®¸åŒæ—¶äº®èµ·çš„æœ€å¤§ç¯æ•° */
+#define LIGHT_SEQUENCE_MAX_LIGHTS_PER_ROUND (3U)    /* Ã¿ÂÖÔÊĞíÍ¬Ê±ÁÁÆğµÄ×î´óµÆÊı */
 
 typedef struct
 {
@@ -13,25 +13,25 @@ typedef struct
     uint8 remaining_mask;
 } light_sequence_candidate_t;
 
-/* å„å¥—åºåˆ—çš„å½“å‰ç­›é€‰è¿›åº¦ã€‚ */
+/* ¸÷Ì×ĞòÁĞµÄµ±Ç°É¸Ñ¡½ø¶È¡£ */
 static light_sequence_candidate_t s_candidates[LIGHT_SEQUENCE_PRESET_COUNT];
 
-/* å½“å‰ç¯å·ä¸åºåˆ—è¯†åˆ«ç»“æœã€‚ */
+/* µ±Ç°µÆºÅÓëĞòÁĞÊ¶±ğ½á¹û¡£ */
 static light_sequence_result_t s_result;
 
-/* ä¸Šä¸€æ¬¡100Hzæ›´æ–°æ—¶çš„Airç†„ç¯æ ‡å¿—ï¼Œç”¨äºæ£€æµ‹0åˆ°1ä¸Šå‡æ²¿ã€‚ */
+/* ÉÏÒ»´Î100Hz¸üĞÂÊ±µÄAirÏ¨µÆ±êÖ¾£¬ÓÃÓÚ¼ì²â0µ½1ÉÏÉıÑØ¡£ */
 static uint8 s_last_beacon_lost_flag;
 
-/* å„ç›ç¯æœ€è¿‘ä¸€æ¬¡è¢«æ­£å¼æ¥å—çš„æ—¶é—´æˆ³ï¼Œå•ä½msã€‚ */
+/* ¸÷ÕµµÆ×î½üÒ»´Î±»ÕıÊ½½ÓÊÜµÄÊ±¼ä´Á£¬µ¥Î»ms¡£ */
 static uint32 s_last_accepted_time_ms[LIGHT_SEQUENCE_BEACON_COUNT];
 
-/* æœ€è¿‘æ¥å—æ—¶é—´æœ‰æ•ˆä½ï¼Œbit0è‡³bit5åˆ†åˆ«å¯¹åº”1å·è‡³6å·ç¯ã€‚ */
+/* ×î½ü½ÓÊÜÊ±¼äÓĞĞ§Î»£¬bit0ÖÁbit5·Ö±ğ¶ÔÓ¦1ºÅÖÁ6ºÅµÆ¡£ */
 static uint8 s_accepted_time_valid_mask;
 
 /**
- * @brief å°†åè¿›åˆ¶ç¯å·ç»„åˆè½¬æ¢ä¸ºå†…éƒ¨ä½æ©ç ã€‚
- * @param round_lights åè¿›åˆ¶ç¯å·ç»„åˆï¼Œä¾‹å¦‚17è¡¨ç¤º1å·å’Œ7å·ç¯ã€‚
- * @return è½¬æ¢æˆåŠŸè¿”å›ç¯ä½æ©ç ï¼Œé…ç½®éæ³•è¿”å›0ã€‚
+ * @brief ½«Ê®½øÖÆµÆºÅ×éºÏ×ª»»ÎªÄÚ²¿Î»ÑÚÂë¡£
+ * @param round_lights Ê®½øÖÆµÆºÅ×éºÏ£¬ÀıÈç17±íÊ¾1ºÅºÍ7ºÅµÆ¡£
+ * @return ×ª»»³É¹¦·µ»ØµÆÎ»ÑÚÂë£¬ÅäÖÃ·Ç·¨·µ»Ø0¡£
  */
 static uint8 LightSequence_DecodeRound(uint16 round_lights)
 {
@@ -68,9 +68,9 @@ static uint8 LightSequence_DecodeRound(uint16 round_lights)
 }
 
 /**
- * @brief æ£€æŸ¥é¢„è®¾åºåˆ—çš„è½®æ•°ã€ç¯å·å’Œç›¸é‚»è½®è§„åˆ™æ˜¯å¦åˆæ³•ã€‚
- * @param preset å¾…æ£€æŸ¥çš„é¢„è®¾åºåˆ—ã€‚
- * @return é…ç½®æœ‰æ•ˆè¿”å›1ï¼Œå¦åˆ™è¿”å›0ã€‚
+ * @brief ¼ì²éÔ¤ÉèĞòÁĞµÄÂÖÊı¡¢µÆºÅºÍÏàÁÚÂÖ¹æÔòÊÇ·ñºÏ·¨¡£
+ * @param preset ´ı¼ì²éµÄÔ¤ÉèĞòÁĞ¡£
+ * @return ÅäÖÃÓĞĞ§·µ»Ø1£¬·ñÔò·µ»Ø0¡£
  */
 static uint8 LightSequence_PresetValid(const light_sequence_preset_t *preset)
 {
@@ -106,10 +106,10 @@ static uint8 LightSequence_PresetValid(const light_sequence_preset_t *preset)
 }
 
 /**
- * @brief æ ¹æ®ä¿®æ­£åçš„è½¦è¾†åæ ‡åœ¨Predataåœ°å›¾ä¸­æŸ¥æ‰¾åŒ¹é…åŠå¾„å†…æœ€è¿‘çš„ä¿¡æ ‡ç¯ã€‚
- * @param car_position_x è½¦è¾†å…¨å±€Xåæ ‡ï¼Œå•ä½mã€‚
- * @param car_position_y è½¦è¾†å…¨å±€Yåæ ‡ï¼Œå•ä½mã€‚
- * @return åŒ¹é…æˆåŠŸè¿”å›1è‡³6å·ç¯ï¼ŒåŒ¹é…å¤±è´¥è¿”å›0ã€‚
+ * @brief ¸ù¾İĞŞÕıºóµÄ³µÁ¾×ø±êÔÚPredataµØÍ¼ÖĞ²éÕÒÆ¥Åä°ë¾¶ÄÚ×î½üµÄĞÅ±êµÆ¡£
+ * @param car_position_x ³µÁ¾È«¾ÖX×ø±ê£¬µ¥Î»m¡£
+ * @param car_position_y ³µÁ¾È«¾ÖY×ø±ê£¬µ¥Î»m¡£
+ * @return Æ¥Åä³É¹¦·µ»Ø1ÖÁ6ºÅµÆ£¬Æ¥ÅäÊ§°Ü·µ»Ø0¡£
  */
 static uint8 LightSequence_FindNearestBeacon(float car_position_x,
                                              float car_position_y)
@@ -151,9 +151,9 @@ static uint8 LightSequence_FindNearestBeacon(float car_position_x,
 }
 
 /**
- * @brief æ ¹æ®æœ‰æ•ˆå€™é€‰æ•°é‡åˆ·æ–°åºåˆ—ç¼–å·å’Œè¯†åˆ«çŠ¶æ€ã€‚
- * @param æ— ã€‚
- * @return æ— ã€‚
+ * @brief ¸ù¾İÓĞĞ§ºòÑ¡ÊıÁ¿Ë¢ĞÂĞòÁĞ±àºÅºÍÊ¶±ğ×´Ì¬¡£
+ * @param ÎŞ¡£
+ * @return ÎŞ¡£
  */
 static void LightSequence_RefreshResult(void)
 {
@@ -193,9 +193,9 @@ static void LightSequence_RefreshResult(void)
 }
 
 /**
- * @brief å¤ä½ç¯å·ä¸åºåˆ—è¯†åˆ«çŠ¶æ€ï¼Œé‡æ–°åŠ è½½å…¨éƒ¨å€™é€‰ã€‚
- * @param æ— ã€‚
- * @return æ— ã€‚
+ * @brief ¸´Î»µÆºÅÓëĞòÁĞÊ¶±ğ×´Ì¬£¬ÖØĞÂ¼ÓÔØÈ«²¿ºòÑ¡¡£
+ * @param ÎŞ¡£
+ * @return ÎŞ¡£
  */
 void LightSequence_Reset(void)
 {
@@ -232,12 +232,12 @@ void LightSequence_Reset(void)
 }
 
 /**
- * @brief åœ¨Airç†„ç¯æ ‡å¿—ä¸Šå‡æ²¿åŒ¹é…ç¯å·ï¼Œå¹¶ç­›é€‰é¢„è®¾äº®ç¯åºåˆ—ã€‚
- * @param beacon_lost_flag Airå½“å‰ç†„ç¯æ ‡å¿—ï¼Œ0è¡¨ç¤ºæœªç†„ç¯ï¼Œé0è¡¨ç¤ºæ£€æµ‹åˆ°ç†„ç¯ã€‚
- * @param car_position_x ä¿®æ­£åçš„è½¦è¾†å…¨å±€Xåæ ‡ï¼Œå•ä½mã€‚
- * @param car_position_y ä¿®æ­£åçš„è½¦è¾†å…¨å±€Yåæ ‡ï¼Œå•ä½mã€‚
- * @param current_time_ms Carç«¯å½“å‰æ—¶é—´æˆ³ï¼Œå•ä½msã€‚
- * @return æ— ã€‚
+ * @brief ÔÚAirÏ¨µÆ±êÖ¾ÉÏÉıÑØÆ¥ÅäµÆºÅ£¬²¢É¸Ñ¡Ô¤ÉèÁÁµÆĞòÁĞ¡£
+ * @param beacon_lost_flag Airµ±Ç°Ï¨µÆ±êÖ¾£¬0±íÊ¾Î´Ï¨µÆ£¬·Ç0±íÊ¾¼ì²âµ½Ï¨µÆ¡£
+ * @param car_position_x ĞŞÕıºóµÄ³µÁ¾È«¾ÖX×ø±ê£¬µ¥Î»m¡£
+ * @param car_position_y ĞŞÕıºóµÄ³µÁ¾È«¾ÖY×ø±ê£¬µ¥Î»m¡£
+ * @param current_time_ms Car¶Ëµ±Ç°Ê±¼ä´Á£¬µ¥Î»ms¡£
+ * @return ÎŞ¡£
  */
 void LightSequence_Update(uint8 beacon_lost_flag,
                           float car_position_x,
@@ -347,9 +347,9 @@ void LightSequence_Update(uint8 beacon_lost_flag,
 }
 
 /**
- * @brief è·å–å½“å‰ç¯å·ä¸åºåˆ—è¯†åˆ«ç»“æœã€‚
- * @param result è¾“å‡ºç»“æœæŒ‡é’ˆï¼Œä¼ å…¥ç©ºæŒ‡é’ˆæ—¶ä¸æ‰§è¡Œå¤åˆ¶ã€‚
- * @return æ— ã€‚
+ * @brief »ñÈ¡µ±Ç°µÆºÅÓëĞòÁĞÊ¶±ğ½á¹û¡£
+ * @param result Êä³ö½á¹ûÖ¸Õë£¬´«Èë¿ÕÖ¸ÕëÊ±²»Ö´ĞĞ¸´ÖÆ¡£
+ * @return ÎŞ¡£
  */
 void LightSequence_GetResult(light_sequence_result_t *result)
 {

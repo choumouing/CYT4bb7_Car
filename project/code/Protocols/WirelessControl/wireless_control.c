@@ -1,13 +1,13 @@
 /**
  * @file wireless_control.c
- * @brief 无线遥控控制实现
+ * @brief ����ң�ؿ���ʵ��
  *
- * 安全逻辑链：
- *   receiver_online=0 OR ch5=上 OR (ch6!=遥控 AND ch6!=mode2) → 强制急停
- *   其他情况 → 解析摇杆值输出速度指令
+ * ��ȫ�߼�����
+ *   receiver_online=0 OR ch5=�� OR (ch6!=ң�� AND ch6!=mode2) �� ǿ�Ƽ�ͣ
+ *   ������� �� ����ҡ��ֵ����ٶ�ָ��
  *
- * CH5 开关：下 = 使能，上 = 禁止（急停）
- * CH6 开关：上 = 遥控模式，下 = mode2 占位模式，中间 = 禁止
+ * CH5 ���أ��� = ʹ�ܣ��� = ��ֹ����ͣ��
+ * CH6 ���أ��� = ң��ģʽ���� = mode2 ռλģʽ���м� = ��ֹ
  */
 
 #include "wireless_control.h"
@@ -16,11 +16,11 @@
 wireless_control_state_t g_wireless_control_state = {0};
 
 /**
- * @brief 将 SBUS 轴值按比例缩放到输出限幅
- * @param axis_value SBUS 标准化轴值（-1000~+1000）
- * @param output_limit 输出限幅值
- * @return 缩放后的速度值
- * 公式：result = axis_value * output_limit / 1000
+ * @brief �� SBUS ��ֵ���������ŵ�����޷�
+ * @param axis_value SBUS ��׼����ֵ��-1000~+1000��
+ * @param output_limit ����޷�ֵ
+ * @return ���ź���ٶ�ֵ
+ * ��ʽ��result = axis_value * output_limit / 1000
  */
 static float wireless_scale_axis_to_limit(int16 axis_value, float output_limit)
 {
@@ -28,8 +28,8 @@ static float wireless_scale_axis_to_limit(int16 axis_value, float output_limit)
 }
 
 /**
- * @brief 清除所有运动目标值
- * 急停或 mode2 占位模式下调用，确保不会残留上一次的遥控指令
+ * @brief ��������˶�Ŀ��ֵ
+ * ��ͣ�� mode2 ռλģʽ�µ��ã�ȷ�����������һ�ε�ң��ָ��
  */
 static void wireless_clear_targets(void)
 {
@@ -47,12 +47,12 @@ static void wireless_clear_targets(void)
 }
 
 /**
- * @brief 强制进入急停状态
- * 谁调用：安全条件不满足时、初始化时
- * 效果：
+ * @brief ǿ�ƽ��뼱ͣ״̬
+ * ˭���ã���ȫ����������ʱ����ʼ��ʱ
+ * Ч����
  *   - control_enabled=0, emergency_stop_active=1
- *   - 清除所有模式请求标志
- *   - 清除所有运动目标值
+ *   - �������ģʽ�����־
+ *   - ��������˶�Ŀ��ֵ
  */
 static void wireless_force_estop(void)
 {
@@ -65,8 +65,8 @@ static void wireless_force_estop(void)
 }
 
 /**
- * @brief 从 SBUS 状态快照通道值到本模块
- * @param sbus SBUS 状态指针
+ * @brief �� SBUS ״̬����ͨ��ֵ����ģ��
+ * @param sbus SBUS ״ָ̬��
  */
 static void wireless_snapshot_sbus(const sbus_state_t *sbus)
 {
@@ -80,8 +80,8 @@ static void wireless_snapshot_sbus(const sbus_state_t *sbus)
 }
 
 /**
- * @brief 初始化无线控制模块
- * 启动时默认急停，需要手动拨动 CH5 开关才能解除
+ * @brief ��ʼ�����߿���ģ��
+ * ����ʱĬ�ϼ�ͣ����Ҫ�ֶ����� CH5 ���ز��ܽ��
  */
 void wireless_control_init(void)
 {
@@ -89,16 +89,16 @@ void wireless_control_init(void)
 }
 
 /**
- * @brief 25Hz 更新入口
- * 调用频率：25Hz（每 40ms）
+ * @brief 25Hz �������
+ * ����Ƶ�ʣ�25Hz��ÿ 40ms��
  *
- * 详细流程：
- *   1. 快照 SBUS 通道值
- *   2. 判断 CH5 使能开关（下=使能）
- *   3. 判断 CH6 模式开关（上=遥控, 下=mode2）
- *   4. 三个安全条件不满足任一 → 强制急停返回
- *   5. mode2 占位模式 → 清除遥控目标值
- *   6. 遥控模式 → 解析 CH1/CH2/CH4 摇杆为速度指令
+ * ��ϸ���̣�
+ *   1. ���� SBUS ͨ��ֵ
+ *   2. �ж� CH5 ʹ�ܿ��أ���=ʹ�ܣ�
+ *   3. �ж� CH6 ģʽ���أ���=ң��, ��=mode2��
+ *   4. ������ȫ������������һ �� ǿ�Ƽ�ͣ����
+ *   5. mode2 ռλģʽ �� ���ң��Ŀ��ֵ
+ *   6. ң��ģʽ �� ���� CH1/CH2/CH4 ҡ��Ϊ�ٶ�ָ��
  */
 void wireless_control_update_25HZ(void)
 {
@@ -112,19 +112,19 @@ void wireless_control_update_25HZ(void)
     wireless_snapshot_sbus(sbus);
     g_wireless_control_state.receiver_online = sbus->receiver_online;
 
-    /* CH5: 总使能开关，拨到"下"才使能控制 */
+    /* CH5: ��ʹ�ܿ��أ�����"��"��ʹ�ܿ��� */
     ch5_enabled = ((0U != sbus->channel_valid[SBUS_CH5]) &&
                    (SBUS_STD_SWITCH_DOWN == sbus->std_channel[SBUS_CH5])) ? 1U : 0U;
 
-    /* CH6: 模式开关，"上"=遥控模式 */
+    /* CH6: ģʽ���أ�"��"=ң��ģʽ */
     ch6_remote_mode = ((0U != sbus->channel_valid[SBUS_CH6]) &&
                        (SBUS_STD_SWITCH_UP == sbus->std_channel[SBUS_CH6])) ? 1U : 0U;
 
-    /* CH6: 模式开关，"下"=mode2 占位模式 */
+    /* CH6: ģʽ���أ�"��"=mode2 ռλģʽ */
     ch6_mode2_request = ((0U != sbus->channel_valid[SBUS_CH6]) &&
                          (SBUS_STD_SWITCH_DOWN == sbus->std_channel[SBUS_CH6])) ? 1U : 0U;
 
-    /* ===== 安全检查：任一条件不满足 → 急停 ===== */
+    /* ===== ��ȫ��飺��һ���������� �� ��ͣ ===== */
     if((0U == g_wireless_control_state.receiver_online) ||
        (0U == ch5_enabled) ||
        ((0U == ch6_remote_mode) && (0U == ch6_mode2_request)))
@@ -133,32 +133,32 @@ void wireless_control_update_25HZ(void)
         return;
     }
 
-    /* 通过安全检查，清除急停标志 */
+    /* ͨ����ȫ��飬�����ͣ��־ */
     g_wireless_control_state.control_enabled = 1U;
     g_wireless_control_state.emergency_stop_active = 0U;
     g_wireless_control_state.remote_mode_requested = ch6_remote_mode;
     g_wireless_control_state.mode2_requested = ch6_mode2_request;
     g_wireless_control_state.mode_request_valid = 1U;
 
-    /* mode2 占位模式：清零遥控目标 */
+    /* mode2 ռλģʽ������ң��Ŀ�� */
     if(0U != ch6_mode2_request)
     {
         wireless_clear_targets();
         return;
     }
 
-    /* ===== 遥控模式：解析摇杆值 ===== */
-    /* CH2 → 前后速度 */
+    /* ===== ң��ģʽ������ҡ��ֵ ===== */
+    /* CH2 �� ǰ���ٶ� */
     g_wireless_control_state.forward_speed =
         (int16)wireless_scale_axis_to_limit(sbus->std_channel[SBUS_CH2], (float)MAX_CONTROL_SPEED);
-    /* CH1 → 左右平移速度 */
+    /* CH1 �� ����ƽ���ٶ� */
     g_wireless_control_state.strafe_speed =
         (int16)wireless_scale_axis_to_limit(sbus->std_channel[SBUS_CH1], (float)MAX_CONTROL_SPEED);
-    /* CH4 → 旋转角速度 */
+    /* CH4 �� ��ת���ٶ� */
     manual_rotate_speed =
         wireless_scale_axis_to_limit(sbus->std_channel[SBUS_CH4], MAX_ANGULAR_SPEED);
 
-    /* 旋转死区过滤：极小值清零，防止摇杆漂移导致自旋 */
+    /* ��ת�������ˣ���Сֵ���㣬��ֹҡ��Ư�Ƶ������� */
     if(car_math_absf(manual_rotate_speed) < 0.001f)
     {
         manual_rotate_speed = 0.0f;
@@ -168,9 +168,9 @@ void wireless_control_update_25HZ(void)
 }
 
 /**
- * @brief 获取当前控制状态
- * 返回值：指向 g_wireless_control_state 的只读指针
- * 谁用：运动控制、模式切换等模块
+ * @brief ��ȡ��ǰ����״̬
+ * ����ֵ��ָ�� g_wireless_control_state ��ֻ��ָ��
+ * ˭�ã��˶����ơ�ģʽ�л���ģ��
  */
 const wireless_control_state_t *wireless_control_get_state(void)
 {

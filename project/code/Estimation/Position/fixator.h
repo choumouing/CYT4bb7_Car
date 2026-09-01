@@ -13,8 +13,8 @@ typedef struct
 {
     uint8 pending_fix;
     uint8 last_match_valid;
-    uint8 counts_in_sequence;       /* 1=è®¡å…¥ä¿¡æ ‡åºåˆ—ï¼Œ0=åªåšä½ç½®æ ¡å‡† */
-    uint8 fix_source;               /* 0=æ— ï¼Œ1=Air ç­ä¿¡æ ‡ç¯ */
+    uint8 counts_in_sequence;       /* 1=¼ÆÈëĞÅ±êĞòÁĞ£¬0=Ö»×öÎ»ÖÃĞ£×¼ */
+    uint8 fix_source;               /* 0=ÎŞ£¬1=Air ÃğĞÅ±êµÆ */
     uint16 beacon_index;
     uint16 previous_beacon_index;
     float before_position[2];

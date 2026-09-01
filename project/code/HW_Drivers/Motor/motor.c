@@ -1,26 +1,26 @@
 #include "motor.h"
 
-/* åˆå§‹åŒ–å››è½®ç”µæœº GPIO + PWMï¼Œé¢‘ç‡ 17kHz */
+/* ³õÊ¼»¯ËÄÂÖµç»ú GPIO + PWM£¬ÆµÂÊ 17kHz */
 void mecanum_motor_init(void)
 {
-    // å·¦å‰
+    // ×óÇ°
     gpio_init(MOTOR_M1_DIR, GPO, GPIO_LOW, GPO_PUSH_PULL);
     pwm_init(MOTOR_M1_PWM, 17000, 0);
 
-    // å³å‰
+    // ÓÒÇ°
     gpio_init(MOTOR_M2_DIR, GPO, GPIO_LOW, GPO_PUSH_PULL);
     pwm_init(MOTOR_M2_PWM, 17000, 0);
 
-    // å·¦å
+    // ×óºó
     gpio_init(MOTOR_M3_DIR, GPO, GPIO_LOW, GPO_PUSH_PULL);
     pwm_init(MOTOR_M3_PWM, 17000, 0);
 
-    // å³å
+    // ÓÒºó
     gpio_init(MOTOR_M4_DIR, GPO, GPIO_LOW, GPO_PUSH_PULL);
     pwm_init(MOTOR_M4_PWM, 17000, 0);
 }
 
-/* PWM å ç©ºæ¯”é™å¹… */
+/* PWM Õ¼¿Õ±ÈÏŞ·ù */
 int16_t speed_limit(int16_t speed)
 {
     if(speed > MOTOR_PWM_MAX)
@@ -35,9 +35,9 @@ int16_t speed_limit(int16_t speed)
 }
 
 /*
- * è®¾ç½®å•ä¸ªç”µæœºé€Ÿåº¦
- * æµç¨‹ï¼šé™å¹… -> invert å–å -> speed>=0 åˆ™ DIR=LOW æ­£è½¬ï¼Œå¦åˆ™ DIR=HIGH åè½¬
- * PWM å ç©ºæ¯”å§‹ç»ˆå–ç»å¯¹å€¼ä¼ å…¥
+ * ÉèÖÃµ¥¸öµç»úËÙ¶È
+ * Á÷³Ì£ºÏŞ·ù -> invert È¡·´ -> speed>=0 Ôò DIR=LOW Õı×ª£¬·ñÔò DIR=HIGH ·´×ª
+ * PWM Õ¼¿Õ±ÈÊ¼ÖÕÈ¡¾ø¶ÔÖµ´«Èë
  */
 void motor_set_single(gpio_pin_enum dir_pin, pwm_channel_enum pwm_ch, int16_t speed, uint8_t invert)
 {
@@ -45,23 +45,23 @@ void motor_set_single(gpio_pin_enum dir_pin, pwm_channel_enum pwm_ch, int16_t sp
 
     if (invert)
     {
-        speed = -speed;         // æœºæ¢°è£…é…åè½¬ï¼šå–å speed
+        speed = -speed;         // »úĞµ×°Åä·´×ª£ºÈ¡·´ speed
     }
 
     if (speed >= 0)
     {
-        gpio_set_level(dir_pin, GPIO_LOW);      // æ­£è½¬ï¼šDIR æ‹‰ä½
+        gpio_set_level(dir_pin, GPIO_LOW);      // Õı×ª£ºDIR À­µÍ
         pwm_set_duty(pwm_ch, speed);
     }
     else
     {
-        gpio_set_level(dir_pin, GPIO_HIGH);     // åè½¬ï¼šDIR æ‹‰é«˜
+        gpio_set_level(dir_pin, GPIO_HIGH);     // ·´×ª£ºDIR À­¸ß
         pwm_set_duty(pwm_ch, -speed);
     }
 }
 
 /**
- * @brief  è®¾ç½®ç”µæœº1ï¼ˆå·¦å‰ï¼‰é€Ÿåº¦
+ * @brief  ÉèÖÃµç»ú1£¨×óÇ°£©ËÙ¶È
  */
 void motor_m1_set_speed(int16_t speed)
 {
@@ -69,7 +69,7 @@ void motor_m1_set_speed(int16_t speed)
 }
 
 /**
- * @brief  è®¾ç½®ç”µæœº2ï¼ˆå³å‰ï¼‰é€Ÿåº¦
+ * @brief  ÉèÖÃµç»ú2£¨ÓÒÇ°£©ËÙ¶È
  */
 void motor_m2_set_speed(int16_t speed)
 {
@@ -77,7 +77,7 @@ void motor_m2_set_speed(int16_t speed)
 }
 
 /**
- * @brief  è®¾ç½®ç”µæœº3ï¼ˆå·¦åï¼‰é€Ÿåº¦
+ * @brief  ÉèÖÃµç»ú3£¨×óºó£©ËÙ¶È
  */
 void motor_m3_set_speed(int16_t speed)
 {
@@ -85,7 +85,7 @@ void motor_m3_set_speed(int16_t speed)
 }
 
 /**
- * @brief  è®¾ç½®ç”µæœº4ï¼ˆå³åï¼‰é€Ÿåº¦
+ * @brief  ÉèÖÃµç»ú4£¨ÓÒºó£©ËÙ¶È
  */
 void motor_m4_set_speed(int16_t speed)
 {
@@ -93,7 +93,7 @@ void motor_m4_set_speed(int16_t speed)
 }
 
 /**
- * @brief  åŒæ—¶è®¾ç½®å››è½®ç”µæœºé€Ÿåº¦
+ * @brief  Í¬Ê±ÉèÖÃËÄÂÖµç»úËÙ¶È
  */
 void mecanum_motor_set_all(int16_t m1, int16_t m2, int16_t m3, int16_t m4)
 {
@@ -104,7 +104,7 @@ void mecanum_motor_set_all(int16_t m1, int16_t m2, int16_t m3, int16_t m4)
 }
 
 /**
- * @brief  åœæ­¢æ‰€æœ‰ç”µæœº
+ * @brief  Í£Ö¹ËùÓĞµç»ú
  */
 void mecanum_motor_stop(void)
 {

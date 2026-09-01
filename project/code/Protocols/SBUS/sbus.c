@@ -1,49 +1,49 @@
 /**
  * @file sbus.c
- * @brief SBUS é¥æ§å™¨è§£ç å®ç°
+ * @brief SBUS Ò£¿ØÆ÷½âÂëÊµÏÖ
  *
- * å¤„ç†è·¯å¾„ï¼š
- *   æ­£å¸¸å¸§ â†’ uart_receiver.finsh_flag=1 â†’ æ¸…é›¶è¶…æ—¶è®¡æ•°å™¨ â†’ æ ‡å‡†åŒ–æ˜ å°„ â†’ è¾“å‡º
- *   æ— å¸§è¶…æ—¶ â†’ è¶…æ—¶è®¡æ•°å™¨é€’å¢åˆ°é˜ˆå€¼ â†’ receiver_online=0 â†’ ä¸Šå±‚å¼ºåˆ¶æ€¥åœ
- *   å¼€å…³å€¼å¼‚å¸¸ â†’ channel_valid[i]=0 â†’ ä¸Šå±‚æŒ‰æ— æ•ˆå¤„ç†ï¼ˆå¼ºåˆ¶æ€¥åœï¼‰
+ * ´¦ÀíÂ·¾¶£º
+ *   Õı³£Ö¡ ¡ú uart_receiver.finsh_flag=1 ¡ú ÇåÁã³¬Ê±¼ÆÊıÆ÷ ¡ú ±ê×¼»¯Ó³Éä ¡ú Êä³ö
+ *   ÎŞÖ¡³¬Ê± ¡ú ³¬Ê±¼ÆÊıÆ÷µİÔöµ½ãĞÖµ ¡ú receiver_online=0 ¡ú ÉÏ²ãÇ¿ÖÆ¼±Í£
+ *   ¿ª¹ØÖµÒì³£ ¡ú channel_valid[i]=0 ¡ú ÉÏ²ã°´ÎŞĞ§´¦Àí£¨Ç¿ÖÆ¼±Í££©
  */
 
 #include "sbus.h"
 
-/* ä¸­å¿ƒæ­»åŒºï¼šæ‘‡æ†åœ¨ä¸­å¿ƒé™„è¿‘ Â±50 èŒƒå›´å†…è¾“å‡º 0ï¼Œé˜²æ­¢æ¼‚ç§»å¯¼è‡´è¯¯åŠ¨ä½œ */
+/* ÖĞĞÄËÀÇø£ºÒ¡¸ËÔÚÖĞĞÄ¸½½ü ¡À50 ·¶Î§ÄÚÊä³ö 0£¬·ÀÖ¹Æ¯ÒÆµ¼ÖÂÎó¶¯×÷ */
 #define SBUS_CENTER_DEADZONE            (50U)
 
-/* å¼€å…³å®¹å·®ï¼šåŸå§‹å€¼ä¸ç›®æ ‡æŒ¡ä½å·®å€¼åœ¨æ­¤èŒƒå›´å†…è®¤ä¸ºæ‹¨åˆ°ä½äº† */
+/* ¿ª¹ØÈİ²î£ºÔ­Ê¼ÖµÓëÄ¿±êµ²Î»²îÖµÔÚ´Ë·¶Î§ÄÚÈÏÎª²¦µ½Î»ÁË */
 #define SBUS_SWITCH_TOLERANCE           (50U)
 
-/* å¸§è¶…æ—¶é˜ˆå€¼ï¼šåº•å±‚è¿ç»­è¿™ä¹ˆé•¿æ—¶é—´æ²¡æ”¶åˆ°æ–°å¸§å°±åˆ¤ç¦»çº¿ */
+/* Ö¡³¬Ê±ãĞÖµ£ºµ×²ãÁ¬ĞøÕâÃ´³¤Ê±¼äÃ»ÊÕµ½ĞÂÖ¡¾ÍÅĞÀëÏß */
 #define SBUS_FRAME_TIMEOUT_MS           (100U)
 
-/* æ›´æ–°å‘¨æœŸï¼šsbus_update_25HZ çš„è°ƒç”¨é—´éš” */
+/* ¸üĞÂÖÜÆÚ£ºsbus_update_25HZ µÄµ÷ÓÃ¼ä¸ô */
 #define SBUS_PERIOD_MS                  (40U)
 
-/* è¶…æ—¶è®¡æ•°ä¸Šé™ = ceil(140ms / 40ms) = 4 ä¸ªå‘¨æœŸæ— å¸§åˆ™ç¦»çº¿ */
+/* ³¬Ê±¼ÆÊıÉÏÏŞ = ceil(140ms / 40ms) = 4 ¸öÖÜÆÚÎŞÖ¡ÔòÀëÏß */
 #define SBUS_FRAME_TIMEOUT_CYCLES       ((SBUS_FRAME_TIMEOUT_MS + SBUS_PERIOD_MS - 1U) / SBUS_PERIOD_MS)
 
 /**
- * @brief å„é€šé“åŸå§‹å€¼ä¸‹é™ï¼ˆå‡ºå‚æ ¡å‡†å€¼ï¼‰
- * å«ä¹‰ï¼šå¯¹åº”é€šé“æ‘‡æ†æ¨åˆ°æœ€ä¸‹/æœ€å·¦æ—¶çš„ ADC å€¼
- * æ³¨æ„ï¼šä¸åŒé€šé“çš„ä¸‹é™ä¸åŒï¼ˆç¡¬ä»¶å·®å¼‚ï¼‰ï¼ŒCH5/CH6 æ˜¯å¼€å…³ï¼Œæ²¡æœ‰ä¸­å¿ƒå€¼
+ * @brief ¸÷Í¨µÀÔ­Ê¼ÖµÏÂÏŞ£¨³ö³§Ğ£×¼Öµ£©
+ * º¬Òå£º¶ÔÓ¦Í¨µÀÒ¡¸ËÍÆµ½×îÏÂ/×î×óÊ±µÄ ADC Öµ
+ * ×¢Òâ£º²»Í¬Í¨µÀµÄÏÂÏŞ²»Í¬£¨Ó²¼ş²îÒì£©£¬CH5/CH6 ÊÇ¿ª¹Ø£¬Ã»ÓĞÖĞĞÄÖµ
  */
 static const uint16 s_sbus_channel_min[SBUS_USED_CHANNEL_COUNT] =
 {
-    322U,   /* CH1: æ‘‡æ†æœ€å°å€¼ */
+    322U,   /* CH1: Ò¡¸Ë×îĞ¡Öµ */
     204U,   /* CH2 */
     306U,   /* CH3 */
     306U,   /* CH4 */
-    204U,   /* CH5: å¼€å…³æ‹¨ä¸‹ä½å€¼ */
-    240U    /* CH6: å¼€å…³æ‹¨ä¸‹ä½å€¼ */
+    204U,   /* CH5: ¿ª¹Ø²¦ÏÂÎ»Öµ */
+    240U    /* CH6: ¿ª¹Ø²¦ÏÂÎ»Öµ */
 };
 
 /**
- * @brief å„é€šé“ä¸­å¿ƒå€¼ï¼ˆä»… CH1~CH4 æœ‰æ•ˆï¼‰
- * å«ä¹‰ï¼šæ‘‡æ†å±…ä¸­æ—¶çš„ ADC å€¼
- * CH5/CH6 æ˜¯å¼€å…³ï¼Œä¸­å¿ƒå€¼æ— æ„ä¹‰å¡« 0
+ * @brief ¸÷Í¨µÀÖĞĞÄÖµ£¨½ö CH1~CH4 ÓĞĞ§£©
+ * º¬Òå£ºÒ¡¸Ë¾ÓÖĞÊ±µÄ ADC Öµ
+ * CH5/CH6 ÊÇ¿ª¹Ø£¬ÖĞĞÄÖµÎŞÒâÒåÌî 0
  */
 static const uint16 s_sbus_channel_center[SBUS_USED_CHANNEL_COUNT] =
 {
@@ -51,33 +51,33 @@ static const uint16 s_sbus_channel_center[SBUS_USED_CHANNEL_COUNT] =
     1025U,  /* CH2 */
     1040U,  /* CH3 */
     1028U,  /* CH4 */
-    0U,     /* CH5: å¼€å…³ï¼Œæ— ä¸­å¿ƒ */
-    0U      /* CH6: å¼€å…³ï¼Œæ— ä¸­å¿ƒ */
+    0U,     /* CH5: ¿ª¹Ø£¬ÎŞÖĞĞÄ */
+    0U      /* CH6: ¿ª¹Ø£¬ÎŞÖĞĞÄ */
 };
 
 /**
- * @brief å„é€šé“åŸå§‹å€¼ä¸Šé™ï¼ˆå‡ºå‚æ ¡å‡†å€¼ï¼‰
- * å«ä¹‰ï¼šå¯¹åº”é€šé“æ‘‡æ†æ¨åˆ°æœ€ä¸Š/æœ€å³æ—¶çš„ ADC å€¼
+ * @brief ¸÷Í¨µÀÔ­Ê¼ÖµÉÏÏŞ£¨³ö³§Ğ£×¼Öµ£©
+ * º¬Òå£º¶ÔÓ¦Í¨µÀÒ¡¸ËÍÆµ½×îÉÏ/×îÓÒÊ±µÄ ADC Öµ
  */
 static const uint16 s_sbus_channel_max[SBUS_USED_CHANNEL_COUNT] =
 {
-    1807U,  /* CH1: æ‘‡æ†æœ€å¤§å€¼ */
+    1807U,  /* CH1: Ò¡¸Ë×î´óÖµ */
     1805U,  /* CH2 */
     1777U,  /* CH3 */
     1754U,  /* CH4 */
-    1807U,  /* CH5: å¼€å…³æ‹¨ä¸Šä½å€¼ */
-    1807U   /* CH6: å¼€å…³æ‹¨ä¸Šä½å€¼ */
+    1807U,  /* CH5: ¿ª¹Ø²¦ÉÏÎ»Öµ */
+    1807U   /* CH6: ¿ª¹Ø²¦ÉÏÎ»Öµ */
 };
 
-sbus_state_t g_sbus_state = {0};           /* å…¨å±€ SBUS çŠ¶æ€ */
-static uint8 s_frame_timeout_counter = SBUS_FRAME_TIMEOUT_CYCLES;  /* è¶…æ—¶è®¡æ•°å™¨ï¼Œåˆå§‹å€¼=è¶…é™ï¼ˆç¦»çº¿æ€ï¼‰ */
+sbus_state_t g_sbus_state = {0};           /* È«¾Ö SBUS ×´Ì¬ */
+static uint8 s_frame_timeout_counter = SBUS_FRAME_TIMEOUT_CYCLES;  /* ³¬Ê±¼ÆÊıÆ÷£¬³õÊ¼Öµ=³¬ÏŞ£¨ÀëÏßÌ¬£© */
 
 /**
- * @brief å°†åŸå§‹å€¼é’³ä½åˆ° [min_value, max_value]
- * @param value åŸå§‹å€¼
- * @param min_value ä¸‹é™
- * @param max_value ä¸Šé™
- * @return é’³ä½åçš„å€¼
+ * @brief ½«Ô­Ê¼ÖµÇ¯Î»µ½ [min_value, max_value]
+ * @param value Ô­Ê¼Öµ
+ * @param min_value ÏÂÏŞ
+ * @param max_value ÉÏÏŞ
+ * @return Ç¯Î»ºóµÄÖµ
  */
 static uint16 sbus_clamp_raw(uint16 value, uint16 min_value, uint16 max_value)
 {
@@ -95,19 +95,19 @@ static uint16 sbus_clamp_raw(uint16 value, uint16 min_value, uint16 max_value)
 }
 
 /**
- * @brief å°†æ‘‡æ†åŸå§‹å€¼æ˜ å°„ä¸ºæ ‡å‡†åŒ–è½´å€¼ï¼ˆ-1000~+1000ï¼‰
+ * @brief ½«Ò¡¸ËÔ­Ê¼ÖµÓ³ÉäÎª±ê×¼»¯ÖáÖµ£¨-1000~+1000£©
  *
- * æ˜ å°„é€»è¾‘ï¼š
- *   - ä¸­å¿ƒæ­»åŒº Â±50 å†…è¾“å‡º 0
- *   - æ­»åŒºä»¥ä¸‹çº¿æ€§æ˜ å°„åˆ° -1000~0
- *   - æ­»åŒºä»¥ä¸Šçº¿æ€§æ˜ å°„åˆ° 0~+1000
- *   - å•ä½ï¼šæ— é‡çº²ï¼Œ1000 ä»£è¡¨æ»¡é‡ç¨‹
+ * Ó³ÉäÂß¼­£º
+ *   - ÖĞĞÄËÀÇø ¡À50 ÄÚÊä³ö 0
+ *   - ËÀÇøÒÔÏÂÏßĞÔÓ³Éäµ½ -1000~0
+ *   - ËÀÇøÒÔÉÏÏßĞÔÓ³Éäµ½ 0~+1000
+ *   - µ¥Î»£ºÎŞÁ¿¸Ù£¬1000 ´ú±íÂúÁ¿³Ì
  *
- * @param raw_value åŸå§‹ ADC å€¼
- * @param min_value æ ¡å‡†ä¸‹é™
- * @param center_value æ ¡å‡†ä¸­å¿ƒ
- * @param max_value æ ¡å‡†ä¸Šé™
- * @return æ ‡å‡†åŒ–å€¼ -1000~+1000
+ * @param raw_value Ô­Ê¼ ADC Öµ
+ * @param min_value Ğ£×¼ÏÂÏŞ
+ * @param center_value Ğ£×¼ÖĞĞÄ
+ * @param max_value Ğ£×¼ÉÏÏŞ
+ * @return ±ê×¼»¯Öµ -1000~+1000
  */
 static int16 sbus_map_axis(uint16 raw_value,
                            uint16 min_value,
@@ -123,7 +123,7 @@ static int16 sbus_map_axis(uint16 raw_value,
     lower_deadzone_edge = center_value - SBUS_CENTER_DEADZONE;
     upper_deadzone_edge = center_value + SBUS_CENTER_DEADZONE;
 
-    /* æ­»åŒºä»¥ä¸‹ï¼šè´Ÿæ–¹å‘çº¿æ€§æ˜ å°„ */
+    /* ËÀÇøÒÔÏÂ£º¸º·½ÏòÏßĞÔÓ³Éä */
     if(value < lower_deadzone_edge)
     {
         mapped = -((int32)(lower_deadzone_edge - value) * 1000) /
@@ -131,7 +131,7 @@ static int16 sbus_map_axis(uint16 raw_value,
         return (int16)mapped;
     }
 
-    /* æ­»åŒºä»¥ä¸Šï¼šæ­£æ–¹å‘çº¿æ€§æ˜ å°„ */
+    /* ËÀÇøÒÔÉÏ£ºÕı·½ÏòÏßĞÔÓ³Éä */
     if(value > upper_deadzone_edge)
     {
         mapped = ((int32)(value - upper_deadzone_edge) * 1000) /
@@ -139,20 +139,20 @@ static int16 sbus_map_axis(uint16 raw_value,
         return (int16)mapped;
     }
 
-    /* æ­»åŒºå†… */
+    /* ËÀÇøÄÚ */
     return 0;
 }
 
 /**
- * @brief å°†å¼€å…³åŸå§‹å€¼åˆ¤æ–­ä¸ºä¸Š/ä¸‹/æ— æ•ˆ
+ * @brief ½«¿ª¹ØÔ­Ê¼ÖµÅĞ¶ÏÎªÉÏ/ÏÂ/ÎŞĞ§
  *
- * åˆ¤å®šé€»è¾‘ï¼šåŸå§‹å€¼ä¸ç›®æ ‡æŒ¡ä½çš„å·®å€¼ â‰¤ SBUS_SWITCH_TOLERANCE(50) å³è®¤ä¸ºåˆ°ä½
- * å¦‚æœä¸¤ä¸ªæŒ¡ä½éƒ½ä¸åœ¨å®¹å·®å†…ï¼Œè¿”å› SBUS_STD_SWITCH_INVALID(-1)
+ * ÅĞ¶¨Âß¼­£ºÔ­Ê¼ÖµÓëÄ¿±êµ²Î»µÄ²îÖµ ¡Ü SBUS_SWITCH_TOLERANCE(50) ¼´ÈÏÎªµ½Î»
+ * Èç¹ûÁ½¸öµ²Î»¶¼²»ÔÚÈİ²îÄÚ£¬·µ»Ø SBUS_STD_SWITCH_INVALID(-1)
  *
- * @param raw_value å¼€å…³åŸå§‹ ADC å€¼
- * @param up_value å¼€å…³æ‹¨åˆ°"ä¸Š"æ—¶çš„æœŸæœ›å€¼
- * @param down_value å¼€å…³æ‹¨åˆ°"ä¸‹"æ—¶çš„æœŸæœ›å€¼
- * @return 0=ä¸Š, 1=ä¸‹, -1=æ— æ•ˆ
+ * @param raw_value ¿ª¹ØÔ­Ê¼ ADC Öµ
+ * @param up_value ¿ª¹Ø²¦µ½"ÉÏ"Ê±µÄÆÚÍûÖµ
+ * @param down_value ¿ª¹Ø²¦µ½"ÏÂ"Ê±µÄÆÚÍûÖµ
+ * @return 0=ÉÏ, 1=ÏÂ, -1=ÎŞĞ§
  */
 static int16 sbus_map_switch_2pos(uint16 raw_value, uint16 up_value, uint16 down_value)
 {
@@ -186,26 +186,26 @@ static int16 sbus_map_switch_2pos(uint16 raw_value, uint16 up_value, uint16 down
 }
 
 /**
- * @brief æ£€æŸ¥åº•å±‚æ˜¯å¦æœ‰æ–°å¸§åˆ°è¾¾ï¼Œæ›´æ–°è¶…æ—¶è®¡æ•°å™¨å’Œåœ¨çº¿çŠ¶æ€
+ * @brief ¼ì²éµ×²ãÊÇ·ñÓĞĞÂÖ¡µ½´ï£¬¸üĞÂ³¬Ê±¼ÆÊıÆ÷ºÍÔÚÏß×´Ì¬
  *
- * è¶…æ—¶æœºåˆ¶ï¼š
- *   - æ¯æ¬¡è°ƒç”¨æ—¶æ£€æŸ¥ uart_receiver.finsh_flag
- *   - æœ‰æ–°å¸§ï¼šæ¸…é›¶è®¡æ•°å™¨ï¼Œç½® frame_updated=1
- *   - æ— æ–°å¸§ï¼šè®¡æ•°å™¨é€’å¢ï¼ˆä¸Šé™ = SBUS_FRAME_TIMEOUT_CYCLESï¼‰
- *   - è®¡æ•°å™¨ â‰¥ é˜ˆå€¼ ä¸” receiver.state != 1 â†’ receiver_online=0ï¼ˆç¦»çº¿ï¼‰
+ * ³¬Ê±»úÖÆ£º
+ *   - Ã¿´Îµ÷ÓÃÊ±¼ì²é uart_receiver.finsh_flag
+ *   - ÓĞĞÂÖ¡£ºÇåÁã¼ÆÊıÆ÷£¬ÖÃ frame_updated=1
+ *   - ÎŞĞÂÖ¡£º¼ÆÊıÆ÷µİÔö£¨ÉÏÏŞ = SBUS_FRAME_TIMEOUT_CYCLES£©
+ *   - ¼ÆÊıÆ÷ ¡İ ãĞÖµ ÇÒ receiver.state != 1 ¡ú receiver_online=0£¨ÀëÏß£©
  */
 static void sbus_refresh_receiver_watchdog(void)
 {
     if(1U == uart_receiver.finsh_flag)
     {
-        /* æœ‰æ–°å¸§åˆ°è¾¾ï¼šé‡ç½®è¶…æ—¶è®¡æ•°å™¨ */
+        /* ÓĞĞÂÖ¡µ½´ï£ºÖØÖÃ³¬Ê±¼ÆÊıÆ÷ */
         s_frame_timeout_counter = 0U;
         g_sbus_state.frame_updated = 1U;
         uart_receiver.finsh_flag = 0U;
     }
     else
     {
-        /* æœ¬è½®æ— æ–°å¸§ */
+        /* ±¾ÂÖÎŞĞÂÖ¡ */
         g_sbus_state.frame_updated = 0U;
 
         if(s_frame_timeout_counter < SBUS_FRAME_TIMEOUT_CYCLES)
@@ -214,25 +214,25 @@ static void sbus_refresh_receiver_watchdog(void)
         }
     }
 
-    /* åœ¨çº¿æ¡ä»¶ï¼šåº•å±‚ä¸²å£çŠ¶æ€æ­£å¸¸ ä¸” æœªè¶…è¿‡è¶…æ—¶é˜ˆå€¼ */
+    /* ÔÚÏßÌõ¼ş£ºµ×²ã´®¿Ú×´Ì¬Õı³£ ÇÒ Î´³¬¹ı³¬Ê±ãĞÖµ */
     g_sbus_state.receiver_online =
         ((1U == uart_receiver.state) && (s_frame_timeout_counter < SBUS_FRAME_TIMEOUT_CYCLES)) ? 1U : 0U;
 }
 
 /**
- * @brief ä»åº•å±‚ uart_receiver å¿«ç…§é€šé“å€¼å¹¶åšæ ‡å‡†åŒ–æ˜ å°„
+ * @brief ´Óµ×²ã uart_receiver ¿ìÕÕÍ¨µÀÖµ²¢×ö±ê×¼»¯Ó³Éä
  *
- * æ˜ å°„è§„åˆ™ï¼š
- *   - CH1: æ‘‡æ†è½´ï¼Œå–åï¼ˆé€‚é…ç¡¬ä»¶æ–¹å‘ï¼‰
- *   - CH2~CH4: æ‘‡æ†è½´ï¼Œæ­£å¸¸æ–¹å‘
- *   - CH5~CH6: äºŒæŒ¡å¼€å…³
- *   - CH1~CH4 é»˜è®¤ channel_valid=1ï¼ŒCH5/CH6 åªæœ‰å¼€å…³å€¼æœ‰æ•ˆæ—¶æ‰ç½® 1
+ * Ó³Éä¹æÔò£º
+ *   - CH1: Ò¡¸ËÖá£¬È¡·´£¨ÊÊÅäÓ²¼ş·½Ïò£©
+ *   - CH2~CH4: Ò¡¸ËÖá£¬Õı³£·½Ïò
+ *   - CH5~CH6: ¶şµ²¿ª¹Ø
+ *   - CH1~CH4 Ä¬ÈÏ channel_valid=1£¬CH5/CH6 Ö»ÓĞ¿ª¹ØÖµÓĞĞ§Ê±²ÅÖÃ 1
  */
 static void sbus_snapshot_channels(void)
 {
     uint8 index;
 
-    /* å…ˆæŠŠåº•å±‚åŸå§‹å€¼æ‹·è´è¿‡æ¥ */
+    /* ÏÈ°Ñµ×²ãÔ­Ê¼Öµ¿½±´¹ıÀ´ */
     for(index = 0U; index < SBUS_CHANNEL_COUNT; index++)
     {
         g_sbus_state.raw_channel[index] = uart_receiver.channel[index];
@@ -240,62 +240,62 @@ static void sbus_snapshot_channels(void)
         g_sbus_state.channel_valid[index] = 0U;
     }
 
-    /* CH1: æ‘‡æ†è½´ï¼Œå–åé€‚é… */
+    /* CH1: Ò¡¸ËÖá£¬È¡·´ÊÊÅä */
     g_sbus_state.std_channel[SBUS_CH1] =
         (int16)-sbus_map_axis(g_sbus_state.raw_channel[SBUS_CH1],
                               s_sbus_channel_min[SBUS_CH1],
                               s_sbus_channel_center[SBUS_CH1],
                               s_sbus_channel_max[SBUS_CH1]);
-    /* CH2: æ‘‡æ†è½´ */
+    /* CH2: Ò¡¸ËÖá */
     g_sbus_state.std_channel[SBUS_CH2] =
         sbus_map_axis(g_sbus_state.raw_channel[SBUS_CH2],
                       s_sbus_channel_min[SBUS_CH2],
                       s_sbus_channel_center[SBUS_CH2],
                       s_sbus_channel_max[SBUS_CH2]);
-    /* CH3: æ‘‡æ†è½´ */
+    /* CH3: Ò¡¸ËÖá */
     g_sbus_state.std_channel[SBUS_CH3] =
         sbus_map_axis(g_sbus_state.raw_channel[SBUS_CH3],
                       s_sbus_channel_min[SBUS_CH3],
                       s_sbus_channel_center[SBUS_CH3],
                       s_sbus_channel_max[SBUS_CH3]);
-    /* CH4: æ‘‡æ†è½´ */
+    /* CH4: Ò¡¸ËÖá */
     g_sbus_state.std_channel[SBUS_CH4] =
         sbus_map_axis(g_sbus_state.raw_channel[SBUS_CH4],
                       s_sbus_channel_min[SBUS_CH4],
                       s_sbus_channel_center[SBUS_CH4],
                       s_sbus_channel_max[SBUS_CH4]);
-    /* CH5: äºŒæŒ¡å¼€å…³ï¼ˆæ€»ä½¿èƒ½ï¼‰ */
+    /* CH5: ¶şµ²¿ª¹Ø£¨×ÜÊ¹ÄÜ£© */
     g_sbus_state.std_channel[SBUS_CH5] =
         sbus_map_switch_2pos(g_sbus_state.raw_channel[SBUS_CH5],
                              s_sbus_channel_min[SBUS_CH5],
                              s_sbus_channel_max[SBUS_CH5]);
-    /* CH6: äºŒæŒ¡å¼€å…³ï¼ˆæ¨¡å¼é€‰æ‹©ï¼‰ */
+    /* CH6: ¶şµ²¿ª¹Ø£¨Ä£Ê½Ñ¡Ôñ£© */
     g_sbus_state.std_channel[SBUS_CH6] =
         sbus_map_switch_2pos(g_sbus_state.raw_channel[SBUS_CH6],
                              s_sbus_channel_min[SBUS_CH6],
                              s_sbus_channel_max[SBUS_CH6]);
 
-    /* æ ‡è®°é€šé“æœ‰æ•ˆæ€§ */
+    /* ±ê¼ÇÍ¨µÀÓĞĞ§ĞÔ */
     for(index = 0U; index < SBUS_USED_CHANNEL_COUNT; index++)
     {
         if((index == SBUS_CH5) || (index == SBUS_CH6))
         {
-            /* å¼€å…³é€šé“ï¼šå€¼å¿…é¡»æ˜¯æœ‰æ•ˆæŒ¡ä½ */
+            /* ¿ª¹ØÍ¨µÀ£ºÖµ±ØĞëÊÇÓĞĞ§µ²Î» */
             g_sbus_state.channel_valid[index] =
                 (SBUS_STD_SWITCH_INVALID != g_sbus_state.std_channel[index]) ? 1U : 0U;
         }
         else
         {
-            /* æ‘‡æ†è½´ï¼šæ˜ å°„åæ€»æ˜¯æœ‰æ•ˆ */
+            /* Ò¡¸ËÖá£ºÓ³Éäºó×ÜÊÇÓĞĞ§ */
             g_sbus_state.channel_valid[index] = 1U;
         }
     }
 }
 
 /**
- * @brief SBUS æ¨¡å—åˆå§‹åŒ–
- * é‡ç½®æ‰€æœ‰é€šé“ä¸º 0ï¼Œæ¥æ”¶å™¨çŠ¶æ€ä¸ºç¦»çº¿
- * è°ƒç”¨æ—¶æœºï¼šç³»ç»Ÿå¯åŠ¨æ—¶è°ƒä¸€æ¬¡
+ * @brief SBUS Ä£¿é³õÊ¼»¯
+ * ÖØÖÃËùÓĞÍ¨µÀÎª 0£¬½ÓÊÕÆ÷×´Ì¬ÎªÀëÏß
+ * µ÷ÓÃÊ±»ú£ºÏµÍ³Æô¶¯Ê±µ÷Ò»´Î
  */
 void sbus_init(void)
 {
@@ -314,9 +314,9 @@ void sbus_init(void)
 }
 
 /**
- * @brief 25Hz æ›´æ–°å…¥å£
- * è°ƒç”¨é¢‘ç‡ï¼š25Hzï¼ˆæ¯ 40msï¼‰ï¼Œç”±ä¸»å¾ªç¯æˆ–å®šæ—¶å™¨é©±åŠ¨
- * å†…éƒ¨æµç¨‹ï¼šåˆ·æ–°çœ‹é—¨ç‹— â†’ å¿«ç…§é€šé“å¹¶æ ‡å‡†åŒ–
+ * @brief 25Hz ¸üĞÂÈë¿Ú
+ * µ÷ÓÃÆµÂÊ£º25Hz£¨Ã¿ 40ms£©£¬ÓÉÖ÷Ñ­»·»ò¶¨Ê±Æ÷Çı¶¯
+ * ÄÚ²¿Á÷³Ì£ºË¢ĞÂ¿´ÃÅ¹· ¡ú ¿ìÕÕÍ¨µÀ²¢±ê×¼»¯
  */
 void sbus_update_25HZ(void)
 {
@@ -325,9 +325,9 @@ void sbus_update_25HZ(void)
 }
 
 /**
- * @brief è·å–å½“å‰ SBUS çŠ¶æ€
- * è¿”å›å€¼ï¼šæŒ‡å‘ g_sbus_state çš„åªè¯»æŒ‡é’ˆ
- * è°ç”¨ï¼šWirelessControl æ¨¡å—æ¯ 25Hz è¯»ä¸€æ¬¡
+ * @brief »ñÈ¡µ±Ç° SBUS ×´Ì¬
+ * ·µ»ØÖµ£ºÖ¸Ïò g_sbus_state µÄÖ»¶ÁÖ¸Õë
+ * Ë­ÓÃ£ºWirelessControl Ä£¿éÃ¿ 25Hz ¶ÁÒ»´Î
  */
 const sbus_state_t *sbus_get_state(void)
 {

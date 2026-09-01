@@ -22,7 +22,7 @@
 #define CONTROL_WHEEL_FF_START_TARGET_MIN (3.0f)
 #define CONTROL_WHEEL_FF_START_FEEDBACK_MAX (2.0f)
 
-/* PID å®ä¾‹ */
+/* PID ÊµÀı */
 PositionalPID wheel_left_front_pid;
 PositionalPID wheel_right_front_pid;
 PositionalPID wheel_left_rear_pid;
@@ -30,7 +30,7 @@ PositionalPID wheel_right_rear_pid;
 PositionalPID yaw_angle_pid;
 PositionalPID yaw_rate_pid;
 
-/* è°ƒè¯•ä¸­é—´å˜é‡ */
+/* µ÷ÊÔÖĞ¼ä±äÁ¿ */
 float control_yaw_angle_current = 0.0f;
 float control_yaw_angle_output = 0.0f;
 float control_yaw_rate_target = 0.0f;
@@ -127,7 +127,7 @@ static void control_pid_apply_all(void)
     yaw_rate_pid.output_limit = yaw_rate_output_limit;
 }
 
-/* ========== å…¬å…±æ¥å£ ========== */
+/* ========== ¹«¹²½Ó¿Ú ========== */
 
 void Control_Init(void)
 {
@@ -154,7 +154,7 @@ float Control_GetYawAngle(void)
     return control_wrap_pi(yaw);
 }
 
-/* 100Hzï¼šyawç›®æ ‡ + éº¦å…‹çº³å§†è§£ç®— + å››è½®é€Ÿåº¦ç¯ + ç”µæœºè¾“å‡º */
+/* 100Hz£ºyawÄ¿±ê + Âó¿ËÄÉÄ·½âËã + ËÄÂÖËÙ¶È»· + µç»úÊä³ö */
 void Control_100Hz(float forward, float strafe, float yaw_target_rad)
 {
     float rot, lf, rf, lr, rr;

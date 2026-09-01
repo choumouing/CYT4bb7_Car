@@ -1,16 +1,16 @@
 /**
  * @file wireless_control.h
- * @brief æ— çº¿é¥æ§æ§åˆ¶å±‚
+ * @brief ÎŞÏßÒ£¿Ø¿ØÖÆ²ã
  *
- * åŠŸèƒ½ï¼šå°† SBUS é€šé“å€¼è½¬æ¢ä¸ºå°è½¦è¿åŠ¨æ§åˆ¶æŒ‡ä»¤
- * ä¸Šæ¸¸ï¼šSBUS æ¨¡å—æä¾›é€šé“çŠ¶æ€
- * ä¸‹æ¸¸ï¼šè¿åŠ¨æ§åˆ¶æ¨¡å—è¯»å– forward/strafe/rotate é€Ÿåº¦
+ * ¹¦ÄÜ£º½« SBUS Í¨µÀÖµ×ª»»ÎªĞ¡³µÔË¶¯¿ØÖÆÖ¸Áî
+ * ÉÏÓÎ£ºSBUS Ä£¿éÌá¹©Í¨µÀ×´Ì¬
+ * ÏÂÓÎ£ºÔË¶¯¿ØÖÆÄ£¿é¶ÁÈ¡ forward/strafe/rotate ËÙ¶È
  *
- * å®‰å…¨æœºåˆ¶ï¼š
- *   - æ¥æ”¶å™¨ç¦»çº¿ â†’ å¼ºåˆ¶æ€¥åœ
- *   - CH5 ä½¿èƒ½å¼€å…³æœªæ‹¨ä¸‹ â†’ å¼ºåˆ¶æ€¥åœ
- *   - CH6 æ¨¡å¼å¼€å…³ä¸åœ¨æœ‰æ•ˆä½ç½® â†’ å¼ºåˆ¶æ€¥åœ
- *   - mode2 å ä½æ¨¡å¼ä¸‹æ¸…é™¤æ‰€æœ‰ç›®æ ‡å€¼
+ * °²È«»úÖÆ£º
+ *   - ½ÓÊÕÆ÷ÀëÏß ¡ú Ç¿ÖÆ¼±Í£
+ *   - CH5 Ê¹ÄÜ¿ª¹ØÎ´²¦ÏÂ ¡ú Ç¿ÖÆ¼±Í£
+ *   - CH6 Ä£Ê½¿ª¹Ø²»ÔÚÓĞĞ§Î»ÖÃ ¡ú Ç¿ÖÆ¼±Í£
+ *   - mode2 Õ¼Î»Ä£Ê½ÏÂÇå³ıËùÓĞÄ¿±êÖµ
  */
 
 #ifndef _WIRELESS_CONTROL_H_
@@ -18,61 +18,61 @@
 
 #include "zf_common_headfile.h"
 
-/* æ§åˆ¶å‚æ•° */
-#define MAX_CONTROL_SPEED                   (600)     /* æœ€å¤§å¹³ç§»é€Ÿåº¦ï¼ˆå•ä½ï¼šmm/s æˆ–ç¼–ç å™¨è„‰å†²/sï¼‰ */
-#define MAX_ANGULAR_SPEED                   (2.0f)    /* æœ€å¤§æ—‹è½¬è§’é€Ÿåº¦ï¼ˆå•ä½ï¼šrad/sï¼‰ */
+/* ¿ØÖÆ²ÎÊı */
+#define MAX_CONTROL_SPEED                   (600)     /* ×î´óÆ½ÒÆËÙ¶È£¨µ¥Î»£ºmm/s »ò±àÂëÆ÷Âö³å/s£© */
+#define MAX_ANGULAR_SPEED                   (2.0f)    /* ×î´óĞı×ª½ÇËÙ¶È£¨µ¥Î»£ºrad/s£© */
 
-#define WIRELESS_CONTROL_PERIOD_MS          (40U)     /* æ›´æ–°å‘¨æœŸ 40ms = 25Hz */
+#define WIRELESS_CONTROL_PERIOD_MS          (40U)     /* ¸üĞÂÖÜÆÚ 40ms = 25Hz */
 
-#define WIRELESS_CONTROL_CHANNEL_COUNT      (6U)      /* ä½¿ç”¨çš„ SBUS é€šé“æ•° */
-#define WIRELESS_CONTROL_WHEEL_COUNT        (4U)      /* è½®å­æ•°é‡ï¼ˆå››è½®ï¼‰ */
+#define WIRELESS_CONTROL_CHANNEL_COUNT      (6U)      /* Ê¹ÓÃµÄ SBUS Í¨µÀÊı */
+#define WIRELESS_CONTROL_WHEEL_COUNT        (4U)      /* ÂÖ×ÓÊıÁ¿£¨ËÄÂÖ£© */
 
 /**
- * @brief æ— çº¿æ§åˆ¶çŠ¶æ€ç»“æ„ä½“
+ * @brief ÎŞÏß¿ØÖÆ×´Ì¬½á¹¹Ìå
  *
- * ä½¿ç”¨æ–¹å¼ï¼š
- *   1. 25Hz è°ƒ wireless_control_update_25HZ() åˆ·æ–°
- *   2. è¿åŠ¨æ§åˆ¶æ¨¡å—é€šè¿‡ wireless_control_get_state() è¯»å–é€Ÿåº¦æŒ‡ä»¤
+ * Ê¹ÓÃ·½Ê½£º
+ *   1. 25Hz µ÷ wireless_control_update_25HZ() Ë¢ĞÂ
+ *   2. ÔË¶¯¿ØÖÆÄ£¿éÍ¨¹ı wireless_control_get_state() ¶ÁÈ¡ËÙ¶ÈÖ¸Áî
  */
 typedef struct
 {
-    uint16_t raw_channel[WIRELESS_CONTROL_CHANNEL_COUNT];  /* SBUS åŸå§‹é€šé“å€¼ï¼ˆé€ä¼ ï¼‰ */
-    int16_t std_channel[WIRELESS_CONTROL_CHANNEL_COUNT];   /* SBUS æ ‡å‡†åŒ–é€šé“å€¼ï¼ˆé€ä¼ ï¼‰ */
-    int16_t forward_speed;     /* å‰åé€Ÿåº¦ï¼Œæ­£å€¼=å‰è¿›ï¼Œå•ä½åŒ MAX_CONTROL_SPEED */
-    int16_t strafe_speed;      /* å·¦å³å¹³ç§»é€Ÿåº¦ï¼Œæ­£å€¼=å³ç§» */
-    float rotate_speed;        /* æ—‹è½¬è§’é€Ÿåº¦ï¼Œæ­£å€¼=é€†æ—¶é’ˆï¼Œå•ä½ rad/s */
-    int16_t wheel_target[WIRELESS_CONTROL_WHEEL_COUNT];   /* å„è½®ç›®æ ‡å€¼ï¼ˆé¢„ç•™ï¼‰ */
-    int16_t wheel_pwm[WIRELESS_CONTROL_WHEEL_COUNT];       /* å„è½® PWMï¼ˆé¢„ç•™ï¼‰ */
-    uint8_t receiver_online;   /* SBUS æ¥æ”¶å™¨æ˜¯å¦åœ¨çº¿ï¼š1=åœ¨çº¿ */
-    uint8_t control_enabled;   /* æ§åˆ¶æ˜¯å¦ä½¿èƒ½ï¼š1=ä½¿èƒ½ï¼Œ0=æ€¥åœ */
-    uint8_t emergency_stop_active;  /* æ€¥åœæ˜¯å¦æ¿€æ´»ï¼š1=æ€¥åœä¸­ */
-    uint8_t remote_mode_requested;  /* CH6 è¯·æ±‚é¥æ§æ¨¡å¼ï¼š1=æ˜¯ */
+    uint16_t raw_channel[WIRELESS_CONTROL_CHANNEL_COUNT];  /* SBUS Ô­Ê¼Í¨µÀÖµ£¨Í¸´«£© */
+    int16_t std_channel[WIRELESS_CONTROL_CHANNEL_COUNT];   /* SBUS ±ê×¼»¯Í¨µÀÖµ£¨Í¸´«£© */
+    int16_t forward_speed;     /* Ç°ºóËÙ¶È£¬ÕıÖµ=Ç°½ø£¬µ¥Î»Í¬ MAX_CONTROL_SPEED */
+    int16_t strafe_speed;      /* ×óÓÒÆ½ÒÆËÙ¶È£¬ÕıÖµ=ÓÒÒÆ */
+    float rotate_speed;        /* Ğı×ª½ÇËÙ¶È£¬ÕıÖµ=ÄæÊ±Õë£¬µ¥Î» rad/s */
+    int16_t wheel_target[WIRELESS_CONTROL_WHEEL_COUNT];   /* ¸÷ÂÖÄ¿±êÖµ£¨Ô¤Áô£© */
+    int16_t wheel_pwm[WIRELESS_CONTROL_WHEEL_COUNT];       /* ¸÷ÂÖ PWM£¨Ô¤Áô£© */
+    uint8_t receiver_online;   /* SBUS ½ÓÊÕÆ÷ÊÇ·ñÔÚÏß£º1=ÔÚÏß */
+    uint8_t control_enabled;   /* ¿ØÖÆÊÇ·ñÊ¹ÄÜ£º1=Ê¹ÄÜ£¬0=¼±Í£ */
+    uint8_t emergency_stop_active;  /* ¼±Í£ÊÇ·ñ¼¤»î£º1=¼±Í£ÖĞ */
+    uint8_t remote_mode_requested;  /* CH6 ÇëÇóÒ£¿ØÄ£Ê½£º1=ÊÇ */
     uint8_t mode2_requested;        /* CH6 requests the reserved mode2 slot. */
-    uint8_t mode_request_valid;     /* æ¨¡å¼è¯·æ±‚æ˜¯å¦æœ‰æ•ˆï¼š1=æœ‰æ•ˆï¼ˆCH6 åœ¨æœ‰æ•ˆæŒ¡ä½ï¼‰ */
+    uint8_t mode_request_valid;     /* Ä£Ê½ÇëÇóÊÇ·ñÓĞĞ§£º1=ÓĞĞ§£¨CH6 ÔÚÓĞĞ§µ²Î»£© */
 } wireless_control_state_t;
 
-extern wireless_control_state_t g_wireless_control_state;  /* å…¨å±€çŠ¶æ€ */
+extern wireless_control_state_t g_wireless_control_state;  /* È«¾Ö×´Ì¬ */
 
 /**
- * @brief åˆå§‹åŒ–æ— çº¿æ§åˆ¶æ¨¡å—
- * åˆå§‹åŒ–æ—¶é»˜è®¤è¿›å…¥æ€¥åœçŠ¶æ€
+ * @brief ³õÊ¼»¯ÎŞÏß¿ØÖÆÄ£¿é
+ * ³õÊ¼»¯Ê±Ä¬ÈÏ½øÈë¼±Í£×´Ì¬
  */
 void wireless_control_init(void);
 
 /**
- * @brief 25Hz æ›´æ–°æ— çº¿æ§åˆ¶çŠ¶æ€
- * è°ƒç”¨é¢‘ç‡ï¼š25Hzï¼ˆæ¯ 40msï¼‰
- * å†…éƒ¨æµç¨‹ï¼š
- *   1. è¯»å– SBUS çŠ¶æ€
- *   2. æ£€æŸ¥å®‰å…¨æ¡ä»¶ï¼ˆCH5 ä½¿èƒ½ + CH6 æ¨¡å¼ + receiver_onlineï¼‰
- *   3. ä¸æ»¡è¶³å®‰å…¨æ¡ä»¶ â†’ å¼ºåˆ¶æ€¥åœ
- *   4. æ»¡è¶³æ¡ä»¶ â†’ è§£ææ‘‡æ†å€¼ä¸º forward/strafe/rotate é€Ÿåº¦
+ * @brief 25Hz ¸üĞÂÎŞÏß¿ØÖÆ×´Ì¬
+ * µ÷ÓÃÆµÂÊ£º25Hz£¨Ã¿ 40ms£©
+ * ÄÚ²¿Á÷³Ì£º
+ *   1. ¶ÁÈ¡ SBUS ×´Ì¬
+ *   2. ¼ì²é°²È«Ìõ¼ş£¨CH5 Ê¹ÄÜ + CH6 Ä£Ê½ + receiver_online£©
+ *   3. ²»Âú×ã°²È«Ìõ¼ş ¡ú Ç¿ÖÆ¼±Í£
+ *   4. Âú×ãÌõ¼ş ¡ú ½âÎöÒ¡¸ËÖµÎª forward/strafe/rotate ËÙ¶È
  */
 void wireless_control_update_25HZ(void);
 
 /**
- * @brief è·å–å½“å‰æ§åˆ¶çŠ¶æ€æŒ‡é’ˆ
- * è¿”å›å€¼ï¼šæŒ‡å‘ g_wireless_control_state çš„åªè¯»æŒ‡é’ˆ
+ * @brief »ñÈ¡µ±Ç°¿ØÖÆ×´Ì¬Ö¸Õë
+ * ·µ»ØÖµ£ºÖ¸Ïò g_wireless_control_state µÄÖ»¶ÁÖ¸Õë
  */
 const wireless_control_state_t *wireless_control_get_state(void);
 

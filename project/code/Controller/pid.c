@@ -1,10 +1,10 @@
 #include "pid.h"
 
 
-/* åˆå§‹åŒ–ä½ç½®å¼PIDï¼Œæ¸…é›¶æ‰€æœ‰çŠ¶æ€ */
+/* ³õÊ¼»¯Î»ÖÃÊ½PID£¬ÇåÁãËùÓĞ×´Ì¬ */
 void PositionalPID_Init(PositionalPID* pid,float kp_2,float kp_1,float ki,float kd,float i_limit,float output_limit)
 {
-	pid->kp_2 = kp_2;
+    pid->kp_2 = kp_2;
     pid->kp_1 = kp_1;
     pid->ki = ki;
     pid->kd = kd;
@@ -18,36 +18,36 @@ void PositionalPID_Init(PositionalPID* pid,float kp_2,float kp_1,float ki,float 
     pid->output_limit = output_limit;
 }
 
-/* ä½ç½®å¼PIDè®¡ç®—
- * æŠ—é¥±å’Œç­–ç•¥ï¼šç§¯åˆ†å€¼é’³ä½åœ¨Â±i_limit
- * pé¡¹ç‰¹æ®Šï¼šæ­£è¯¯å·®ç”¨kp_2*err^2ï¼Œè´Ÿè¯¯å·®ç”¨-kp_2*err^2ï¼Œç¡®ä¿äºŒæ¬¡é¡¹å¹³æ»‘è¿‡æ¸¡
- * è¾“å‡ºæœ€ç»ˆé’³ä½åœ¨Â±output_limit
+/* Î»ÖÃÊ½PID¼ÆËã
+ * ¿¹±¥ºÍ²ßÂÔ£º»ı·ÖÖµÇ¯Î»ÔÚ¡Ài_limit
+ * pÏîÌØÊâ£ºÕıÎó²îÓÃkp_2*err^2£¬¸ºÎó²îÓÃ-kp_2*err^2£¬È·±£¶ş´ÎÏîÆ½»¬¹ı¶É
+ * Êä³ö×îÖÕÇ¯Î»ÔÚ¡Àoutput_limit
  */
 float PositionalPID_Update(PositionalPID* pid, float target, float current)
 {
-	float err = target - current;
+    float err = target - current;
 
-	pid->integral += err;
+    pid->integral += err;
 
-	/* ç§¯åˆ†é™å¹…ï¼ˆæŠ—é¥±å’Œï¼‰ */
-	if(pid->integral > pid->i_limit)pid->integral = pid->i_limit;
-	else if(pid->integral < -pid->i_limit)pid->integral = -pid->i_limit;
+    /* »ı·ÖÏŞ·ù£¨¿¹±¥ºÍ£© */
+    if(pid->integral > pid->i_limit)pid->integral = pid->i_limit;
+    else if(pid->integral < -pid->i_limit)pid->integral = -pid->i_limit;
 
-	float derivative = err - pid->prev_err;
+    float derivative = err - pid->prev_err;
 
-	float output = 0;
+    float output = 0;
     float p = 0.0f;
     float i = pid->ki * pid->integral;
     float d = pid->kd * derivative;
 
-	/* äºŒæ¬¡+çº¿æ€§pé¡¹ï¼Œè¯¯å·®æ­£è´Ÿæ—¶äºŒæ¬¡é¡¹ç³»æ•°ç¬¦å·ç›¸å */
-	if(err >= 0)
-	{
-			 p = pid->kp_2 * err * err + pid->kp_1 * err;
-	}
-	else
-	{
-			p = - pid->kp_2 * err * err + pid->kp_1 * err;
+    /* ¶ş´Î+ÏßĞÔpÏî£¬Îó²îÕı¸ºÊ±¶ş´ÎÏîÏµÊı·ûºÅÏà·´ */
+    if(err >= 0)
+    {
+             p = pid->kp_2 * err * err + pid->kp_1 * err;
+    }
+    else
+    {
+            p = - pid->kp_2 * err * err + pid->kp_1 * err;
     }
 
     output = p + i + d;
@@ -56,14 +56,14 @@ float PositionalPID_Update(PositionalPID* pid, float target, float current)
     pid->d_term = d;
     pid->prev_err = err;
 
-	/* è¾“å‡ºé™å¹… */
-	if(output > pid->output_limit)output = pid->output_limit;
-	if(output < -pid->output_limit)output = -pid->output_limit;
+    /* Êä³öÏŞ·ù */
+    if(output > pid->output_limit)output = pid->output_limit;
+    if(output < -pid->output_limit)output = -pid->output_limit;
     pid->output = output;
-	return output;
+    return output;
 }
 
-/* åˆå§‹åŒ–å¢é‡å¼PIDï¼Œæ¸…é›¶æ‰€æœ‰çŠ¶æ€ */
+/* ³õÊ¼»¯ÔöÁ¿Ê½PID£¬ÇåÁãËùÓĞ×´Ì¬ */
 void IncrementPID_Init (IncrementPID* pid,float kp,float ki,float kd,float output_limit)
 {
     pid->kp = kp;
@@ -79,11 +79,11 @@ void IncrementPID_Init (IncrementPID* pid,float kp,float ki,float kd,float outpu
     pid->output_limit = output_limit;
 }
 
-/* å¢é‡å¼PIDè®¡ç®—
- * å¢é‡å…¬å¼ï¼šÎ”u = kp*(e(k)-e(k-1)) + ki*e(k) + kd*(e(k)-2e(k-1)+e(k-2))
- * output += incrementï¼ˆç´¯åŠ å‹ï¼‰
- * è¾“å‡ºæœ€ç»ˆé’³ä½åœ¨Â±output_limit
- * æ³¨æ„ï¼šæ²¡æœ‰ç§¯åˆ†é™å¹…ï¼Œå› ä¸ºå¢é‡å¼å¤©ç„¶æŠ—é¥±å’Œ
+/* ÔöÁ¿Ê½PID¼ÆËã
+ * ÔöÁ¿¹«Ê½£º¦¤u = kp*(e(k)-e(k-1)) + ki*e(k) + kd*(e(k)-2e(k-1)+e(k-2))
+ * output += increment£¨ÀÛ¼ÓĞÍ£©
+ * Êä³ö×îÖÕÇ¯Î»ÔÚ¡Àoutput_limit
+ * ×¢Òâ£ºÃ»ÓĞ»ı·ÖÏŞ·ù£¬ÒòÎªÔöÁ¿Ê½ÌìÈ»¿¹±¥ºÍ
  */
 float IncrementPID_Update(IncrementPID *pid, float target, float current)
 {
@@ -102,7 +102,7 @@ float IncrementPID_Update(IncrementPID *pid, float target, float current)
     pid->prev_error = pid->last_error;
     pid->last_error = error;
 
-    /* è¾“å‡ºé™å¹… */
+    /* Êä³öÏŞ·ù */
     if(pid->output > pid->output_limit) pid->output = pid->output_limit;
     if(pid->output < -pid->output_limit) pid->output = -pid->output_limit;
 

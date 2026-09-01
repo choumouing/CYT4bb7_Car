@@ -60,25 +60,25 @@ volatile float g_air_car_plan_beacon_index = 0.0f;
 volatile float g_air_car_plan_dist_px = 0.0f;
 volatile float g_air_beacon_lost_flag = 0.0f;
 
-#define AIR_RUN_DATA_CRITICAL_COUNT (15U) /* é£è¡ŒæœŸé—´å…³é”®æ•°æ®åŒ…çš„floatæ•°é‡ */
-#define AIR_RUN_DATA_DIAGNOSTIC_LEGACY_COUNT (45U) /* å…¼å®¹æ—§ç‰ˆå¸¸æ€è¯Šæ–­åŒ…çš„floatæ•°é‡ */
-#define AIR_RUN_DATA_DIAGNOSTIC_V1_COUNT (48U) /* å…¼å®¹é¦–ç‰ˆSPIè¯Šæ–­åŒ…çš„floatæ•°é‡ */
-#define AIR_RUN_DATA_DIAGNOSTIC_COUNT (52U) /* å¸¸æ€å®Œæ•´è¯Šæ–­åŒ…çš„floatæ•°é‡ */
-#define AIR_RUN_CRITICAL_STATE (0U) /* é£æœºè¿è¡ŒçŠ¶æ€ */
-#define AIR_RUN_CRITICAL_CRSF_CH0 (1U) /* CRSFæ ‡å‡†åŒ–é€šé“0 */
-#define AIR_RUN_CRITICAL_CRSF_CH1 (2U) /* CRSFæ ‡å‡†åŒ–é€šé“1 */
-#define AIR_RUN_CRITICAL_CRSF_CH2 (3U) /* CRSFæ ‡å‡†åŒ–é€šé“2 */
-#define AIR_RUN_CRITICAL_CRSF_CH3 (4U) /* CRSFæ ‡å‡†åŒ–é€šé“3 */
-#define AIR_RUN_CRITICAL_CRSF_CH4 (5U) /* CRSFæ ‡å‡†åŒ–é€šé“4 */
-#define AIR_RUN_CRITICAL_CRSF_CH5 (6U) /* CRSFæ ‡å‡†åŒ–é€šé“5 */
-#define AIR_RUN_CRITICAL_CRSF_CH6 (7U) /* CRSFæ ‡å‡†åŒ–é€šé“6 */
-#define AIR_RUN_CRITICAL_CRSF_CH7 (8U) /* CRSFæ ‡å‡†åŒ–é€šé“7 */
-#define AIR_RUN_CRITICAL_CRSF_CH8 (9U) /* CRSFæ ‡å‡†åŒ–é€šé“8 */
-#define AIR_RUN_CRITICAL_YAW_TARGET (10U) /* é£æœºyawç›®æ ‡è§’ï¼Œå•ä½deg */
-#define AIR_RUN_CRITICAL_PLAN_VALID (11U) /* è½¦æ¨¡è§„åˆ’ç»“æœæœ‰æ•ˆæ ‡å¿— */
-#define AIR_RUN_CRITICAL_PLAN_STRAFE (12U) /* è½¦æ¨¡è§„åˆ’æ¨ªç§»é€Ÿåº¦ï¼Œå•ä½m/s */
-#define AIR_RUN_CRITICAL_PLAN_FORWARD (13U) /* è½¦æ¨¡è§„åˆ’å‰è¿›é€Ÿåº¦ï¼Œå•ä½m/s */
-#define AIR_RUN_CRITICAL_BEACON_LOST (14U) /* ä¿¡æ ‡ä¸¢å¤±æ ‡å¿— */
+#define AIR_RUN_DATA_CRITICAL_COUNT (15U) /* ·ÉĞĞÆÚ¼ä¹Ø¼üÊı¾İ°üµÄfloatÊıÁ¿ */
+#define AIR_RUN_DATA_DIAGNOSTIC_LEGACY_COUNT (45U) /* ¼æÈİ¾É°æ³£Ì¬Õï¶Ï°üµÄfloatÊıÁ¿ */
+#define AIR_RUN_DATA_DIAGNOSTIC_V1_COUNT (48U) /* ¼æÈİÊ×°æSPIÕï¶Ï°üµÄfloatÊıÁ¿ */
+#define AIR_RUN_DATA_DIAGNOSTIC_COUNT (52U) /* ³£Ì¬ÍêÕûÕï¶Ï°üµÄfloatÊıÁ¿ */
+#define AIR_RUN_CRITICAL_STATE (0U) /* ·É»úÔËĞĞ×´Ì¬ */
+#define AIR_RUN_CRITICAL_CRSF_CH0 (1U) /* CRSF±ê×¼»¯Í¨µÀ0 */
+#define AIR_RUN_CRITICAL_CRSF_CH1 (2U) /* CRSF±ê×¼»¯Í¨µÀ1 */
+#define AIR_RUN_CRITICAL_CRSF_CH2 (3U) /* CRSF±ê×¼»¯Í¨µÀ2 */
+#define AIR_RUN_CRITICAL_CRSF_CH3 (4U) /* CRSF±ê×¼»¯Í¨µÀ3 */
+#define AIR_RUN_CRITICAL_CRSF_CH4 (5U) /* CRSF±ê×¼»¯Í¨µÀ4 */
+#define AIR_RUN_CRITICAL_CRSF_CH5 (6U) /* CRSF±ê×¼»¯Í¨µÀ5 */
+#define AIR_RUN_CRITICAL_CRSF_CH6 (7U) /* CRSF±ê×¼»¯Í¨µÀ6 */
+#define AIR_RUN_CRITICAL_CRSF_CH7 (8U) /* CRSF±ê×¼»¯Í¨µÀ7 */
+#define AIR_RUN_CRITICAL_CRSF_CH8 (9U) /* CRSF±ê×¼»¯Í¨µÀ8 */
+#define AIR_RUN_CRITICAL_YAW_TARGET (10U) /* ·É»úyawÄ¿±ê½Ç£¬µ¥Î»deg */
+#define AIR_RUN_CRITICAL_PLAN_VALID (11U) /* ³µÄ£¹æ»®½á¹ûÓĞĞ§±êÖ¾ */
+#define AIR_RUN_CRITICAL_PLAN_STRAFE (12U) /* ³µÄ£¹æ»®ºáÒÆËÙ¶È£¬µ¥Î»m/s */
+#define AIR_RUN_CRITICAL_PLAN_FORWARD (13U) /* ³µÄ£¹æ»®Ç°½øËÙ¶È£¬µ¥Î»m/s */
+#define AIR_RUN_CRITICAL_BEACON_LOST (14U) /* ĞÅ±ê¶ªÊ§±êÖ¾ */
 #define AIR_RUN_DATA_TOF_FUSED_HEIGHT_MM (0U)
 #define AIR_RUN_DATA_EULER_ROLL (1U)
 #define AIR_RUN_DATA_EULER_PITCH (2U)
@@ -113,13 +113,13 @@ volatile float g_air_beacon_lost_flag = 0.0f;
 #define AIR_MENU_STATE_RUNTIME_MIN (2.0f)
 
 /**
- * @brief æ›´æ–°é£æœºçŠ¶æ€åŠç”±çŠ¶æ€é©±åŠ¨çš„è½¦ç«¯èœå•è¿è¡Œé”ã€‚
- * @param air_state é£æœºè¿è¡ŒçŠ¶æ€æšä¸¾å¯¹åº”çš„æµ®ç‚¹å€¼ã€‚
- * @return æ— ã€‚
+ * @brief ¸üĞÂ·É»ú×´Ì¬¼°ÓÉ×´Ì¬Çı¶¯µÄ³µ¶Ë²Ëµ¥ÔËĞĞËø¡£
+ * @param air_state ·É»úÔËĞĞ×´Ì¬Ã¶¾Ù¶ÔÓ¦µÄ¸¡µãÖµ¡£
+ * @return ÎŞ¡£
  */
 static void car_loop_update_air_runtime_state(float air_state)
 {
-    /* é€šä¿¡å›è°ƒåªæŒ‚èµ·ä»»åŠ¡çº§å¤ä½ï¼Œç”±100Hzä¸»å¾ªç¯ç»Ÿä¸€ä¿®æ”¹ä¼°è®¡å™¨çŠ¶æ€ã€‚ */
+    /* Í¨ĞÅ»Øµ÷Ö»¹ÒÆğÈÎÎñ¼¶¸´Î»£¬ÓÉ100HzÖ÷Ñ­»·Í³Ò»ĞŞ¸Ä¹À¼ÆÆ÷×´Ì¬¡£ */
     if(((air_state == AIR_MENU_STATE_TAKEOFF) ||
         (air_state == AIR_MENU_STATE_FLYING)) &&
        ((s_air_run_data_seen == 0U) ||
@@ -146,10 +146,10 @@ static void car_loop_update_air_runtime_state(float air_state)
 }
 
 /**
- * @brief æŒ‰æ•°æ®æ•°é‡è§£æé£æœºä¸‹å‘çš„å…³é”®è¿è¡ŒåŒ…æˆ–å®Œæ•´è¯Šæ–­åŒ…ã€‚
- * @param data é£æœºä¸‹å‘çš„floatæ•°æ®æ•°ç»„ã€‚
- * @param count æ•°ç»„ä¸­çš„floatæ•°é‡ï¼Œåˆæ³•å€¼ä¸º15ã€45ã€48æˆ–52ã€‚
- * @return æ— ã€‚
+ * @brief °´Êı¾İÊıÁ¿½âÎö·É»úÏÂ·¢µÄ¹Ø¼üÔËĞĞ°ü»òÍêÕûÕï¶Ï°ü¡£
+ * @param data ·É»úÏÂ·¢µÄfloatÊı¾İÊı×é¡£
+ * @param count Êı×éÖĞµÄfloatÊıÁ¿£¬ºÏ·¨ÖµÎª15¡¢45¡¢48»ò52¡£
+ * @return ÎŞ¡£
  */
 static void on_air_data(const float *data, uint8 count)
 {
@@ -388,7 +388,7 @@ static void car_loop_100HZ(void)
 
     encoder_update_100HZ();
     odometer_update_100HZ();
-    /* æ–°ä¸€è½®èµ·é£ç»Ÿä¸€æ¸…é™¤ä¸Šä¸€è½®å®šä½ã€æ£€æµ‹å’Œç¯åºè¯†åˆ«çŠ¶æ€ã€‚ */
+    /* ĞÂÒ»ÂÖÆğ·ÉÍ³Ò»Çå³ıÉÏÒ»ÂÖ¶¨Î»¡¢¼ì²âºÍµÆĞòÊ¶±ğ×´Ì¬¡£ */
     if(s_air_takeoff_reset_pending != 0U)
     {
         odometer_reset();
@@ -416,7 +416,7 @@ static void car_loop_100HZ(void)
         odometer_fixed_position[y] = g_fixator.fixed_position[y];
     }
 
-    /* åŒä¸€Airç­ç¯äº‹ä»¶å…ˆåº”ç”¨fixatorä¿®æ­£ï¼Œå†ç”¨ä¿®æ­£åçš„é‡Œç¨‹è®¡åæ ‡åˆ†æç¯åºã€‚ */
+    /* Í¬Ò»AirÃğµÆÊÂ¼şÏÈÓ¦ÓÃfixatorĞŞÕı£¬ÔÙÓÃĞŞÕıºóµÄÀï³Ì¼Æ×ø±ê·ÖÎöµÆĞò¡£ */
     odometer_apply_pending_fix();
     LightSequence_Update((g_air_beacon_lost_flag > 0.5f) ? 1U : 0U,
                          g_odometer.position[x],
@@ -459,7 +459,7 @@ static void car_loop_100HZ(void)
     }
     else if(menu_external_view_runtime_active() != 0U)
     {
-        /* è¿è¡Œé”å®šæœŸé—´åªå¤„ç†æ˜ç¡®å…è®¸çš„å¤–éƒ¨é¡µé¢è¾“å…¥ã€‚ */
+        /* ÔËĞĞËø¶¨ÆÚ¼äÖ»´¦ÀíÃ÷È·ÔÊĞíµÄÍâ²¿Ò³ÃæÊäÈë¡£ */
         menu_update_100HZ();
     }
     s_menu_runtime_was_locked = menu_runtime_locked;
@@ -478,7 +478,7 @@ static void car_loop_100HZ(void)
     car_mode_update_100HZ(s_system_time_ms);
 
 
-    // å¦‚æœè½¦æœºä¸²å£é€šä¿¡ç¦»çº¿,è½¦ç«¯çš„èœ‚é¸£å™¨æŠ¥è­¦,ä¸º1sçš„é¸£å«,1sçš„åœæ­¢
+    // Èç¹û³µ»ú´®¿ÚÍ¨ĞÅÀëÏß,³µ¶ËµÄ·äÃùÆ÷±¨¾¯,Îª1sµÄÃù½Ğ,1sµÄÍ£Ö¹
     if (air_comm_car_is_online() == 0U)
     {
         if (s_air_comm_beep_tick >= 200U)
@@ -577,32 +577,32 @@ static void car_loop_100HZ(void)
     //                    g_air_car_plan_forward_mps,                     /* I24: Air target velocity Y */
     //                    g_air_beacon_lost_flag,
     //                    beacon_detected_flag);
-    wifi_justfloat(g_air_beacon_lost_flag,                         /* I1: Airç†„ç¯æ ‡å¿— */
-                   g_odometer.position[x],                         /* I2: ä¿®æ­£åXåæ ‡ï¼Œm */
-                   g_odometer.position[y],                         /* I3: ä¿®æ­£åYåæ ‡ï¼Œm */
-                   (float)light_sequence_result.status,            /* I4: è¯†åˆ«çŠ¶æ€ */
-                   (float)light_sequence_result.last_beacon_id,    /* I5: æœ€è¿‘åŒ¹é…ç¯å· */
-                   (float)light_sequence_result.candidate_count,   /* I6: å‰©ä½™å€™é€‰æ•°é‡ */
-                   (float)light_sequence_result.candidate_mask,    /* I7: å€™é€‰ä½æ©ç  */
-                   (light_sequence_result.candidate_mask & 0x01U) != 0U ? 1.0f : 0.0f, /* I8: åºåˆ—1å€™é€‰ */
-                   (light_sequence_result.candidate_mask & 0x02U) != 0U ? 1.0f : 0.0f, /* I9: åºåˆ—2å€™é€‰ */
-                   (light_sequence_result.candidate_mask & 0x04U) != 0U ? 1.0f : 0.0f, /* I10: åºåˆ—3å€™é€‰ */
-                   (light_sequence_result.candidate_mask & 0x08U) != 0U ? 1.0f : 0.0f, /* I11: åºåˆ—4å€™é€‰ */
-                   (float)light_sequence_result.sequence_id,       /* I12: æœ€ç»ˆç¯åºï¼Œ0ä¸ºæœªç¡®å®š */
-                   (float)light_sequence_result.accepted_event_count, /* I13: æ­£å¼ç­ç¯äº‹ä»¶æ•° */
-                   (float)g_carplanfix_state.status,               /* I14: è·¯å¾„çŠ¶æ€ */
-                   (float)g_carplanfix_state.disable_reason,       /* I15: å¤±æ•ˆåŸå›  */
+    wifi_justfloat(g_air_beacon_lost_flag,                         /* I1: AirÏ¨µÆ±êÖ¾ */
+                   g_odometer.position[x],                         /* I2: ĞŞÕıºóX×ø±ê£¬m */
+                   g_odometer.position[y],                         /* I3: ĞŞÕıºóY×ø±ê£¬m */
+                   (float)light_sequence_result.status,            /* I4: Ê¶±ğ×´Ì¬ */
+                   (float)light_sequence_result.last_beacon_id,    /* I5: ×î½üÆ¥ÅäµÆºÅ */
+                   (float)light_sequence_result.candidate_count,   /* I6: Ê£ÓàºòÑ¡ÊıÁ¿ */
+                   (float)light_sequence_result.candidate_mask,    /* I7: ºòÑ¡Î»ÑÚÂë */
+                   (light_sequence_result.candidate_mask & 0x01U) != 0U ? 1.0f : 0.0f, /* I8: ĞòÁĞ1ºòÑ¡ */
+                   (light_sequence_result.candidate_mask & 0x02U) != 0U ? 1.0f : 0.0f, /* I9: ĞòÁĞ2ºòÑ¡ */
+                   (light_sequence_result.candidate_mask & 0x04U) != 0U ? 1.0f : 0.0f, /* I10: ĞòÁĞ3ºòÑ¡ */
+                   (light_sequence_result.candidate_mask & 0x08U) != 0U ? 1.0f : 0.0f, /* I11: ĞòÁĞ4ºòÑ¡ */
+                   (float)light_sequence_result.sequence_id,       /* I12: ×îÖÕµÆĞò£¬0ÎªÎ´È·¶¨ */
+                   (float)light_sequence_result.accepted_event_count, /* I13: ÕıÊ½ÃğµÆÊÂ¼şÊı */
+                   (float)g_carplanfix_state.status,               /* I14: Â·¾¶×´Ì¬ */
+                   (float)g_carplanfix_state.disable_reason,       /* I15: Ê§Ğ§Ô­Òò */
                    (g_carplanfix_state.mode3_beacon1_pending != 0U)
                        ? 1.0f
-                       : (float)g_carplanfix_state.target_beacon_id, /* I16: å½“å‰å®é™…ç›®æ ‡ç¯ */
-                   (float)g_carplanfix_state.route_index,          /* I17: å½“å‰è·¯å¾„ä¸‹æ ‡ */
-                   (float)g_carplanfix_state.near_beacon,          /* I18: ä½äºç›®æ ‡ç¯0.5må†… */
-                   (float)g_carplanfix_state.correction_valid,     /* I19: æœ¬å‘¨æœŸä¿®æ­£æœ‰æ•ˆ */
-                   g_car_plan_forward_mps,                         /* I20: è½¦ç«¯å‰å‘è§„åˆ’é€Ÿåº¦ */
-                   g_car_plan_strafe_mps,                          /* I21: è½¦ç«¯æ¨ªå‘è§„åˆ’é€Ÿåº¦ */
-                   (float)g_carplanfix_state.target_zone_entered,  /* I22: å·²è¿›å…¥å½“å‰ç›®æ ‡åŒºåŸŸ */
+                       : (float)g_carplanfix_state.target_beacon_id, /* I16: µ±Ç°Êµ¼ÊÄ¿±êµÆ */
+                   (float)g_carplanfix_state.route_index,          /* I17: µ±Ç°Â·¾¶ÏÂ±ê */
+                   (float)g_carplanfix_state.near_beacon,          /* I18: Î»ÓÚÄ¿±êµÆ0.5mÄÚ */
+                   (float)g_carplanfix_state.correction_valid,     /* I19: ±¾ÖÜÆÚĞŞÕıÓĞĞ§ */
+                   g_car_plan_forward_mps,                         /* I20: ³µ¶ËÇ°Ïò¹æ»®ËÙ¶È */
+                   g_car_plan_strafe_mps,                          /* I21: ³µ¶ËºáÏò¹æ»®ËÙ¶È */
+                   (float)g_carplanfix_state.target_zone_entered,  /* I22: ÒÑ½øÈëµ±Ç°Ä¿±êÇøÓò */
                    (g_carplanfix_state.status == CARPLANFIX_STATUS_DISABLED)
-                       ? 1.0f : 0.0f);                             /* I23: carplanfixå·²æ°¸ä¹…ç¦ç”¨ */
+                       ? 1.0f : 0.0f);                             /* I23: carplanfixÒÑÓÀ¾Ã½ûÓÃ */
 
 }
 

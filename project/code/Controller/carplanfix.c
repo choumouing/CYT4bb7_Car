@@ -21,7 +21,7 @@ typedef struct
     float last_position[2];
 } carplanfix_valid_beacon_guard_t;
 
-/* äº‹ä»¶æ•°ä¸º0æ—¶ä¸å‚ä¸åŒ¹é…ï¼Œç”¨äºæ— éœ€åŒºåˆ†è¯†åˆ«è¿‡ç¨‹çš„ç¯åºã€‚ */
+/* ÊÂ¼şÊıÎª0Ê±²»²ÎÓëÆ¥Åä£¬ÓÃÓÚÎŞĞèÇø·ÖÊ¶±ğ¹ı³ÌµÄµÆĞò¡£ */
 static const carplanfix_route_t s_routes[] =
 {
     {1U, 2U, 3U, 9U, {4U, 6U, 3U, 4U, 5U, 1U, 2U, 4U, 6U}},

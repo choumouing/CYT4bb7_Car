@@ -110,7 +110,7 @@ void car_mode_update_25HZ(uint32 now_ms)
         return;
     }
 
-    /* ä¿¡æ ‡é‡‡é›†æœŸé—´å›ºå®šå¤ç”¨ Mode8 é¥æ§ï¼Œåªç”± Air è½¬å‘çš„ CH4 åœè½¦å¼€å…³æ”¾è¡Œã€‚ */
+    /* ĞÅ±ê²É¼¯ÆÚ¼ä¹Ì¶¨¸´ÓÃ Mode8 Ò£¿Ø£¬Ö»ÓÉ Air ×ª·¢µÄ CH4 Í£³µ¿ª¹Ø·ÅĞĞ¡£ */
     if(beacon_position_recorder_is_active() != 0U)
     {
         car_control_enabled =

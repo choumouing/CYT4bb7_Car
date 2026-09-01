@@ -3,63 +3,63 @@
 #define __MOTOR_H
 
 /*
- * å››è½®éº¦è½®ç”µæœºå¼•è„šæ˜ å°„
- * æ³¨æ„ï¼šå®å M1~M4 æ˜¯èŠ¯ç‰‡é€šé“ç¼–å·ï¼Œå’Œç‰©ç†è½®ä½ç½®ä¸ä¸€è‡´ï¼Œä¸‹é¢æ ‡æ¸…äº†å¯¹åº”å…³ç³»ã€‚
- * DIR å¼•è„šæ§åˆ¶æ–¹å‘ï¼ˆGPIOï¼‰ï¼ŒPWM å¼•è„šè¾“å‡ºå ç©ºæ¯”ï¼ˆTCPWMï¼‰ã€‚
- * INVERTï¼šæœºæ¢°è£…é…å¯¼è‡´æ­£è½¬æ–¹å‘ä¸æœŸæœ›ç›¸åæ—¶ç½® 1ï¼Œå†…éƒ¨ä¼šè‡ªåŠ¨å–å speedã€‚
- * PWM é¢‘ç‡ 17kHzï¼ˆè§ motor.c pwm_initï¼‰ï¼Œå ç©ºæ¯”èŒƒå›´ 0~MOTOR_PWM_MAXã€‚
+ * ËÄÂÖÂóÂÖµç»úÒı½ÅÓ³Éä
+ * ×¢Òâ£ººêÃû M1~M4 ÊÇĞ¾Æ¬Í¨µÀ±àºÅ£¬ºÍÎïÀíÂÖÎ»ÖÃ²»Ò»ÖÂ£¬ÏÂÃæ±êÇåÁË¶ÔÓ¦¹ØÏµ¡£
+ * DIR Òı½Å¿ØÖÆ·½Ïò£¨GPIO£©£¬PWM Òı½ÅÊä³öÕ¼¿Õ±È£¨TCPWM£©¡£
+ * INVERT£º»úĞµ×°Åäµ¼ÖÂÕı×ª·½ÏòÓëÆÚÍûÏà·´Ê±ÖÃ 1£¬ÄÚ²¿»á×Ô¶¯È¡·´ speed¡£
+ * PWM ÆµÂÊ 17kHz£¨¼û motor.c pwm_init£©£¬Õ¼¿Õ±È·¶Î§ 0~MOTOR_PWM_MAX¡£
  */
 
-// ç”µæœº1 - å·¦å‰ (Left Front)  -> å®å M2
+// µç»ú1 - ×óÇ° (Left Front)  -> ºêÃû M2
 #define MOTOR_M2_DIR        (P10_3)
 #define MOTOR_M2_PWM        (TCPWM_CH30_P10_2)
-#define MOTOR_M2_INVERT     0       // 0=ä¸åè½¬, 1=åè½¬
+#define MOTOR_M2_INVERT     0       // 0=²»·´×ª, 1=·´×ª
 
-// ç”µæœº2 - å³å‰ (Right Front) -> å®å M1
+// µç»ú2 - ÓÒÇ° (Right Front) -> ºêÃû M1
 #define MOTOR_M1_DIR        (P09_1)
 #define MOTOR_M1_PWM        (TCPWM_CH24_P09_0)
-#define MOTOR_M1_INVERT     1       // 0=ä¸åè½¬, 1=åè½¬
+#define MOTOR_M1_INVERT     1       // 0=²»·´×ª, 1=·´×ª
 
-// ç”µæœº3 - å·¦å (Left Rear)  -> å®å M4
+// µç»ú3 - ×óºó (Left Rear)  -> ºêÃû M4
 #define MOTOR_M4_DIR        (P05_3)
 #define MOTOR_M4_PWM        (TCPWM_CH11_P05_2)
-#define MOTOR_M4_INVERT     1       // 0=ä¸åè½¬, 1=åè½¬
+#define MOTOR_M4_INVERT     1       // 0=²»·´×ª, 1=·´×ª
 
-// ç”µæœº4 - å³å (Right Rear) -> å®å M3
+// µç»ú4 - ÓÒºó (Right Rear) -> ºêÃû M3
 #define MOTOR_M3_DIR        (P05_1)
 #define MOTOR_M3_PWM        (TCPWM_CH09_P05_0)
-#define MOTOR_M3_INVERT     0       // 0=ä¸åè½¬, 1=åè½¬
+#define MOTOR_M3_INVERT     0       // 0=²»·´×ª, 1=·´×ª
 
-#define MOTOR_PWM_MAX           6000        // PWM å ç©ºæ¯”ä¸Šé™ï¼ˆå¯¹åº” 100%ï¼‰
-/* åˆå§‹åŒ–å››è½®ç”µæœº GPIO + PWMï¼Œä¸Šç”µåè°ƒç”¨ä¸€æ¬¡ */
+#define MOTOR_PWM_MAX           6000        // PWM Õ¼¿Õ±ÈÉÏÏŞ£¨¶ÔÓ¦ 100%£©
+/* ³õÊ¼»¯ËÄÂÖµç»ú GPIO + PWM£¬ÉÏµçºóµ÷ÓÃÒ»´Î */
 void mecanum_motor_init(void);
 
-/* PWM é™å¹…ï¼šå°† speed é™åˆ¶åœ¨ [-MOTOR_PWM_MAX, MOTOR_PWM_MAX] */
+/* PWM ÏŞ·ù£º½« speed ÏŞÖÆÔÚ [-MOTOR_PWM_MAX, MOTOR_PWM_MAX] */
 int16_t speed_limit(int16_t speed);
 
 /*
- * è®¾ç½®å•ä¸ªç”µæœºé€Ÿåº¦ï¼ˆåº•å±‚æ¥å£ï¼Œä¸€èˆ¬ä¸ç›´æ¥è°ƒç”¨ï¼‰
- * speed: æ­£å€¼æ­£è½¬ï¼Œè´Ÿå€¼åè½¬ï¼Œå•ä½ = PWM å ç©ºæ¯”è®¡æ•°å€¼ï¼ˆ0~5000ï¼‰
- * invert: ä¸º 1 æ—¶å†…éƒ¨å–å speedï¼Œç”¨äºæ ¡æ­£æœºæ¢°è£…é…æ–¹å‘
+ * ÉèÖÃµ¥¸öµç»úËÙ¶È£¨µ×²ã½Ó¿Ú£¬Ò»°ã²»Ö±½Óµ÷ÓÃ£©
+ * speed: ÕıÖµÕı×ª£¬¸ºÖµ·´×ª£¬µ¥Î» = PWM Õ¼¿Õ±È¼ÆÊıÖµ£¨0~5000£©
+ * invert: Îª 1 Ê±ÄÚ²¿È¡·´ speed£¬ÓÃÓÚĞ£Õı»úĞµ×°Åä·½Ïò
  */
 void motor_set_single(gpio_pin_enum dir_pin, pwm_channel_enum pwm_ch, int16_t speed, uint8_t invert);
 
-/* è®¾ç½®å·¦å‰è½®é€Ÿåº¦ï¼Œspeed å•ä½åŒä¸Š */
+/* ÉèÖÃ×óÇ°ÂÖËÙ¶È£¬speed µ¥Î»Í¬ÉÏ */
 void motor_m1_set_speed(int16_t speed);
 
-/* è®¾ç½®å³å‰è½®é€Ÿåº¦ */
+/* ÉèÖÃÓÒÇ°ÂÖËÙ¶È */
 void motor_m2_set_speed(int16_t speed);
 
-/* è®¾ç½®å·¦åè½®é€Ÿåº¦ */
+/* ÉèÖÃ×óºóÂÖËÙ¶È */
 void motor_m3_set_speed(int16_t speed);
 
-/* è®¾ç½®å³åè½®é€Ÿåº¦ */
+/* ÉèÖÃÓÒºóÂÖËÙ¶È */
 void motor_m4_set_speed(int16_t speed);
 
-/* åŒæ—¶è®¾ç½®å››è½®é€Ÿåº¦ï¼ˆéº¦è½®è§£ç®—ç»“æœç›´æ¥ä¼ å…¥ï¼‰ï¼Œä¸Šå±‚æ§åˆ¶ç”¨è¿™ä¸ª */
+/* Í¬Ê±ÉèÖÃËÄÂÖËÙ¶È£¨ÂóÂÖ½âËã½á¹ûÖ±½Ó´«Èë£©£¬ÉÏ²ã¿ØÖÆÓÃÕâ¸ö */
 void mecanum_motor_set_all(int16_t m1, int16_t m2, int16_t m3, int16_t m4);
 
-/* ç´§æ€¥åœè½¦ï¼šå››è½® speed å…¨éƒ¨ç½® 0 */
+/* ½ô¼±Í£³µ£ºËÄÂÖ speed È«²¿ÖÃ 0 */
 void mecanum_motor_stop(void);
 
 #endif

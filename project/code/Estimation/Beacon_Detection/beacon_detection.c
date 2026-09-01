@@ -2303,9 +2303,9 @@ void beacon_detection_update_100HZ(void)
     right_rear = encoder_get_right_rear_filtered_count();
 
     /*
-     * æ£€æµ‹æ¨¡å—å†…éƒ¨é€Ÿåº¦ä»æŒ‰è¿åŠ¨æ–¹å‘å­˜æ”¾ï¼š
-     * vel[0] = forwardï¼Œvel[1] = right/strafeã€‚
-     * ä¸ç­‰åŒäº g_odometer çš„å…¨å±€åæ ‡è½´ [x=å³, y=å‰]ï¼Œåˆ«åœ¨è¿™é‡Œè·Ÿç€å…¨å±€è½´æ¢ä¸‹æ ‡ã€‚
+     * ¼ì²âÄ£¿éÄÚ²¿ËÙ¶ÈÈÔ°´ÔË¶¯·½Ïò´æ·Å£º
+     * vel[0] = forward£¬vel[1] = right/strafe¡£
+     * ²»µÈÍ¬ÓÚ g_odometer µÄÈ«¾Ö×ø±êÖá [x=ÓÒ, y=Ç°]£¬±ğÔÚÕâÀï¸ú×ÅÈ«¾ÖÖá»»ÏÂ±ê¡£
      */
     g_beacon_detection.vel[0] =
         (left_front + right_front + left_rear + right_rear) *
